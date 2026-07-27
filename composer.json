@@ -1,0 +1,90 @@
+{
+    "name": "axelferdinand/statamic-secretary",
+    "description": "A guarded content assistant for Statamic, available through the Control Panel and email.",
+    "type": "statamic-addon",
+    "license": "MIT",
+    "homepage": "https://github.com/axelferdinand/statamic-secretary",
+    "keywords": [
+        "statamic",
+        "cms",
+        "ai",
+        "content assistant"
+    ],
+    "authors": [
+        {
+            "name": "Axel Ferdinand",
+            "email": "kontakt@prototypen.no"
+        }
+    ],
+    "support": {
+        "email": "kontakt@prototypen.no",
+        "issues": "https://github.com/axelferdinand/statamic-secretary/issues",
+        "security": "https://github.com/axelferdinand/statamic-secretary/security/policy",
+        "source": "https://github.com/axelferdinand/statamic-secretary"
+    },
+    "require": {
+        "php": "^8.3",
+        "statamic/cms": "^6.0",
+        "symfony/http-client": "^7.2",
+        "symfony/postmark-mailer": "^7.2"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.24",
+        "orchestra/testbench": "^10.0 || ^11.0",
+        "phpunit/phpunit": "^11.5 || ^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "AxelFerdinand\\StatamicSecretary\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "AxelFerdinand\\StatamicSecretary\\Tests\\": "tests/",
+            "AxelFerdinand\\StatamicSecretaryRelay\\": "relay/src/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "lint": "pint --test src routes config database relay/src relay/bin relay/public tests"
+    },
+    "extra": {
+        "statamic": {
+            "name": "Secretary",
+            "description": "A guarded content assistant for the Statamic Control Panel and email."
+        },
+        "laravel": {
+            "providers": [
+                "AxelFerdinand\\StatamicSecretary\\ServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "sort-packages": true
+    },
+    "archive": {
+        "exclude": [
+            "/.github",
+            "/.gitattributes",
+            "/.gitignore",
+            "/.phpunit.cache",
+            "/.phpunit.result.cache",
+            "/composer.lock",
+            "/docs/assets/statamic-secretary-icon-source.png",
+            "/node_modules",
+            "/package-lock.json",
+            "/package.json",
+            "/phpunit.xml.dist",
+            "/relay",
+            "/sandbox",
+            "/tests",
+            "/vendor",
+            "/vite.config.js"
+        ]
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

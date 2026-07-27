@@ -1,0 +1,9 @@
+/vendor/
+/node_modules/
+/.phpunit.cache/
+/sandbox/
+/.phpunit.result.cache
+/tests/__fixtures__/dev-null/
+/tests/__fixtures__/content/
+/tests/__fixtures__/users/
+/tests/__fixtures__/revisions/

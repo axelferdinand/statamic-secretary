@@ -1,0 +1,55 @@
+@import "@statamic/cms/tailwind.css";
+
+@layer addon-utilities {
+    .secretary-message {
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+    }
+
+    .secretary-scrollbar {
+        scrollbar-gutter: stable;
+    }
+
+    .secretary-value {
+        margin: 0;
+        max-width: 100%;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-family: inherit;
+        font-size: 0.8125rem;
+        line-height: 1.5;
+    }
+
+    .secretary-setup-tab:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
+    }
+
+    .secretary-panel-launcher {
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        z-index: var(--z-index-max);
+        box-shadow: 0 12px 28px -12px rgb(15 23 42 / 45%);
+    }
+
+    .secretary-panel-shell {
+        height: calc(100svh - 4.75rem);
+    }
+
+    .secretary-panel-feed {
+        overscroll-behavior: contain;
+    }
+
+    @media (min-width: 40rem) {
+        .secretary-setup-tabs {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .secretary-panel-launcher {
+            right: 1.5rem;
+            bottom: 1.5rem;
+        }
+    }
+}

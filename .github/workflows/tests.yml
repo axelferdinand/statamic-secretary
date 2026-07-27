@@ -1,0 +1,66 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.3'
+            testbench: '^10.0'
+          - php: '8.3'
+            testbench: '^11.0'
+          - php: '8.4'
+            testbench: '^11.0'
+          - php: '8.5'
+            testbench: '^11.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - run: composer validate --strict
+      - run: composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --with-all-dependencies --no-interaction --prefer-dist
+      - run: composer lint
+      - run: composer test
+      - run: composer audit --locked
+
+  assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --no-interaction --prefer-dist
+      - run: npm ci
+      - run: npm audit --omit=dev
+      - run: npm run build
+      - run: git diff --exit-code -- resources/dist
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - run: COMPOSER_ROOT_VERSION=0.1.0 composer archive --format=zip --dir=/tmp --file=statamic-secretary
+      - run: unzip -Z1 /tmp/statamic-secretary.zip > /tmp/archive-files.txt
+      - run: '! grep -E "(^|/)(node_modules|vendor|sandbox|tests|relay)(/|$)|(^|/)\.env$|\.phpunit" /tmp/archive-files.txt'
+      - run: grep -E '(^|/)resources/dist/build/manifest.json$' /tmp/archive-files.txt
+      - run: grep -E '(^|/)database/migrations/2026_07_21_000006_create_secretary_settings_table.php$' /tmp/archive-files.txt
+      - run: grep -E '(^|/)src/Http/Controllers/Web/RelayInboundController.php$' /tmp/archive-files.txt
+      - run: grep -E '(^|/)src/Relay/RelayClient.php$' /tmp/archive-files.txt
