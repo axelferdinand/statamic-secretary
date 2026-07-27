@@ -6,9 +6,11 @@ use AxelFerdinand\StatamicSecretaryRelay\Contracts\HttpTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\HttpTransportResponse;
 use AxelFerdinand\StatamicSecretaryRelay\CurlHttpTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Data\Installation;
+use AxelFerdinand\StatamicSecretaryRelay\Data\PairingCodeNotice;
 use AxelFerdinand\StatamicSecretaryRelay\Data\SelectionNotice;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkMailTransport;
+use AxelFerdinand\StatamicSecretaryRelay\PostmarkPairingCodeTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkSelectionTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Security\PublicHttpsUrl;
 use PHPUnit\Framework\TestCase;
@@ -171,6 +173,43 @@ class HostedRelayHttpSecurityTest extends TestCase
         $this->assertStringContainsString($notice->candidates[1]['address'], $payload['TextBody']);
         $this->assertStringContainsString('ikke sendt til noe nettsted', $payload['TextBody']);
         $this->assertArrayNotHasKey('HtmlBody', $payload);
+    }
+
+    public function test_pairing_code_is_sent_only_to_the_verified_recipient_and_never_returned_to_the_addon_request(): void
+    {
+        $http = new SelectionHttpTransport(new HttpTransportResponse(200, json_encode([
+            'ErrorCode' => 0,
+            'Message' => 'OK',
+            'MessageID' => 'postmark-pairing-1',
+        ], JSON_THROW_ON_ERROR)));
+        $token = 'pairing-server-token';
+        $transport = new PostmarkPairingCodeTransport(
+            $http,
+            $token,
+            'secretary@statamic.no',
+        );
+        $notice = new PairingCodeNotice(
+            'owner@example.com',
+            'Kunde X',
+            'pc_'.str_repeat('a', 43),
+            time() + 900,
+        );
+
+        $providerMessageId = $transport->send($notice);
+
+        $this->assertSame('postmark-pairing-1', $providerMessageId);
+        $this->assertCount(1, $http->requests);
+        $request = $http->requests[0];
+        $this->assertSame('https://api.postmarkapp.com/email', $request['url']);
+        $this->assertSame($token, $request['headers']['X-Postmark-Server-Token']);
+        $this->assertStringNotContainsString($token, $request['body']);
+        $payload = json_decode($request['body'], true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('owner@example.com', $payload['To']);
+        $this->assertSame('Bekreft Statamic Secretary', $payload['Subject']);
+        $this->assertStringContainsString($notice->code, $payload['TextBody']);
+        $this->assertStringContainsString('Kunde X', $payload['TextBody']);
+        $this->assertArrayNotHasKey('HtmlBody', $payload);
+        $this->assertArrayNotHasKey('ReplyTo', $payload);
     }
 }
 

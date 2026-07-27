@@ -5,7 +5,7 @@ use AxelFerdinand\StatamicSecretaryRelay\Data\Installation;
 use AxelFerdinand\StatamicSecretaryRelay\RelayAddress;
 use AxelFerdinand\StatamicSecretaryRelay\Tokens;
 
-require dirname(__DIR__).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 $options = getopt('', ['webhook:', 'label:', 'sender:']);
 $webhook = is_string($options['webhook'] ?? null) ? trim($options['webhook']) : '';

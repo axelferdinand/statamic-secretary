@@ -2,8 +2,10 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay;
 
+use AxelFerdinand\StatamicSecretaryRelay\Contracts\PairingCodeTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Data\HttpResult;
 use AxelFerdinand\StatamicSecretaryRelay\Data\InboundMessage;
+use AxelFerdinand\StatamicSecretaryRelay\Data\PairingCodeNotice;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayAuthenticationFailed;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRateLimited;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
@@ -24,6 +26,7 @@ final class HostedRelayApplication
         private readonly ReplyService $replies,
         private readonly SelectionService $selections,
         private readonly PairingService $pairings,
+        private readonly PairingCodeTransport $pairingCodes,
         ?callable $reporter = null,
         private readonly int $maximumRequestBytes = 262144,
         private readonly ?RateLimiter $rateLimiter = null,
@@ -177,6 +180,59 @@ final class HostedRelayApplication
                 $outcome->duplicate ? 200 : 201,
                 $this->pairings->response($outcome),
             );
+        } catch (RelayTransientFailure $exception) {
+            $this->report($exception);
+
+            return $this->json(503, ['accepted' => false, 'status' => 'temporary_failure'], [
+                'Retry-After' => '30',
+            ]);
+        } catch (RelayRejected $exception) {
+            $this->report($exception);
+
+            return $this->json(422, ['accepted' => false, 'status' => 'rejected']);
+        } catch (Throwable $exception) {
+            $this->report($exception);
+
+            return $this->json(503, ['accepted' => false, 'status' => 'temporary_failure'], [
+                'Retry-After' => '30',
+            ]);
+        }
+    }
+
+    /** @param  array<string, string>  $headers */
+    public function requestPairingCode(
+        array $headers,
+        string $body,
+        string $clientIdentity = 'unknown',
+    ): HttpResult {
+        if (! $this->jsonRequest($headers, $body)) {
+            return $this->json(415, ['accepted' => false, 'status' => 'invalid_request']);
+        }
+
+        if ($limited = $this->rateLimit('pairing_request_source', $clientIdentity)) {
+            return $limited;
+        }
+
+        try {
+            $definition = $this->pairings->requestDefinition($body);
+            $recipient = $definition->normalizedSenders()[0];
+
+            if ($limited = $this->rateLimit('pairing_recipient', $recipient)) {
+                return $limited;
+            }
+
+            $issued = $this->pairings->issue($definition->label, [$recipient], 15);
+            $this->pairingCodes->send(new PairingCodeNotice(
+                $recipient,
+                $definition->label,
+                $issued->code,
+                $issued->expiresAt,
+            ));
+
+            return $this->json(202, [
+                'accepted' => true,
+                'status' => 'verification_sent',
+            ]);
         } catch (RelayTransientFailure $exception) {
             $this->report($exception);
 

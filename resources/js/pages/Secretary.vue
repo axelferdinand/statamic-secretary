@@ -28,10 +28,15 @@ const setupMode = ref(props.relay_setup.connected || (!props.email_setup.token_c
 const emailAddress = ref(props.email_setup.from_address ?? '');
 const publicUrl = ref(props.email_setup.suggested_public_url ?? '');
 const pairingCode = ref('');
+const relayEmail = ref(props.relay_setup.pending_sender
+    ?? props.relay_setup.sender
+    ?? props.relay_setup.suggested_sender
+    ?? '');
 const relayPublicUrl = ref(props.relay_setup.suggested_public_url ?? '');
 const error = computed(() => props.errors?.secretary ?? null);
 const setupError = computed(() => props.errors?.relay_setup
     ?? props.errors?.pairing_code
+    ?? props.errors?.relay_email
     ?? props.errors?.postmark_setup
     ?? props.errors?.email
     ?? props.errors?.public_url
@@ -74,6 +79,19 @@ function connectRelay() {
             pairingCode.value = '';
             showSetup.value = false;
         },
+        onFinish: () => setupBusy.value = false,
+    });
+}
+
+function requestRelayCode() {
+    if (!props.relay_setup.pairing_available || !relayEmail.value.trim() || setupBusy.value) return;
+
+    router.post(props.relay_setup.request_code_url, {
+        email: relayEmail.value.trim(),
+    }, {
+        preserveScroll: true,
+        onStart: () => setupBusy.value = true,
+        onSuccess: () => nextTick(() => document.getElementById('secretary-pairing-code')?.focus()),
         onFinish: () => setupBusy.value = false,
     });
 }
@@ -232,7 +250,14 @@ watch(() => props.relay_setup.connected, connected => {
                     <p class="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-200">
                         Send instruksjoner til
                         <strong class="break-all">{{ relay_setup.address }}</strong>.
-                        Secretary svarer fra samme adresse og holder samtalen samlet.
+                        Secretary svarer fra samme adresse og holder samtalen samlet
+                        <template v-if="relay_setup.sender">
+                            for <strong>{{ relay_setup.sender }}</strong>
+                        </template>.
+                    </p>
+                    <p v-if="relay_setup.route_address" class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                        Hvis samme avsender senere kobles til flere nettsteder, kan du bruke nettstedets unike adresse:
+                        <code class="break-all">{{ relay_setup.route_address }}</code>.
                     </p>
                 </div>
                 <ui-button
@@ -319,12 +344,37 @@ watch(() => props.relay_setup.connected, connected => {
                     :text="setupError"
                 />
 
-                <form v-if="setupMode === 'relay' && relay_setup.pairing_available" class="space-y-5" @submit.prevent="connectRelay">
+                <div v-if="setupMode === 'relay' && relay_setup.pairing_available" class="space-y-5">
                     <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
-                        Lim inn engangskoden du fikk fra Secretary. Nettstedet får en egen isolert adresse, uten at du trenger en Postmark-nøkkel.
+                        Verifiser en eksisterende Statamic-bruker. Deretter kan brukeren sende instruksjoner direkte til
+                        <strong>secretary@statamic.no</strong>, uten egen Postmark-server.
                     </p>
 
-                    <div class="grid gap-4 md:grid-cols-2">
+                    <form class="rounded-lg border p-4 dark:border-gray-700" @submit.prevent="requestRelayCode">
+                        <div class="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                            <div>
+                                <label for="secretary-relay-email" class="mb-1.5 block text-sm font-semibold">Godkjent avsender</label>
+                                <input
+                                    id="secretary-relay-email"
+                                    v-model="relayEmail"
+                                    class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:ring-blue-900"
+                                    type="email"
+                                    autocomplete="email"
+                                    placeholder="redaktor@example.com"
+                                    required
+                                >
+                                <p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                                    Adressen må tilhøre en Statamic-bruker med tilgang til Secretary.
+                                </p>
+                            </div>
+                            <ui-button type="submit" :disabled="setupBusy || !relayEmail.trim()">
+                                {{ setupBusy ? 'Sender …' : 'Send engangskode' }}
+                            </ui-button>
+                        </div>
+                    </form>
+
+                    <form class="space-y-4" @submit.prevent="connectRelay">
+                        <div class="grid gap-4 md:grid-cols-2">
                         <div>
                             <label for="secretary-pairing-code" class="mb-1.5 block text-sm font-semibold">Engangskode</label>
                             <input
@@ -338,6 +388,9 @@ watch(() => props.relay_setup.connected, connected => {
                                 placeholder="pc_…"
                                 required
                             >
+                            <p v-if="relay_setup.pending_sender" class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                                Koden ble sendt til {{ relay_setup.pending_sender }} og er gyldig i 15 minutter.
+                            </p>
                         </div>
 
                         <div>
@@ -355,23 +408,24 @@ watch(() => props.relay_setup.connected, connected => {
                                 Lokal test: lim inn HTTPS-adressen fra Herd Share. Relayet kan ikke nå en <code>.test</code>-adresse.
                             </p>
                         </div>
-                    </div>
+                        </div>
 
-                    <div class="flex flex-wrap items-center gap-3">
-                        <ui-button type="submit" :disabled="setupBusy || !pairingCode.trim() || !relayPublicUrl.trim()">
-                            {{ setupBusy ? 'Kobler til …' : 'Koble til fellesadressen' }}
-                        </ui-button>
-                        <ui-button
-                            v-if="emailConnected"
-                            type="button"
-                            variant="ghost"
-                            @click="showSetup = false"
-                        >
-                            Avbryt
-                        </ui-button>
-                        <span class="text-xs text-gray-500 dark:text-gray-400">Engangskoden lagres aldri.</span>
-                    </div>
-                </form>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <ui-button type="submit" :disabled="setupBusy || !pairingCode.trim() || !relayPublicUrl.trim()">
+                                {{ setupBusy ? 'Kobler til …' : 'Koble til fellesadressen' }}
+                            </ui-button>
+                            <ui-button
+                                v-if="emailConnected"
+                                type="button"
+                                variant="ghost"
+                                @click="showSetup = false"
+                            >
+                                Avbryt
+                            </ui-button>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Engangskoden lagres aldri.</span>
+                        </div>
+                    </form>
+                </div>
 
                 <form v-else class="space-y-5" @submit.prevent="connectPostmark">
                     <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">

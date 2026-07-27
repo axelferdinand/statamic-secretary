@@ -189,6 +189,11 @@ final class RelayConfiguration
         return $this->baseUrl().'/v1/pairings/claim';
     }
 
+    public function pairingRequestEndpoint(): string
+    {
+        return $this->baseUrl().'/v1/pairings/request';
+    }
+
     public function address(): string
     {
         return trim((string) data_get($this->stored(), 'address'));
@@ -231,6 +236,13 @@ final class RelayConfiguration
             'connected' => $this->connected(),
             'enabled' => $this->enabled(),
             'address' => $this->address(),
+            'route_address' => data_get($this->stored(), 'route_address'),
+            'sender' => data_get($this->stored(), 'sender'),
+            'pending_sender' => data_get($this->stored(), 'pending_sender'),
+            'verification_requested_at' => data_get(
+                $this->stored(),
+                'verification_requested_at',
+            ),
             'base_url' => $this->baseUrl(),
             'connected_at' => data_get($this->stored(), 'connected_at'),
             'rotation_grace_until' => data_get(

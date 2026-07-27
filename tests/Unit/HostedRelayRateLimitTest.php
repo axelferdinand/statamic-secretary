@@ -120,7 +120,7 @@ class HostedRelayRateLimitTest extends TestCase
         $this->databasePath = $path;
         $pdoA = new PDO('sqlite:'.$path);
         SqliteSchema::migrate($pdoA);
-        $key = random_bytes(SODIUM_CRYPTO_SECRETBOX_KEYBYTES);
+        $key = random_bytes(32);
         $clock = static function () use (&$now): int {
             return $now;
         };

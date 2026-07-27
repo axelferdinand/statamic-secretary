@@ -218,11 +218,12 @@ class RelayInboundControllerTest extends TestCase
     public function test_a_relay_conversation_sends_one_signed_idempotent_reply_through_the_relay(): void
     {
         $this->configureRelay();
+        config()->set('secretary.relay.base_url', 'https://statamic.no/_secretary-relay');
         $this->authorizedUser();
         Bus::fake();
         Mail::fake();
         Http::fake([
-            'https://secretary.statamic.no/v1/replies' => Http::response(['accepted' => true], 202),
+            'https://statamic.no/_secretary-relay/v1/replies' => Http::response(['accepted' => true], 202),
         ]);
         $this->app->bind(AgentClient::class, fn () => new class implements AgentClient
         {
@@ -247,7 +248,7 @@ class RelayInboundControllerTest extends TestCase
         Http::assertSent(function ($request) use ($message, $reply): bool {
             $payload = $request->data();
 
-            return $request->url() === 'https://secretary.statamic.no/v1/replies'
+            return $request->url() === 'https://statamic.no/_secretary-relay/v1/replies'
                 && $request->hasHeader('Secretary-Installation', config('secretary.relay.installation_id'))
                 && $request->hasHeader('Secretary-Signature')
                 && $payload['idempotency_key'] === 'secretary-reply-'.$reply->id

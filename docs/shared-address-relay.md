@@ -2,18 +2,9 @@
 
 The Composer addon is deliberately site-local: every installation owns its OpenAI key, content boundary, users, database, Postmark server, and webhook. Reusing one public mailbox across unrelated sites requires a separate hosted relay. Pointing one Postmark inbound server at several addon installations is not possible and must never be approximated by broadcasting an email to candidate sites.
 
-This document is the security and routing contract for the optional hosted relay. The addon contains the disabled-by-default signed inbound endpoint, signed reply client, and control-panel pairing client described below. A framework-independent central routing core lives in `relay/` and is excluded from the Composer addon archive. It implements deterministic routing, ambiguity rejection, an idempotent no-forward selection notice, Postmark inbound normalization, signed site delivery, reply verification, idempotent outbound binding, an encrypted durable SQLite store, crash-safe atomic claim leases, a DNS-pinned public-HTTPS transport, retry-safe one-time pairing, redacted operator controls, two-phase signing-secret and route rotation, durable endpoint rate limits, redacted security events, and a standalone HTTP front controller with migration/provision/pairing/retention commands. An authenticated customer-facing code-issuance surface, customer-visible controls, deployment, and live isolation proof still do not exist. The shared address must not be advertised as available until those pieces are complete.
+This document is the security and routing contract for the optional hosted relay. The addon contains the disabled-by-default signed inbound endpoint, signed reply client, and control-panel pairing client described below. A framework-independent central routing core lives in `relay/` and is excluded from the Composer addon archive. It implements deterministic routing, ambiguity rejection, an idempotent no-forward selection notice, Postmark inbound normalization, signed site delivery, reply verification, idempotent outbound binding, an encrypted durable SQLite store, crash-safe atomic claim leases, a DNS-pinned public-HTTPS transport, retry-safe email-verified pairing, redacted operator controls, two-phase signing-secret and route rotation, durable endpoint rate limits, redacted security events, and a standalone HTTP front controller with migration, Postmark configuration, provisioning, pairing, and retention commands. The relay is deployed at `https://secretary.statamic.no`; the remaining production gate is the two-installation live isolation proof.
 
 ## Addon-side implementation
-
-An operator issues a short-lived code for one exact site label and one or more authorized senders:
-
-```bash
-php bin/issue-pairing.php \
-  --label="Site" \
-  --sender=owner@example.com \
-  --minutes=30
-```
 
 When pairing is offered, the installation enables the control-panel setup:
 
@@ -22,7 +13,7 @@ SECRETARY_RELAY_PAIRING_ENABLED=true
 SECRETARY_RELAY_BASE_URL=https://secretary.statamic.no
 ```
 
-An authorized administrator pastes the one-time code and the site's public HTTPS URL into Secretary. The addon creates a stable retry ID, posts to `/v1/pairings/claim`, validates the exact response, and stores the resulting installation ID, route token, signing secret, address, and relay URL in the encrypted Secretary settings table. The code itself is never stored. The relay stores only its digest and atomically binds the first claim; an exact retry returns the same credentials, while another claimant cannot reuse it.
+An authorized administrator enters the email address of an existing Statamic user with `use secretary`. The addon asks `POST /v1/pairings/request` to send a 15-minute code to that address; the HTTP response is generic and never contains the code. The administrator pastes the code and confirms the site's public HTTPS URL. The addon creates a stable retry ID, posts to `/v1/pairings/claim`, validates the exact response, and stores the resulting installation ID, route token, signing secret, shared address, sender, and relay URL in the encrypted Secretary settings table. The code itself is never stored by the addon. The relay stores only its digest and atomically binds the first claim; an exact retry returns the same credentials, while another claimant cannot reuse it.
 
 Manual provisioning remains available through environment values:
 
@@ -123,13 +114,13 @@ Prepare, site installation, and promotion are all exact-retry safe. A stacked ro
 
 ## Required proof before release
 
-Automated addon and hosted-core tests already cover valid delivery, wrong installation/secret/route, route/conversation/recipient/inbound substitution, expired requests, body mismatch, nonce replay, provider and reply duplicates, exact field allowlisting, native user mapping, ambiguous plain-address routing to neither site, compact RFC-valid reply aliases, Postmark DKIM/spam/plain-text normalization, multi-turn conversation reuse, the cross-package HMAC contract, one idempotent threaded outbound reply, pairing-code expiry, digest-only storage, first-claim binding, exact retry, credential encryption, addon-side secret non-disclosure, encrypted two-phase signing-secret rotation, transition-direction compatibility, exact rotation retry, grace expiry, stacked-rotation rejection, pending-route rejection, atomic route promotion, retired-route new-thread rejection, retired-thread continuation/reply binding, two-worker rate-limit atomicity, HMAC-pseudonymized identities, reset/pruning, safe `429` responses, and secret-free event records. The hosted system still requires all of the following end-to-end proof:
+Automated addon and hosted-core tests already cover valid delivery, wrong installation/secret/route, route/conversation/recipient/inbound substitution, expired requests, body mismatch, nonce replay, provider and reply duplicates, exact field allowlisting, native user mapping, ambiguous plain-address routing to neither site, compact RFC-valid reply aliases, Postmark DKIM/spam/plain-text normalization, multi-turn conversation reuse, the cross-package HMAC contract, one idempotent threaded outbound reply, pairing-code delivery only to the requested address, generic code-request responses, pairing-code expiry, digest-only storage, first-claim binding, exact retry, credential encryption, addon-side secret non-disclosure, encrypted two-phase signing-secret rotation, transition-direction compatibility, exact rotation retry, grace expiry, stacked-rotation rejection, pending-route rejection, atomic route promotion, retired-route new-thread rejection, retired-thread continuation/reply binding, two-worker rate-limit atomicity, HMAC-pseudonymized identities, reset/pruning, safe `429` responses, and secret-free event records. The hosted system still requires all of the following end-to-end proof:
 
 ## Production work still required
 
-- Authenticated customer-facing pairing-code issuance and customer-visible revoke/sender management. Operator-only retry-safe enable/disable, sender controls, signing-secret rotation, and route rotation are implemented.
+- Customer-visible revoke and additional-sender management. Email-verified initial pairing and operator-only retry-safe enable/disable, sender controls, signing-secret rotation, and route rotation are implemented.
 - Abuse response, customer-visible audit history, metrics, alerting, verified backups, and a privacy/DPA review. Durable application rate limits and redacted security events are implemented.
-- Separately approved hosting, secrets, domain forwarding, Postmark configuration, and deployment.
+- Formal ownership, rotation, backup, and incident-response procedures for the deployed hosting, secrets, forwarding, and Postmark configuration.
 
 - Two installations with different signing secrets and overlapping user email scenarios.
 - Alias rotation and disabled-installation behavior.

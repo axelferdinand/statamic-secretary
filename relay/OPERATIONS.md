@@ -11,8 +11,9 @@ The shared-address relay is a separate security boundary. It must not run inside
 - Apply an IP rate limit at the public reverse proxy. The application also enforces atomic endpoint limits from `REMOTE_ADDR`; it intentionally ignores spoofable forwarding headers. If a trusted proxy is the direct peer, its bucket is a service-wide safety cap rather than a per-customer limit.
 - Run more than one PHP worker only on a local filesystem that correctly supports SQLite WAL and locks. Do not place SQLite on NFS.
 - Run `php bin/migrate.php` before serving traffic.
+- Run `php bin/configure-postmark.php` after the permanent TLS URL resolves. It registers the Basic Auth-protected inbound endpoint without printing the credentials.
 - Require a successful `GET /health` after each release.
-- Issue short-lived setup codes with `php bin/issue-pairing.php --label="Site" --sender=owner@example.com --minutes=30`; deliver the code only to the authenticated site owner.
+- Customer setup uses `POST /v1/pairings/request`. It sends a 15-minute code only to the requested address and returns no code or recipient data. Retain `issue-pairing.php` for controlled recovery and tests.
 - Back up the database and encryption key separately. A database backup without its matching key cannot recover installation signing secrets.
 - Schedule `RELAY_RETENTION_DAYS=30 php bin/prune.php` daily.
 - Configure uptime checks, 5xx rate alerts, disk-space alerts, backup verification, and log shipping before public use.
@@ -26,6 +27,8 @@ RELAY_RATE_LIMIT_WINDOW_SECONDS=60
 RELAY_POSTMARK_RATE_LIMIT=600
 RELAY_REPLY_RATE_LIMIT=300
 RELAY_PAIRING_RATE_LIMIT=60
+RELAY_PAIRING_REQUEST_RATE_LIMIT=10
+RELAY_PAIRING_RECIPIENT_RATE_LIMIT=3
 ```
 
 Each endpoint and direct socket peer receives an independent fixed-window bucket. Updates use `BEGIN IMMEDIATE`, so multiple PHP workers cannot exceed a bucket through races. The database stores only `HMAC-SHA-256(peer, RELAY_DATABASE_KEY)` and prunes expired buckets with the normal retention command. A rejected request receives `429`, `Retry-After`, `Cache-Control: no-store`, and no customer identifier.
@@ -38,19 +41,20 @@ Relay security/error records contain an event name, exception class, stable cate
 
 - Use a dedicated Postmark server and server token for the relay.
 - Verify `secretary@statamic.no` as the sender.
-- Configure the inbound webhook with independent high-entropy HTTP Basic credentials at `/v1/postmark/inbound`.
-- Preserve plus addressing when forwarding the public domain to Postmark so `MailboxHash` contains the route and optional conversation token.
+- Configure the inbound webhook with independent high-entropy HTTP Basic credentials at `/v1/postmark/inbound`. `configure-postmark.php` reads them from `.env` and never prints them.
+- Forward `secretary@statamic.no` and its plus-address variants to the Postmark inbound address without removing the plus tag. Verify a real `secretary+r…@statamic.no` message produces the same value in Postmark's `MailboxHash` before enabling customer traffic.
 - Keep the message stream explicit and monitor bounces and suppressions.
 
 The relay code sends the server token only to `https://api.postmarkapp.com/email`. Site webhook requests use fresh HMAC nonces and a DNS-pinned public HTTPS connection.
 
 ## Pairing
 
-- Pairing codes are bearer credentials. Keep their lifetime short, never log them, and send them only through an authenticated customer channel.
+- Pairing codes are bearer credentials. The public request sends them only through the configured Postmark server and always returns the same generic accepted state.
 - The database stores a SHA-256 digest rather than the code itself.
 - A claim is bound to one stable client claim ID. Exact retries receive the same installation credentials; a different claimant receives no credentials.
 - The site's webhook must be a public HTTPS URL. Private, loopback, reserved, credential-bearing, query-bearing, and fragment-bearing destinations are rejected.
-- Until a customer portal exists, code issuance is an operator action. Do not expose `issue-pairing.php` through the web root.
+- The addon permits a request only when the address belongs to an existing Statamic user with `use secretary`; signed delivery repeats that check for every message.
+- Never expose `issue-pairing.php`, a signing secret, a route token, or raw sender data through a public status endpoint.
 
 ## Installation controls
 

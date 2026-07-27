@@ -4,7 +4,7 @@ use AxelFerdinand\StatamicSecretaryRelay\Bootstrap\RelayFactory;
 use AxelFerdinand\StatamicSecretaryRelay\Data\HttpResult;
 use AxelFerdinand\StatamicSecretaryRelay\Observability\SecurityEventReporter;
 
-require dirname(__DIR__).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 /** @return array<string, string> */
 function relay_request_headers(): array
@@ -78,6 +78,11 @@ try {
                 $clientIdentity,
             ),
             ['POST', '/v1/pairings/claim'] => $application->pairing(
+                $headers,
+                $body,
+                $clientIdentity,
+            ),
+            ['POST', '/v1/pairings/request'] => $application->requestPairingCode(
                 $headers,
                 $body,
                 $clientIdentity,

@@ -3,7 +3,7 @@
 use AxelFerdinand\StatamicSecretaryRelay\Bootstrap\RelayFactory;
 use AxelFerdinand\StatamicSecretaryRelay\Persistence\SqliteSchema;
 
-require dirname(__DIR__).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 try {
     $factory = new RelayFactory;

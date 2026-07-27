@@ -291,7 +291,7 @@ class HostedRelaySecretRotationTest extends TestCase
             $pdo,
             new SqliteRelayStore(
                 $pdo,
-                random_bytes(SODIUM_CRYPTO_SECRETBOX_KEYBYTES),
+                random_bytes(32),
                 str_repeat('w', 22),
                 30,
                 static function () use (&$now): int {

@@ -11,6 +11,7 @@ use AxelFerdinand\StatamicSecretaryRelay\PairingService;
 use AxelFerdinand\StatamicSecretaryRelay\Persistence\SqliteRelayStore;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkInboundAdapter;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkMailTransport;
+use AxelFerdinand\StatamicSecretaryRelay\PostmarkPairingCodeTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkSelectionTransport;
 use AxelFerdinand\StatamicSecretaryRelay\RateLimiter;
 use AxelFerdinand\StatamicSecretaryRelay\RelayAddress;
@@ -61,6 +62,18 @@ final class RelayFactory
                     1,
                     100000,
                 ),
+                'pairing_request_source' => $this->integer(
+                    'RELAY_PAIRING_REQUEST_RATE_LIMIT',
+                    10,
+                    1,
+                    100000,
+                ),
+                'pairing_recipient' => $this->integer(
+                    'RELAY_PAIRING_RECIPIENT_RATE_LIMIT',
+                    3,
+                    1,
+                    100000,
+                ),
             ],
             $this->integer('RELAY_RATE_LIMIT_WINDOW_SECONDS', 60, 10, 3600),
         );
@@ -102,6 +115,13 @@ final class RelayFactory
                 $address,
             ),
             new PairingService($store, $address, new PublicHttpsUrl),
+            new PostmarkPairingCodeTransport(
+                $http,
+                $postmarkToken,
+                $fromAddress,
+                $fromName,
+                $messageStream,
+            ),
             [SecurityEventReporter::class, 'report'],
             maximumRequestBytes: $this->integer(
                 'RELAY_MAXIMUM_REQUEST_BYTES',

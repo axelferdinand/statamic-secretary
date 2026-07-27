@@ -2,7 +2,7 @@
 
 use AxelFerdinand\StatamicSecretaryRelay\Bootstrap\RelayFactory;
 
-require dirname(__DIR__).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 $options = getopt('', ['action:', 'id:', 'rotation-id:', 'grace-minutes::']);
 $action = is_string($options['action'] ?? null) ? trim($options['action']) : '';

@@ -5,7 +5,7 @@ use AxelFerdinand\StatamicSecretaryRelay\Data\Installation;
 use AxelFerdinand\StatamicSecretaryRelay\InstallationManager;
 use AxelFerdinand\StatamicSecretaryRelay\RelayAddress;
 
-require dirname(__DIR__).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 $options = getopt('', ['action:', 'id:', 'sender:']);
 $action = is_string($options['action'] ?? null) ? trim($options['action']) : '';

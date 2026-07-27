@@ -2,7 +2,7 @@
 
 use AxelFerdinand\StatamicSecretaryRelay\Bootstrap\RelayFactory;
 
-require dirname(__DIR__).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 $retentionDays = trim((string) getenv('RELAY_RETENTION_DAYS'));
 $retentionDays = $retentionDays === '' ? 30 : (int) $retentionDays;

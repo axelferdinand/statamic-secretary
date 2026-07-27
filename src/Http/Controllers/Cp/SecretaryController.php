@@ -75,6 +75,8 @@ final class SecretaryController extends CpController
                 ...$this->relay->publicStatus(),
                 'can_configure' => $user->can('configure secretary'),
                 'setup_url' => cp_route('secretary.setup.relay'),
+                'request_code_url' => cp_route('secretary.setup.relay.request-code'),
+                'suggested_sender' => $user->email(),
                 'suggested_public_url' => $this->email->suggestedPublicUrl(),
             ],
             'success' => session('secretary_success'),
@@ -176,6 +178,50 @@ final class SecretaryController extends CpController
 
         return redirect()->to(cp_route('secretary.index'))
             ->with('secretary_success', 'Fellesadressen er klar: '.$settings['address']);
+    }
+
+    public function requestRelayCode(Request $request, RelayPairingClient $pairing): RedirectResponse
+    {
+        $user = $this->user();
+        abort_unless($user->can('configure secretary'), 403);
+        abort_unless($this->relay->pairingAvailable(), 404);
+
+        $validated = $request->validate([
+            'email' => ['required', 'email:rfc', 'max:255'],
+        ], [
+            'email.required' => 'Skriv inn e-postadressen som skal bruke Secretary.',
+            'email.email' => 'Avsenderen må være en gyldig e-postadresse.',
+        ]);
+        $email = mb_strtolower(trim($validated['email']));
+        $sender = User::findByEmail($email);
+
+        if (! $sender || ! $sender->can('use secretary')) {
+            return back()->withErrors([
+                'relay_email' => 'Adressen må tilhøre en Statamic-bruker med tilgang til Secretary.',
+            ]);
+        }
+
+        $label = trim((string) config('app.name'));
+
+        if ($label === '') {
+            $label = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'Statamic-nettsted';
+        }
+
+        try {
+            $pairing->requestCode($email, mb_substr($label, 0, 120));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors([
+                'relay_setup' => PublicError::message(
+                    $exception,
+                    'Secretary kunne ikke sende engangskoden. Prøv igjen om litt.',
+                ),
+            ]);
+        }
+
+        return redirect()->to(cp_route('secretary.index'))
+            ->with('secretary_success', 'Engangskoden er sendt til '.$email.'.');
     }
 
     public function send(Request $request, Conversation $conversation): RedirectResponse

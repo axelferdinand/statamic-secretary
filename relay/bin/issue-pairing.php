@@ -5,7 +5,7 @@ use AxelFerdinand\StatamicSecretaryRelay\PairingService;
 use AxelFerdinand\StatamicSecretaryRelay\RelayAddress;
 use AxelFerdinand\StatamicSecretaryRelay\Security\PublicHttpsUrl;
 
-require dirname(__DIR__).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 $options = getopt('', ['label:', 'sender:', 'minutes::']);
 $label = is_string($options['label'] ?? null) ? trim($options['label']) : '';

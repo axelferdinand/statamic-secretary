@@ -33,6 +33,38 @@ final readonly class PairingService
         return new IssuedPairing($code, $expiresAt);
     }
 
+    public function requestDefinition(string $body): PairingDefinition
+    {
+        try {
+            $payload = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new RelayRejected('Pairing-code request is invalid JSON.', previous: $exception);
+        }
+
+        $allowed = ['version', 'email', 'label'];
+
+        if (! is_array($payload)
+            || array_diff(array_keys($payload), $allowed) !== []
+            || array_diff($allowed, array_keys($payload)) !== []
+            || ($payload['version'] ?? null) !== 1
+            || ! is_string($payload['email'])
+            || ! is_string($payload['label'])) {
+            throw new RelayRejected('Pairing-code request failed validation.');
+        }
+
+        $email = mb_strtolower(trim($payload['email']));
+        $label = trim(preg_replace('/\s+/u', ' ', $payload['label']) ?? '');
+
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false
+            || mb_strlen($email) > 255
+            || $label === ''
+            || mb_strlen($label) > 120) {
+            throw new RelayRejected('Pairing-code request failed validation.');
+        }
+
+        return new PairingDefinition($label, [$email]);
+    }
+
     public function claim(string $body): PairingOutcome
     {
         try {

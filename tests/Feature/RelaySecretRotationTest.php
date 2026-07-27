@@ -106,7 +106,7 @@ class RelaySecretRotationTest extends TestCase
         SqliteSchema::migrate($pdo);
         $relayStore = new SqliteRelayStore(
             $pdo,
-            random_bytes(SODIUM_CRYPTO_SECRETBOX_KEYBYTES),
+            random_bytes(32),
             str_repeat('w', 22),
             30,
             static fn (): int => 1_800_000_000,

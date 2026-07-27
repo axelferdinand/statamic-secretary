@@ -3,7 +3,7 @@
 use AxelFerdinand\StatamicSecretaryRelay\Bootstrap\RelayFactory;
 use AxelFerdinand\StatamicSecretaryRelay\RelayAddress;
 
-require dirname(__DIR__).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 $options = getopt('', ['action:', 'id:', 'rotation-id:', 'transition-minutes::']);
 $action = is_string($options['action'] ?? null) ? trim($options['action']) : '';

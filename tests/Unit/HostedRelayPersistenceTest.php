@@ -40,6 +40,7 @@ class HostedRelayPersistenceTest extends TestCase
 
         $ciphertext = $pdo->query('SELECT signing_secret_ciphertext FROM relay_installations')->fetchColumn();
         $this->assertIsString($ciphertext);
+        $this->assertStringStartsWith('o1:', $ciphertext);
         $this->assertNotSame($installation->signingSecret, $ciphertext);
         $this->assertStringNotContainsString($installation->signingSecret, $ciphertext);
 
@@ -236,7 +237,7 @@ class HostedRelayPersistenceTest extends TestCase
         $this->databasePaths[] = $path;
         $pdo = $this->connection($path);
         SqliteSchema::migrate($pdo);
-        $key = random_bytes(SODIUM_CRYPTO_SECRETBOX_KEYBYTES);
+        $key = random_bytes(32);
 
         return [$pdo, $this->store($pdo, $key, $now, $workerId), $path, $key];
     }

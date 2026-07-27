@@ -3,11 +3,13 @@
 namespace AxelFerdinand\StatamicSecretary\Tests\Unit;
 
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\MailTransport;
+use AxelFerdinand\StatamicSecretaryRelay\Contracts\PairingCodeTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\SelectionTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\SiteTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Data\InboundMessage;
 use AxelFerdinand\StatamicSecretaryRelay\Data\Installation;
 use AxelFerdinand\StatamicSecretaryRelay\Data\OutboundReply;
+use AxelFerdinand\StatamicSecretaryRelay\Data\PairingCodeNotice;
 use AxelFerdinand\StatamicSecretaryRelay\Data\SelectionNotice;
 use AxelFerdinand\StatamicSecretaryRelay\Data\SiteDeliveryResult;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRateLimited;
@@ -259,6 +261,99 @@ class HostedRelayApplicationTest extends TestCase
         $this->assertStringNotContainsString($issued->code, $databaseBytes);
     }
 
+    public function test_an_authorized_sender_can_request_a_pairing_code_without_exposing_it_in_the_response_or_database(): void
+    {
+        [$application, , , , , , , $pairingCodes] = $this->application();
+        $body = json_encode([
+            'version' => 1,
+            'email' => 'Owner@Example.com',
+            'label' => '  Kunde   X  ',
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
+        $result = $application->requestPairingCode(
+            ['Content-Type' => 'application/json'],
+            $body,
+            '203.0.113.42',
+        );
+
+        $this->assertSame(202, $result->status);
+        $this->assertSame(
+            ['accepted' => true, 'status' => 'verification_sent'],
+            $this->decoded($result->body),
+        );
+        $this->assertCount(1, $pairingCodes->notices);
+        $notice = $pairingCodes->notices[0];
+        $this->assertSame('owner@example.com', $notice->recipient);
+        $this->assertSame('Kunde X', $notice->label);
+        $this->assertMatchesRegularExpression('/^pc_[A-Za-z0-9_-]{43}$/D', $notice->code);
+        $this->assertGreaterThan(time() + 800, $notice->expiresAt);
+        $this->assertStringNotContainsString($notice->code, $result->body);
+
+        $databaseBytes = file_get_contents($this->databasePath);
+        $this->assertIsString($databaseBytes);
+        $this->assertStringNotContainsString($notice->code, $databaseBytes);
+    }
+
+    public function test_pairing_code_requests_reject_invalid_shapes_and_rate_limit_each_recipient(): void
+    {
+        [$application, , , , , , , $pairingCodes] = $this->application(
+            rateLimits: [
+                'pairing_request_source' => 10,
+                'pairing_recipient' => 1,
+            ],
+        );
+        $headers = ['Content-Type' => 'application/json'];
+        $valid = [
+            'version' => 1,
+            'email' => 'owner@example.com',
+            'label' => 'Kunde X',
+        ];
+        $invalid = $valid;
+        $invalid['unexpected'] = true;
+
+        $rejected = $application->requestPairingCode(
+            $headers,
+            json_encode($invalid, JSON_THROW_ON_ERROR),
+            '203.0.113.42',
+        );
+        $first = $application->requestPairingCode(
+            $headers,
+            json_encode($valid, JSON_THROW_ON_ERROR),
+            '203.0.113.42',
+        );
+        $blocked = $application->requestPairingCode(
+            $headers,
+            json_encode($valid, JSON_THROW_ON_ERROR),
+            '203.0.113.43',
+        );
+        $other = $valid;
+        $other['email'] = 'other@example.com';
+        $otherRecipient = $application->requestPairingCode(
+            $headers,
+            json_encode($other, JSON_THROW_ON_ERROR),
+            '203.0.113.43',
+        );
+
+        $this->assertSame(422, $rejected->status);
+        $this->assertSame(202, $first->status);
+        $this->assertSame(429, $blocked->status);
+        $this->assertSame('rate_limited', $this->decoded($blocked->body)['status']);
+        $this->assertSame(202, $otherRecipient->status);
+        $this->assertCount(2, $pairingCodes->notices);
+        $this->assertSame(
+            ['owner@example.com', 'other@example.com'],
+            array_map(
+                static fn (PairingCodeNotice $notice): string => $notice->recipient,
+                $pairingCodes->notices,
+            ),
+        );
+
+        $databaseBytes = file_get_contents($this->databasePath);
+        $this->assertIsString($databaseBytes);
+        $this->assertStringNotContainsString('203.0.113.42', $databaseBytes);
+        $this->assertStringNotContainsString('203.0.113.43', $databaseBytes);
+    }
+
     public function test_pairing_rejects_unknown_codes_private_webhooks_and_extra_fields(): void
     {
         [$application, , , , , , $pairings] = $this->application();
@@ -336,7 +431,8 @@ class HostedRelayApplicationTest extends TestCase
      *     ApplicationMailTransport,
      *     ApplicationReportCollector,
      *     ApplicationSelectionTransport,
-     *     PairingService
+     *     PairingService,
+     *     ApplicationPairingCodeTransport
      * }
      */
     private function application(
@@ -355,7 +451,7 @@ class HostedRelayApplicationTest extends TestCase
         SqliteSchema::migrate($pdo);
         $store = new SqliteRelayStore(
             $pdo,
-            random_bytes(SODIUM_CRYPTO_SECRETBOX_KEYBYTES),
+            random_bytes(32),
             str_repeat('w', 22),
         );
         $store->saveInstallation($this->installation());
@@ -363,6 +459,7 @@ class HostedRelayApplicationTest extends TestCase
         $mail ??= new ApplicationMailTransport;
         $reports = new ApplicationReportCollector;
         $selection = new ApplicationSelectionTransport;
+        $pairingCodes = new ApplicationPairingCodeTransport;
         $address = new RelayAddress('secretary@statamic.no');
         $pairings = new PairingService(
             $store,
@@ -376,13 +473,14 @@ class HostedRelayApplicationTest extends TestCase
             new ReplyService($store, $mail, $address),
             new SelectionService($store, $store, $selection, $address),
             $pairings,
+            $pairingCodes,
             $reports,
             rateLimiter: $rateLimits === null
                 ? null
                 : new RateLimiter($store, $rateLimits),
         );
 
-        return [$application, $store, $site, $mail, $reports, $selection, $pairings];
+        return [$application, $store, $site, $mail, $reports, $selection, $pairings, $pairingCodes];
     }
 
     /** @param  array<string, string>  $overrides
@@ -543,5 +641,18 @@ final class ApplicationSelectionTransport implements SelectionTransport
         $this->notices[] = $notice;
 
         return 'postmark-selection-'.count($this->notices);
+    }
+}
+
+final class ApplicationPairingCodeTransport implements PairingCodeTransport
+{
+    /** @var array<int, PairingCodeNotice> */
+    public array $notices = [];
+
+    public function send(PairingCodeNotice $notice): string
+    {
+        $this->notices[] = $notice;
+
+        return 'postmark-pairing-'.count($this->notices);
     }
 }

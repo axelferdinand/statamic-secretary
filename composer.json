@@ -46,7 +46,7 @@
     },
     "scripts": {
         "test": "phpunit",
-        "lint": "pint --test src routes config database relay/src relay/bin relay/public tests"
+        "lint": "pint --test src routes config database relay/bootstrap.php relay/src relay/bin relay/public tests"
     },
     "extra": {
         "statamic": {
@@ -62,6 +62,9 @@
     "config": {
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "platform": {
+            "php": "8.3.0"
         },
         "sort-packages": true
     },

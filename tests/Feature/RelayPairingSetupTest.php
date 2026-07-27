@@ -51,7 +51,8 @@ class RelayPairingSetupTest extends TestCase
         $this->assertSame(self::INSTALLATION_ID, $settings['installation_id']);
         $this->assertSame(self::ROUTE_TOKEN, $settings['route_token']);
         $this->assertSame($this->encodedSecret(), $settings['signing_secret']);
-        $this->assertSame('secretary+'.self::ROUTE_TOKEN.'@statamic.no', $settings['address']);
+        $this->assertSame('secretary@statamic.no', $settings['address']);
+        $this->assertSame('secretary+'.self::ROUTE_TOKEN.'@statamic.no', $settings['route_address']);
         $this->assertArrayNotHasKey('pending_code_fingerprint', $settings);
         $this->assertArrayNotHasKey('pending_claim_id', $settings);
 
@@ -82,10 +83,93 @@ class RelayPairingSetupTest extends TestCase
                 ->component('statamic-secretary::Secretary')
                 ->where('email_enabled', true)
                 ->where('relay_setup.connected', true)
-                ->where('relay_setup.address', 'secretary+'.self::ROUTE_TOKEN.'@statamic.no')
+                ->where('relay_setup.address', 'secretary@statamic.no')
+                ->where('relay_setup.route_address', 'secretary+'.self::ROUTE_TOKEN.'@statamic.no')
                 ->missing('relay_setup.signing_secret')
                 ->missing('relay_setup.installation_id')
                 ->missing('relay_setup.route_token'));
+    }
+
+    public function test_an_administrator_can_request_a_pairing_code_for_an_authorized_statamic_user(): void
+    {
+        Http::fake([
+            'https://secretary.statamic.no/v1/pairings/request' => Http::response([
+                'accepted' => true,
+                'status' => 'verification_sent',
+            ], 202),
+        ]);
+        $owner = $this->owner();
+
+        $this->actingAs($owner)
+            ->post('/cp/secretary/setup/relay/request-code', [
+                'email' => 'OWNER@example.com',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $settings = Setting::query()->findOrFail('relay')->value;
+        $this->assertSame('owner@example.com', $settings['pending_sender']);
+        $this->assertNotEmpty($settings['verification_requested_at']);
+
+        Http::assertSent(function (Request $request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://secretary.statamic.no/v1/pairings/request'
+                && $payload === [
+                    'version' => 1,
+                    'email' => 'owner@example.com',
+                    'label' => mb_substr(trim((string) config('app.name')), 0, 120),
+                ];
+        });
+
+        $this->actingAs($owner)
+            ->get('/cp/secretary')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('relay_setup.pending_sender', 'owner@example.com')
+                ->where('relay_setup.suggested_sender', 'owner@example.com')
+                ->where('relay_setup.request_code_url', 'http://localhost/cp/secretary/setup/relay/request-code'));
+
+        $this->fakePairingSuccess();
+        $this->actingAs($owner)
+            ->post('/cp/secretary/setup/relay', [
+                'pairing_code' => self::PAIRING_CODE,
+                'public_url' => 'https://site.example.com',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $connected = Setting::query()->findOrFail('relay')->value;
+        $this->assertSame('owner@example.com', $connected['sender']);
+        $this->assertSame('secretary@statamic.no', $connected['address']);
+        $this->assertSame('secretary+'.self::ROUTE_TOKEN.'@statamic.no', $connected['route_address']);
+        $this->assertArrayNotHasKey('pending_sender', $connected);
+    }
+
+    public function test_pairing_code_requests_require_a_statamic_user_with_secretary_access(): void
+    {
+        Http::fake();
+        $owner = $this->owner();
+        $blocked = User::make()->id('blocked@example.com')->email('blocked@example.com');
+        $blocked->save();
+
+        $this->from('/cp/secretary')
+            ->actingAs($owner)
+            ->post('/cp/secretary/setup/relay/request-code', [
+                'email' => 'unknown@example.com',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHasErrors('relay_email');
+
+        $this->from('/cp/secretary')
+            ->actingAs($owner)
+            ->post('/cp/secretary/setup/relay/request-code', [
+                'email' => 'blocked@example.com',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHasErrors('relay_email');
+
+        Http::assertNothingSent();
     }
 
     public function test_a_retry_uses_the_same_claim_id_without_storing_the_pairing_code(): void

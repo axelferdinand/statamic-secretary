@@ -25,6 +25,18 @@ use Throwable;
 
 final class SqliteRelayStore implements InstallationAdminStore, PairingStore, RateLimitStore, RelayStore, SelectionStore
 {
+    private const ENCRYPTION_KEY_BYTES = 32;
+
+    private const OPENSSL_CIPHER = 'aes-256-gcm';
+
+    private const OPENSSL_NONCE_BYTES = 12;
+
+    private const OPENSSL_TAG_BYTES = 16;
+
+    private const OPENSSL_PREFIX = 'o1:';
+
+    private const LEGACY_SODIUM_NONCE_BYTES = 24;
+
     private readonly string $workerId;
 
     private readonly Closure $clock;
@@ -36,7 +48,7 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
         private readonly int $leaseSeconds = 300,
         ?callable $clock = null,
     ) {
-        if (strlen($encryptionKey) !== SODIUM_CRYPTO_SECRETBOX_KEYBYTES
+        if (strlen($encryptionKey) !== self::ENCRYPTION_KEY_BYTES
             || $leaseSeconds < 30
             || $leaseSeconds > 900
             || ($workerId !== null && preg_match('/^[A-Za-z0-9_-]{22,128}$/D', $workerId) !== 1)) {
@@ -55,7 +67,7 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
     {
         $key = base64_decode(trim($encoded), true);
 
-        if (! is_string($key) || strlen($key) !== SODIUM_CRYPTO_SECRETBOX_KEYBYTES) {
+        if (! is_string($key) || strlen($key) !== self::ENCRYPTION_KEY_BYTES) {
             throw new RelayRejected('SQLite relay encryption key is invalid.');
         }
 
@@ -1355,23 +1367,78 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
 
     private function encrypt(string $plaintext): string
     {
-        $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
-        $ciphertext = sodium_crypto_secretbox($plaintext, $nonce, $this->encryptionKey);
+        $nonce = random_bytes(self::OPENSSL_NONCE_BYTES);
+        $tag = '';
+        $ciphertext = openssl_encrypt(
+            $plaintext,
+            self::OPENSSL_CIPHER,
+            $this->encryptionKey,
+            OPENSSL_RAW_DATA,
+            $nonce,
+            $tag,
+            '',
+            self::OPENSSL_TAG_BYTES,
+        );
 
-        return base64_encode($nonce.$ciphertext);
+        if (! is_string($ciphertext) || strlen($tag) !== self::OPENSSL_TAG_BYTES) {
+            throw new RelayRejected('Installation secret could not be encrypted.');
+        }
+
+        return self::OPENSSL_PREFIX.base64_encode($nonce.$tag.$ciphertext);
     }
 
     private function decrypt(string $encoded): string
     {
-        $combined = base64_decode($encoded, true);
+        if (str_starts_with($encoded, self::OPENSSL_PREFIX)) {
+            return $this->decryptOpenSsl(substr($encoded, strlen(self::OPENSSL_PREFIX)));
+        }
 
-        if (! is_string($combined)
-            || strlen($combined) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES) {
+        return $this->decryptLegacySodium($encoded);
+    }
+
+    private function decryptOpenSsl(string $encoded): string
+    {
+        $combined = base64_decode($encoded, true);
+        $minimumLength = self::OPENSSL_NONCE_BYTES + self::OPENSSL_TAG_BYTES + 1;
+
+        if (! is_string($combined) || strlen($combined) < $minimumLength) {
             throw new RelayRejected('Stored installation secret is invalid.');
         }
 
-        $nonce = substr($combined, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
-        $ciphertext = substr($combined, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+        $nonce = substr($combined, 0, self::OPENSSL_NONCE_BYTES);
+        $tag = substr($combined, self::OPENSSL_NONCE_BYTES, self::OPENSSL_TAG_BYTES);
+        $ciphertext = substr($combined, self::OPENSSL_NONCE_BYTES + self::OPENSSL_TAG_BYTES);
+        $plaintext = openssl_decrypt(
+            $ciphertext,
+            self::OPENSSL_CIPHER,
+            $this->encryptionKey,
+            OPENSSL_RAW_DATA,
+            $nonce,
+            $tag,
+        );
+
+        if (! is_string($plaintext) || strlen($plaintext) < 32) {
+            throw new RelayRejected('Stored installation secret could not be decrypted.');
+        }
+
+        return $plaintext;
+    }
+
+    private function decryptLegacySodium(string $encoded): string
+    {
+        if (! function_exists('sodium_crypto_secretbox_open')) {
+            throw new RelayRejected('Stored installation secret requires the legacy Sodium extension.');
+        }
+
+        $combined = base64_decode($encoded, true);
+
+        if (! is_string($combined)
+            || strlen($combined) <= self::LEGACY_SODIUM_NONCE_BYTES) {
+            throw new RelayRejected('Stored installation secret is invalid.');
+        }
+
+        $nonce = substr($combined, 0, self::LEGACY_SODIUM_NONCE_BYTES);
+        $ciphertext = substr($combined, self::LEGACY_SODIUM_NONCE_BYTES);
         $plaintext = sodium_crypto_secretbox_open($ciphertext, $nonce, $this->encryptionKey);
 
         if (! is_string($plaintext) || strlen($plaintext) < 32) {
@@ -1398,15 +1465,21 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
     private function immediate(callable $callback): mixed
     {
         $this->pdo->exec('BEGIN IMMEDIATE');
+        $active = true;
 
         try {
             $result = $callback();
-            $this->pdo->commit();
+            $this->pdo->exec('COMMIT');
+            $active = false;
 
             return $result;
         } catch (Throwable $exception) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            if ($active) {
+                try {
+                    $this->pdo->exec('ROLLBACK');
+                } catch (Throwable) {
+                    // Preserve the original failure if SQLite already ended the transaction.
+                }
             }
 
             throw $exception;

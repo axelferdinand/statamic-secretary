@@ -24,7 +24,9 @@
 - [x] Add encrypted, retry-safe two-phase signing-secret rotation with bounded dual-secret grace periods.
 - [x] Add retry-safe route rotation that rejects new retired-route threads while preserving exact existing conversation bindings.
 - [x] Add cross-worker endpoint rate limits with hashed identities, retry headers, pruning, and secret-free security records.
-- [ ] Add authenticated customer-facing code issuance, deploy `secretary@statamic.no`, and complete the two-installation isolation proof.
+- [x] Add email-verified customer-facing code issuance without browser-visible codes or secrets.
+- [x] Deploy `secretary@statamic.no` and verify HTTPS health, authenticated Postmark ingress, plain forwarding, and preserved plus-address tags.
+- [ ] Complete the two-public-installation X/Y/random-sender isolation proof.
 
 ## Package
 

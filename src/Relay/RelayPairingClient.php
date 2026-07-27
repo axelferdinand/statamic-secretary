@@ -16,6 +16,53 @@ final class RelayPairingClient
         private readonly EmailConfiguration $email,
     ) {}
 
+    public function requestCode(string $email, string $label): void
+    {
+        $email = mb_strtolower(trim($email));
+        $label = trim(preg_replace('/\s+/u', ' ', $label) ?? '');
+
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false
+            || mb_strlen($email) > 255
+            || $label === ''
+            || mb_strlen($label) > 120
+            || ! $this->configuration->hasValidBaseUrl()
+            || ! $this->configuration->pairingAvailable()) {
+            throw new RelayDeliveryFailed('Secretary relay verification request is invalid.');
+        }
+
+        try {
+            $response = Http::acceptJson()
+                ->asJson()
+                ->connectTimeout(5)
+                ->timeout(15)
+                ->post($this->configuration->pairingRequestEndpoint(), [
+                    'version' => 1,
+                    'email' => $email,
+                    'label' => $label,
+                ]);
+        } catch (ConnectionException $exception) {
+            throw new RelayDeliveryFailed('Secretary could not reach the shared-address relay.', previous: $exception);
+        } catch (Throwable $exception) {
+            throw new RelayDeliveryFailed('Secretary could not request a verification code.', previous: $exception);
+        }
+
+        $payload = $response->json();
+
+        if (! $response->successful()
+            || ! is_array($payload)
+            || array_keys($payload) !== ['accepted', 'status']
+            || ($payload['accepted'] ?? null) !== true
+            || ($payload['status'] ?? null) !== 'verification_sent') {
+            throw new RelayDeliveryFailed('The shared-address relay could not send the verification code.');
+        }
+
+        $this->configuration->store([
+            ...$this->configuration->stored(),
+            'pending_sender' => $email,
+            'verification_requested_at' => now()->toIso8601String(),
+        ]);
+    }
+
     /** @return array<string, mixed> */
     public function connect(string $pairingCode, string $publicUrl): array
     {
@@ -93,12 +140,15 @@ final class RelayPairingClient
             throw new RelayDeliveryFailed('The shared-address relay returned an invalid pairing response.');
         }
 
+        $routeAddress = mb_strtolower($payload['address']);
         $settings = [
             'enabled' => true,
             'installation_id' => $payload['installation_id'],
             'route_token' => $payload['route_token'],
             'signing_secret' => $payload['signing_secret'],
-            'address' => mb_strtolower($payload['address']),
+            'address' => $this->sharedAddressFromRoute($routeAddress),
+            'route_address' => $routeAddress,
+            'sender' => data_get($stored, 'pending_sender'),
             'base_url' => $this->configuration->baseUrl(),
             'connected_at' => now()->toIso8601String(),
         ];
@@ -125,5 +175,13 @@ final class RelayPairingClient
         [$local] = explode('@', mb_strtolower($address), 2);
 
         return str_ends_with($local, '+'.$routeToken);
+    }
+
+    private function sharedAddressFromRoute(string $routeAddress): string
+    {
+        [$local, $domain] = explode('@', $routeAddress, 2);
+        [$sharedLocal] = explode('+', $local, 2);
+
+        return $sharedLocal.'@'.$domain;
     }
 }

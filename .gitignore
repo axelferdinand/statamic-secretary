@@ -3,6 +3,7 @@
 /.phpunit.cache/
 /sandbox/
 /.phpunit.result.cache
+/.secretary-deploy/
 /tests/__fixtures__/dev-null/
 /tests/__fixtures__/content/
 /tests/__fixtures__/users/

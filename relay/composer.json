@@ -8,9 +8,10 @@
         "ext-curl": "*",
         "ext-json": "*",
         "ext-mbstring": "*",
+        "ext-openssl": "*",
         "ext-pdo": "*",
         "ext-pdo_sqlite": "*",
-        "ext-sodium": "*"
+        "vlucas/phpdotenv": "^5.6"
     },
     "autoload": {
         "psr-4": {

@@ -33,6 +33,7 @@ Secretary never receives shell access or a generic file-writing tool. It can onl
 - Explicit publication from the CP or an authenticated email command.
 - Per-resource allowlists, native permissions, optimistic locking, and full audit records.
 - Author-domain DKIM checks, spam threshold, webhook Basic Auth, idempotency, and queue retries.
+- Optional email-verified connection to the hosted `secretary@statamic.no` address, without a customer Postmark account.
 - No code, template, blueprint, config, shell, generic HTTP, asset, delete, or arbitrary filesystem tools.
 
 ## Requirements
@@ -44,7 +45,7 @@ Secretary never receives shell access or a generic file-writing tool. It can onl
 - A persistent Laravel queue for production email processing.
 - Optional Postmark server for email conversations.
 
-Email setup requires only the Postmark Server API Token in the environment. The addon includes the Postmark transport, discovers the server's inbound address, registers its secured webhook, and leaves the site's normal mailer untouched. The operator only adds the forwarding address shown in the Control Panel.
+For a site-controlled mailbox, email setup requires only the Postmark Server API Token in the environment. The addon includes the Postmark transport, discovers the server's inbound address, registers its secured webhook, and leaves the site's normal mailer untouched. The optional hosted address instead pairs an existing permitted Statamic user by a short-lived email code; the customer does not create a mailbox or Postmark server.
 
 ## Installation command
 
