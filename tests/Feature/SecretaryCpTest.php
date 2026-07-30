@@ -3,9 +3,12 @@
 namespace AxelFerdinand\StatamicSecretary\Tests\Feature;
 
 use AxelFerdinand\StatamicSecretary\Agent\ConversationService;
+use AxelFerdinand\StatamicSecretary\Content\EntryChangeService;
+use AxelFerdinand\StatamicSecretary\Content\EntrySnapshotter;
 use AxelFerdinand\StatamicSecretary\Contracts\AgentClient;
 use AxelFerdinand\StatamicSecretary\Data\AgentRequest;
 use AxelFerdinand\StatamicSecretary\Data\AgentResponse;
+use AxelFerdinand\StatamicSecretary\Editorial\EditorialStyleGuide;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessCpMessage;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Tests\TestCase;
@@ -14,6 +17,8 @@ use Illuminate\Support\Facades\Bus;
 use Inertia\Testing\AssertableInertia as Assert;
 use Mockery;
 use RuntimeException;
+use Statamic\Facades\Collection;
+use Statamic\Facades\Entry;
 use Statamic\Facades\User;
 
 class SecretaryCpTest extends TestCase
@@ -86,6 +91,7 @@ class SecretaryCpTest extends TestCase
                 ->where('conversation.id', $email->id)
                 ->where('conversation.channel', 'email')
                 ->where('conversation.messages.0.channel', 'email')
+                ->where('conversation.messages.0.queue_position', 1)
                 ->where('conversations.0.channel', 'email')
                 ->has('conversations', 2));
     }
@@ -121,8 +127,9 @@ class SecretaryCpTest extends TestCase
             ->assertOk()
             ->assertJsonPath('conversation.id', $conversation->id)
             ->assertJsonPath('conversation.messages.0.body', 'Utkastet er klart.')
-            ->assertJsonPath('conversation.full_url', 'http://localhost/cp/secretary/'.$conversation->id)
             ->assertJsonPath('create_url', 'http://localhost/cp/secretary/panel/conversations')
+            ->assertJsonMissingPath('conversation.full_url')
+            ->assertJsonMissingPath('home_url')
             ->assertJsonCount(1, 'conversations')
             ->assertJsonMissing(['title' => 'Annen brukers samtale']);
     }
@@ -152,6 +159,339 @@ class SecretaryCpTest extends TestCase
             ProcessCpMessage::class,
             fn (ProcessCpMessage $job): bool => $job->messageId === $message->id,
         );
+    }
+
+    public function test_a_panel_conversation_can_be_started_in_the_context_of_the_current_entry(): void
+    {
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()
+            ->id('home')
+            ->collection($collection)
+            ->slug('home')
+            ->published(true)
+            ->data(['title' => 'Forsiden'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+
+        $created = $this->actingAs($user)
+            ->postJson('/cp/secretary/panel/conversations', [
+                'context_url' => 'http://localhost/cp/collections/pages/entries/home',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('conversation.context.resource_type', 'entry')
+            ->assertJsonPath('conversation.context.resource_id', 'home')
+            ->assertJsonPath('conversation.context.collection', 'pages')
+            ->assertJsonPath('conversation.context.title', 'Forsiden');
+
+        $conversation = Conversation::findOrFail($created->json('conversation.id'));
+
+        $this->assertSame('home', data_get($conversation->context, 'cp_context.resource_id'));
+        $this->assertSame('pages', data_get($conversation->context, 'cp_context.collection'));
+    }
+
+    public function test_the_panel_follows_the_current_entry_and_reports_jobs_running_elsewhere(): void
+    {
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()
+            ->id('home')
+            ->collection($collection)
+            ->slug('home')
+            ->published(true)
+            ->data(['title' => 'Forsiden'])
+            ->save();
+        Entry::make()
+            ->id('about')
+            ->collection($collection)
+            ->slug('om-oss')
+            ->published(true)
+            ->data(['title' => 'Om oss'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $home = Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => [
+                'title' => 'Forsidejobb',
+                'cp_context' => [
+                    'resource_type' => 'entry',
+                    'resource_id' => 'home',
+                    'collection' => 'pages',
+                    'site' => 'default',
+                    'title' => 'Forsiden',
+                    'edit_url' => 'http://localhost/cp/collections/pages/entries/home',
+                ],
+            ],
+        ]);
+        $home->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'cp',
+            'role' => 'user',
+            'body' => 'Oppdater forsiden.',
+        ]);
+        $about = Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => [
+                'title' => 'Om oss-jobb',
+                'cp_context' => [
+                    'resource_type' => 'entry',
+                    'resource_id' => 'about',
+                    'collection' => 'pages',
+                    'site' => 'default',
+                    'title' => 'Om oss',
+                    'edit_url' => 'http://localhost/cp/collections/pages/entries/about',
+                ],
+            ],
+        ]);
+        $about->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'cp',
+            'role' => 'assistant',
+            'body' => 'Om oss-utkastet er klart.',
+            'processed_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/cp/secretary/panel/data?context_url='.urlencode('http://localhost/cp/collections/pages/entries/about'))
+            ->assertOk()
+            ->assertJsonPath('active_context.resource_id', 'about')
+            ->assertJsonPath('active_context_key', 'entry:default:about')
+            ->assertJsonPath('conversation.id', $about->id)
+            ->assertJsonPath('conversation.messages.0.body', 'Om oss-utkastet er klart.')
+            ->assertJsonPath('background_jobs.0.id', $home->id)
+            ->assertJsonPath('background_jobs.0.title', 'Forsiden');
+
+        $this->actingAs($user)
+            ->getJson('/cp/secretary/panel/data?context_url='.urlencode('http://localhost/cp/collections/pages/entries/home'))
+            ->assertOk()
+            ->assertJsonPath('conversation.id', $home->id)
+            ->assertJsonPath('conversation.processing', true)
+            ->assertJsonPath('conversation.messages.0.queue_position', 1)
+            ->assertJsonCount(0, 'background_jobs');
+    }
+
+    public function test_a_page_without_a_conversation_still_returns_its_active_context(): void
+    {
+        $collection = Collection::make('pages')->title('Pages');
+        $collection->save();
+        Entry::make()
+            ->id('contact')
+            ->collection($collection)
+            ->slug('kontakt')
+            ->data(['title' => 'Kontakt'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)
+            ->getJson('/cp/secretary/panel/data?context_url='.urlencode('http://localhost/cp/collections/pages/entries/contact'))
+            ->assertOk()
+            ->assertJsonPath('active_context.resource_id', 'contact')
+            ->assertJsonPath('active_context.title', 'Kontakt')
+            ->assertJsonPath('conversation', null);
+    }
+
+    public function test_a_page_can_restore_an_older_conversation_from_its_change_set(): void
+    {
+        $collection = Collection::make('pages')->title('Pages');
+        $collection->save();
+        Entry::make()
+            ->id('legacy-page')
+            ->collection($collection)
+            ->slug('legacy')
+            ->data(['title' => 'Eldre side'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create([
+            'channel' => 'email',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => ['title' => 'Oppdater den eldre siden'],
+        ]);
+        $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Oppdater den eldre siden.',
+            'processed_at' => now(),
+        ]);
+        $changeSet = $conversation->changeSets()->create([
+            'status' => 'draft',
+            'operation' => 'update',
+            'resource_type' => 'entry',
+            'resource_id' => 'legacy-page',
+            'collection' => 'pages',
+            'site' => 'default',
+            'patch' => ['title' => 'Ny tittel'],
+        ]);
+        Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => [
+                'title' => 'Nyere samtale uten utkast',
+                'cp_context' => [
+                    'resource_type' => 'entry',
+                    'resource_id' => 'legacy-page',
+                    'collection' => 'pages',
+                    'site' => 'default',
+                ],
+            ],
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/cp/secretary/panel/data?context_url='.urlencode('http://localhost/cp/collections/pages/entries/legacy-page'))
+            ->assertOk()
+            ->assertJsonPath('conversation.id', $conversation->id)
+            ->assertJsonPath('conversation.has_email_messages', true)
+            ->assertJsonPath('conversation.has_cp_messages', false)
+            ->assertJsonPath('conversation.changes.0.native_url', 'http://localhost/cp/collections/pages/entries/legacy-page?secretary='.$conversation->id)
+            ->assertJsonPath('auto_open', true)
+            ->assertJsonPath('active_context.resource_id', 'legacy-page');
+
+        Bus::fake();
+
+        $this->actingAs($user)
+            ->postJson('/cp/secretary/panel/'.$conversation->id.'/messages', [
+                'message' => 'Gjør tittelen litt kortere.',
+                'context_url' => 'http://localhost/cp/collections/pages/entries/legacy-page',
+            ])
+            ->assertStatus(202)
+            ->assertJsonPath('conversation.id', $conversation->id)
+            ->assertJsonPath('conversation.context.resource_id', 'legacy-page')
+            ->assertJsonPath('conversation.has_email_messages', true)
+            ->assertJsonPath('conversation.has_cp_messages', true)
+            ->assertJsonPath('conversation.messages.1.channel', 'cp')
+            ->assertJsonPath('auto_open', true);
+
+        $this->assertSame(
+            'legacy-page',
+            data_get($conversation->fresh()->context, 'cp_context.resource_id'),
+        );
+        Bus::assertDispatchedAfterResponse(ProcessCpMessage::class);
+    }
+
+    public function test_a_stale_panel_routes_a_message_to_the_conversation_for_the_visible_entry(): void
+    {
+        $collection = Collection::make('pages')->title('Pages');
+        $collection->save();
+        Entry::make()
+            ->id('home')
+            ->collection($collection)
+            ->slug('home')
+            ->data(['title' => 'Forsiden'])
+            ->save();
+        Entry::make()
+            ->id('about')
+            ->collection($collection)
+            ->slug('om-oss')
+            ->data(['title' => 'Om oss'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $home = Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => [
+                'title' => 'Forsiden',
+                'cp_context' => [
+                    'resource_type' => 'entry',
+                    'resource_id' => 'home',
+                    'collection' => 'pages',
+                    'site' => 'default',
+                ],
+            ],
+        ]);
+        Bus::fake();
+
+        $response = $this->actingAs($user)
+            ->postJson('/cp/secretary/panel/'.$home->id.'/messages', [
+                'message' => 'Gjør Om oss kortere.',
+                'context_url' => 'http://localhost/cp/collections/pages/entries/about',
+            ])
+            ->assertStatus(202)
+            ->assertJsonPath('active_context.resource_id', 'about')
+            ->assertJsonPath('conversation.context.resource_id', 'about')
+            ->assertJsonPath('conversation.messages.0.body', 'Gjør Om oss kortere.');
+
+        $about = Conversation::findOrFail($response->json('conversation.id'));
+
+        $this->assertNotSame($home->id, $about->id);
+        $this->assertDatabaseMissing('secretary_messages', [
+            'conversation_id' => $home->id,
+            'body' => 'Gjør Om oss kortere.',
+        ]);
+        Bus::assertDispatchedAfterResponse(
+            ProcessCpMessage::class,
+            fn (ProcessCpMessage $job): bool => $job->messageId === $about->messages()->firstOrFail()->id,
+        );
+    }
+
+    public function test_follow_up_messages_can_be_queued_while_secretary_is_processing(): void
+    {
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => ['title' => 'Samtale'],
+        ]);
+        Bus::fake();
+
+        $this->actingAs($user)
+            ->postJson('/cp/secretary/panel/'.$conversation->id.'/messages', ['message' => 'Første melding.'])
+            ->assertStatus(202)
+            ->assertJsonPath('conversation.messages.0.queue_position', 1);
+
+        $this->actingAs($user)
+            ->postJson('/cp/secretary/panel/'.$conversation->id.'/messages', ['message' => 'Oppfølging.'])
+            ->assertStatus(202)
+            ->assertJsonPath('conversation.messages.0.queue_position', 1)
+            ->assertJsonPath('conversation.messages.1.queue_position', 2);
+
+        Bus::assertDispatchedAfterResponseTimes(ProcessCpMessage::class, 2);
+    }
+
+    public function test_the_panel_can_publish_a_draft_without_a_page_reload(): void
+    {
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()
+            ->id('home')
+            ->collection($collection)
+            ->slug('home')
+            ->published(true)
+            ->data(['title' => 'Før'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => ['title' => 'Forsiden'],
+        ]);
+        $service = app(EntryChangeService::class);
+        $changeSet = $service->proposeUpdate($conversation, 'home', ['title' => 'Etter'], 'Ny tittel');
+        $service->applyDraft($changeSet, $user);
+
+        $this->actingAs($user)
+            ->postJson('/cp/secretary/panel/'.$conversation->id.'/changes/'.$changeSet->id.'/publish')
+            ->assertOk()
+            ->assertJsonPath('conversation.changes.0.status', 'published')
+            ->assertJsonPath('conversation.messages.1.body', 'Publisert: Ny tittel');
+
+        $this->assertSame('Etter', Entry::find('home')->value('title'));
+        $this->assertSame('published', $changeSet->fresh()->status);
     }
 
     public function test_conversations_cannot_be_read_or_changed_through_another_users_cp_routes(): void
@@ -510,5 +850,164 @@ class SecretaryCpTest extends TestCase
         $this->assertNotNull($first->fresh()->processed_at);
         $this->assertNotNull($second->fresh()->processed_at);
         $this->assertSame(['Svar 1', 'Svar 2'], $conversation->messages()->where('direction', 'outbound')->pluck('body')->all());
+    }
+
+    public function test_an_editor_can_accept_and_reject_one_field_without_touching_the_live_entry(): void
+    {
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()
+            ->id('home')
+            ->collection($collection)
+            ->slug('home')
+            ->published(true)
+            ->data(['title' => 'Før'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => ['title' => 'Forsiden'],
+        ]);
+        $changes = app(EntryChangeService::class);
+        $change = $changes->applyDraft(
+            $changes->proposeUpdate($conversation, 'home', ['title' => 'Etter'], 'Ny tittel'),
+            $user,
+        );
+
+        $this->actingAs($user)
+            ->postJson('/cp/secretary/panel/'.$conversation->id.'/changes/'.$change->id.'/review', [
+                'target' => 'title',
+                'decision' => 'rejected',
+            ])
+            ->assertOk()
+            ->assertJsonPath('conversation.changes.0.review.rejected', 1)
+            ->assertJsonPath('conversation.changes.0.review.targets.0.decision', 'rejected');
+
+        $this->assertSame(
+            'Før',
+            data_get(app(EntrySnapshotter::class)->snapshot(Entry::find('home')), 'data.title'),
+        );
+        $this->assertSame('Før', Entry::find('home')->value('title'));
+
+        $this->actingAs($user)
+            ->postJson('/cp/secretary/panel/'.$conversation->id.'/changes/'.$change->id.'/review', [
+                'target' => 'title',
+                'decision' => 'accepted',
+            ])
+            ->assertOk()
+            ->assertJsonPath('conversation.changes.0.review.accepted', 1);
+
+        $this->assertSame(
+            'Etter',
+            data_get(app(EntrySnapshotter::class)->snapshot(Entry::find('home')), 'data.title'),
+        );
+        $this->assertSame('Før', Entry::find('home')->value('title'));
+    }
+
+    public function test_entry_context_can_include_a_validated_active_field(): void
+    {
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()
+            ->id('home')
+            ->collection($collection)
+            ->slug('home')
+            ->published(true)
+            ->data(['title' => 'Forsiden'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+
+        $created = $this->actingAs($user)
+            ->postJson('/cp/secretary/panel/conversations', [
+                'context_url' => 'http://localhost/cp/collections/pages/entries/home',
+                'field_context' => ['handle' => 'title'],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('conversation.context.field.handle', 'title')
+            ->assertJsonPath('conversation.context.field.type', 'text');
+
+        $conversation = Conversation::findOrFail($created->json('conversation.id'));
+        $this->assertSame('title', data_get($conversation->context, 'cp_context.field.handle'));
+    }
+
+    public function test_the_reference_picker_returns_only_authorized_entry_tokens(): void
+    {
+        $collection = Collection::make('pages')->title('Pages');
+        $collection->save();
+        Entry::make()
+            ->id('about')
+            ->collection($collection)
+            ->slug('om-oss')
+            ->data(['title' => 'Om oss'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)
+            ->getJson('/cp/secretary/panel/references?q=Om')
+            ->assertOk()
+            ->assertJsonPath('references.0.id', 'about')
+            ->assertJsonPath('references.0.token', '@[Om oss](entry:about)');
+    }
+
+    public function test_an_administrator_can_save_a_per_site_editorial_guide(): void
+    {
+        $user = User::make()->id('admin@example.com')->email('admin@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/settings/editorial', [
+                'site' => 'default',
+                'audience' => 'Norske redaktører',
+                'voice' => 'Kort, varm og tydelig.',
+                'terminology' => 'Skriv Statamic med stor S.',
+                'avoid' => 'Unngå AI-klisjeer.',
+            ])
+            ->assertRedirect();
+
+        $guide = app(EditorialStyleGuide::class)->forSite('default');
+        $this->assertSame('Norske redaktører', $guide['audience']);
+        $this->assertSame('Kort, varm og tydelig.', $guide['voice']);
+    }
+
+    public function test_a_draft_preview_endpoint_returns_live_and_tokenized_urls(): void
+    {
+        $collection = Collection::make('pages')
+            ->title('Pages')
+            ->routes('/{slug}')
+            ->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()
+            ->id('home')
+            ->collection($collection)
+            ->slug('home')
+            ->published(true)
+            ->data(['title' => 'Før'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+        ]);
+        $changes = app(EntryChangeService::class);
+        $change = $changes->applyDraft(
+            $changes->proposeUpdate($conversation, 'home', ['title' => 'Etter']),
+            $user,
+        );
+
+        $this->actingAs($user)
+            ->getJson('/cp/secretary/panel/'.$conversation->id.'/changes/'.$change->id.'/preview')
+            ->assertOk()
+            ->assertJsonPath('title', 'Etter')
+            ->assertJson(fn ($json) => $json
+                ->whereType('live_url', 'string')
+                ->whereType('draft_url', 'string')
+                ->etc());
     }
 }

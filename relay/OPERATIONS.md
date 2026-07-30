@@ -12,6 +12,7 @@ The shared-address relay is a separate security boundary. It must not run inside
 - Run more than one PHP worker only on a local filesystem that correctly supports SQLite WAL and locks. Do not place SQLite on NFS.
 - Run `php bin/migrate.php` before serving traffic.
 - Run `php bin/configure-postmark.php` after the permanent TLS URL resolves. It registers the Basic Auth-protected inbound endpoint without printing the credentials.
+- If the hosting firewall cannot allow Postmark's webhook IPs, schedule `php bin/poll-postmark.php` every minute as an outbound-only fallback. Keep the webhook configured so either path can win safely through the same durable idempotency checks.
 - Require a successful `GET /health` after each release.
 - Customer setup uses `POST /v1/pairings/request`. It sends a 15-minute code only to the requested address and returns no code or recipient data. Retain `issue-pairing.php` for controlled recovery and tests.
 - Back up the database and encryption key separately. A database backup without its matching key cannot recover installation signing secrets.
@@ -42,7 +43,14 @@ Relay security/error records contain an event name, exception class, stable cate
 - Use a dedicated Postmark server and server token for the relay.
 - Verify `secretary@statamic.no` as the sender.
 - Configure the inbound webhook with independent high-entropy HTTP Basic credentials at `/v1/postmark/inbound`. `configure-postmark.php` reads them from `.env` and never prints them.
-- Forward `secretary@statamic.no` and its plus-address variants to the Postmark inbound address without removing the plus tag. Verify a real `secretary+r…@statamic.no` message produces the same value in Postmark's `MailboxHash` before enabling customer traffic.
+- Give each installation one exact readable alias such as
+  `customer.example@statamic.no`; never use a domain catch-all. The relay provisions
+  that cPanel forwarder to Postmark with the opaque installation route appended.
+  Verify a real friendly-alias message produces that route in Postmark's
+  `MailboxHash` before enabling customer traffic.
+- Scope the cPanel API token to the required email-forwarder operations, rotate it
+  separately from the Postmark token, and rerun
+  `php bin/provision-public-aliases.php` after restoration or credential rotation.
 - Keep the message stream explicit and monitor bounces and suppressions.
 
 The relay code sends the server token only to `https://api.postmarkapp.com/email`. Site webhook requests use fresh HMAC nonces and a DNS-pinned public HTTPS connection.
@@ -54,6 +62,7 @@ The relay code sends the server token only to `https://api.postmarkapp.com/email
 - A claim is bound to one stable client claim ID. Exact retries receive the same installation credentials; a different claimant receives no credentials.
 - The site's webhook must be a public HTTPS URL. Private, loopback, reserved, credential-bearing, query-bearing, and fragment-bearing destinations are rejected.
 - The addon permits a request only when the address belongs to an existing Statamic user with `use secretary`; signed delivery repeats that check for every message.
+- Hosted mode accepts mail providers and sender domains without customer DNS changes. The email-verified pairing plus exact active sender membership is its authorization boundary. `RELAY_REQUIRE_SENDER_AUTHENTICATION=true` remains an optional stricter operator policy, not a hosted-service prerequisite.
 - Never expose `issue-pairing.php`, a signing secret, a route token, or raw sender data through a public status endpoint.
 
 ## Installation controls
@@ -150,6 +159,17 @@ Complete step 3 before the site's transition expires. A second rotation is refus
 5. Use the two-phase procedures above for an installation signing secret or route. Re-provision only when the entire installation identity must change.
 6. Preserve metadata and logs required for investigation without copying email bodies or site content into incident tickets.
 7. Verify that no message crossed installation boundaries before restoring public traffic.
+
+A specific retained Postmark message can be reprocessed after an incident without
+logging its body or sender:
+
+```bash
+php bin/process-postmark-message.php --message-id=<postmark-message-id>
+```
+
+The command uses the normal Postmark adapter, exact sender routing, signed site
+delivery, and inbound idempotency path. Never run it for more than one copy of a
+message that was duplicated before reaching Postmark.
 
 ## Restore test
 

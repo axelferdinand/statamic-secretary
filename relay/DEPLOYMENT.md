@@ -34,9 +34,35 @@ RELAY_POSTMARK_WEBHOOK_PASSWORD=
 RELAY_PUBLIC_URL=https://secretary.statamic.no
 RELAY_SHARED_ADDRESS=secretary@statamic.no
 RELAY_FROM_ADDRESS=secretary@statamic.no
+RELAY_FRIENDLY_ALIASES_ENABLED=true
+RELAY_CPANEL_URL=https://host.example.com:2083
+RELAY_CPANEL_USER=
+RELAY_CPANEL_TOKEN=
+RELAY_POSTMARK_INBOUND_ADDRESS=
+RELAY_GA_MEASUREMENT_ID=
+RELAY_REQUIRE_SENDER_AUTHENTICATION=false
 ```
 
 Never place the SQLite file, `.env`, backups, or logs inside `public/`.
+
+Friendly aliases give each site a readable address such as
+`customer.example@statamic.no`. The cPanel token must be restricted to the
+mail-forwarder operations needed by the relay. Each exact alias is forwarded to
+Postmark with the installation's opaque route tag; do not configure a catch-all.
+After enabling the feature on an existing relay, run:
+
+```bash
+php bin/migrate.php
+php bin/provision-public-aliases.php
+```
+
+The second command is idempotent and provisions aliases for active installations.
+
+`RELAY_GA_MEASUREMENT_ID` is optional. Set it to the landing site's GA4 web-stream ID
+(`G-…`) to enable the consent manager. The Google tag is not requested before the
+visitor accepts analytics. Declining leaves analytics unloaded; withdrawing consent
+disables further measurement and removes known `_ga` cookies. Advertising storage,
+personalization, Google Signals, and ad user data remain disabled.
 
 ## 3. Install and connect Postmark
 
@@ -48,7 +74,22 @@ php bin/configure-postmark.php
 
 `configure-postmark.php` updates only the inbound webhook on the configured Postmark server. It sends the server token only to Postmark's fixed HTTPS API endpoint and does not print credentials.
 
-Forward `secretary@statamic.no` and plus-address variants such as `secretary+r…@statamic.no` to the server's Postmark inbound address. Do not remove the plus tag. Before customer traffic, send one tagged test and confirm Postmark reports the same tag as `MailboxHash`.
+Forward `secretary@statamic.no` to the server's Postmark inbound address. With
+friendly aliases enabled, the relay creates one exact cPanel forwarder per site,
+for example `customer.example@statamic.no` to
+`postmark-mailbox+r…@inbound.postmarkapp.com`. Before customer traffic, send one
+test through a friendly alias and confirm Postmark reports the opaque route tag as
+`MailboxHash`.
+
+On shared hosts that drop Postmark's webhook requests before PHP, add an every-minute
+cron entry for `php bin/poll-postmark.php`. The poller is an outbound-only fallback;
+it does not weaken sender authentication and the normal message-ID idempotency makes
+it safe to run alongside the webhook.
+
+Hosted mode uses the email-verified pairing and exact active sender membership as
+its authorization boundary, so customers do not need to change SPF, DKIM, or DMARC.
+Set `RELAY_REQUIRE_SENDER_AUTHENTICATION=true` only if the operator deliberately
+wants to require author-domain DKIM from every customer domain.
 
 ## 4. Customer addon
 
@@ -65,3 +106,13 @@ An administrator then opens **Content → Secretary**, enters the email of an ex
 ## 5. Operations gate
 
 Schedule `php bin/prune.php`, back up the database and encryption key separately, and configure uptime, 5xx, disk, and backup alerts. Complete the two-installation isolation exercise in [`../docs/shared-address-relay.md`](../docs/shared-address-relay.md) before describing the shared address as production-ready.
+
+## 6. Landing-site search setup
+
+After deployment:
+
+1. Confirm `/robots.txt`, `/sitemap.xml`, `/privacy`, and a missing URL return the expected status and content.
+2. Verify the canonical HTTPS host redirects HTTP and alternate hosts with `301`.
+3. Add `https://secretary.statamic.no` as a Google Search Console property.
+4. Submit `https://secretary.statamic.no/sitemap.xml` and request indexing for `/`.
+5. With a GA4 ID configured, test accept, decline, and withdrawal in a fresh browser profile. A declined visit must not request Google Analytics or create `_ga` cookies.

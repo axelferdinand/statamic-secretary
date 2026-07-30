@@ -51,7 +51,7 @@ class RelayPairingSetupTest extends TestCase
         $this->assertSame(self::INSTALLATION_ID, $settings['installation_id']);
         $this->assertSame(self::ROUTE_TOKEN, $settings['route_token']);
         $this->assertSame($this->encodedSecret(), $settings['signing_secret']);
-        $this->assertSame('secretary@statamic.no', $settings['address']);
+        $this->assertSame('site.example.com@statamic.no', $settings['address']);
         $this->assertSame('secretary+'.self::ROUTE_TOKEN.'@statamic.no', $settings['route_address']);
         $this->assertArrayNotHasKey('pending_code_fingerprint', $settings);
         $this->assertArrayNotHasKey('pending_claim_id', $settings);
@@ -83,7 +83,7 @@ class RelayPairingSetupTest extends TestCase
                 ->component('statamic-secretary::Secretary')
                 ->where('email_enabled', true)
                 ->where('relay_setup.connected', true)
-                ->where('relay_setup.address', 'secretary@statamic.no')
+                ->where('relay_setup.address', 'site.example.com@statamic.no')
                 ->where('relay_setup.route_address', 'secretary+'.self::ROUTE_TOKEN.'@statamic.no')
                 ->missing('relay_setup.signing_secret')
                 ->missing('relay_setup.installation_id')
@@ -141,7 +141,7 @@ class RelayPairingSetupTest extends TestCase
 
         $connected = Setting::query()->findOrFail('relay')->value;
         $this->assertSame('owner@example.com', $connected['sender']);
-        $this->assertSame('secretary@statamic.no', $connected['address']);
+        $this->assertSame('site.example.com@statamic.no', $connected['address']);
         $this->assertSame('secretary+'.self::ROUTE_TOKEN.'@statamic.no', $connected['route_address']);
         $this->assertArrayNotHasKey('pending_sender', $connected);
     }
@@ -342,7 +342,8 @@ class RelayPairingSetupTest extends TestCase
             'installation_id' => self::INSTALLATION_ID,
             'route_token' => self::ROUTE_TOKEN,
             'signing_secret' => $this->encodedSecret(),
-            'address' => 'secretary+'.self::ROUTE_TOKEN.'@statamic.no',
+            'address' => 'site.example.com@statamic.no',
+            'route_address' => 'secretary+'.self::ROUTE_TOKEN.'@statamic.no',
         ];
     }
 

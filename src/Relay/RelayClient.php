@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretary\Relay;
 
+use AxelFerdinand\StatamicSecretary\Email\ReplyChangeSetPresenter;
 use AxelFerdinand\StatamicSecretary\Exceptions\RelayDeliveryFailed;
 use AxelFerdinand\StatamicSecretary\Models\Message;
 use Illuminate\Http\Client\ConnectionException;
@@ -15,6 +16,7 @@ final class RelayClient
     public function __construct(
         private readonly RelayConfiguration $configuration,
         private readonly RelaySignature $signature,
+        private readonly ReplyChangeSetPresenter $changeSets,
     ) {}
 
     public function sendReply(Message $inbound, Message $reply): void
@@ -37,15 +39,16 @@ final class RelayClient
         }
 
         try {
+            $changeSets = $this->changeSets->present($conversation, $reply);
             $body = json_encode([
                 'version' => 1,
                 'idempotency_key' => 'secretary-reply-'.$reply->id,
                 'inbound_provider_message_id' => (string) $inbound->provider_message_id,
                 'recipient' => (string) $conversation->email,
                 'subject' => $this->subject($conversation->messages()->where('channel', 'email')->oldest()->first()?->metadata),
-                'body' => $reply->body,
-                'review_url' => cp_route('secretary.show', $conversation),
-                'change_sets' => $this->changeSets($conversation, $reply),
+                'body' => $this->changeSets->emailBody($reply->body, $changeSets),
+                'review_url' => $this->changeSets->conversationUrl($conversation, $changeSets),
+                'change_sets' => $changeSets,
                 'route_token' => $routeToken,
                 'conversation_token' => $conversationToken,
                 'in_reply_to' => data_get($inbound->metadata, 'rfc_message_id'),
@@ -81,18 +84,5 @@ final class RelayClient
         $subject = Str::limit(preg_replace('/\s+/u', ' ', trim((string) data_get($metadata, 'subject'))) ?: '', 180, '');
 
         return str_starts_with(mb_strtolower($subject), 're:') ? $subject : 'Re: '.($subject ?: 'Statamic Secretary');
-    }
-
-    /** @return array<int, array{id: string, status: string, summary: string}> */
-    private function changeSets($conversation, Message $reply): array
-    {
-        return $conversation->changeSets()
-            ->whereIn('id', (array) data_get($reply->metadata, 'change_set_ids', []))
-            ->get()
-            ->map(fn ($change): array => [
-                'id' => (string) $change->id,
-                'status' => (string) $change->status,
-                'summary' => (string) ($change->summary ?: $change->resource_id),
-            ])->values()->all();
     }
 }

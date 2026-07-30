@@ -105,9 +105,12 @@ final class InboundRouter
         }
 
         try {
+            $deliveryMessage = $this->requireSenderAuthentication
+                ? $message
+                : $message->authorizedForRegisteredSender();
             $result = $this->transport->deliver(
                 $installation->forDeliveryRoute($selectedRouteToken),
-                $message,
+                $deliveryMessage,
                 $parsed->conversationToken,
             );
             $conversation = new ConversationRoute(

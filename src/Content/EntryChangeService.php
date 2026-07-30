@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretary\Content;
 
+use AxelFerdinand\StatamicSecretary\Events\ChangeSetPrepared;
 use AxelFerdinand\StatamicSecretary\Exceptions\ContentConflict;
 use AxelFerdinand\StatamicSecretary\Exceptions\ContentOperationDenied;
 use AxelFerdinand\StatamicSecretary\Models\ChangeSet;
@@ -110,7 +111,10 @@ final class EntryChangeService
             'failure' => null,
         ]);
 
-        return $changeSet->fresh();
+        $fresh = $changeSet->fresh();
+        ChangeSetPrepared::dispatch($fresh);
+
+        return $fresh;
     }
 
     /** @param  array<string, mixed>  $data */
@@ -221,6 +225,59 @@ final class EntryChangeService
         $draft = $this->snapshotter->snapshot($freshEntry);
 
         return $this->markDraft($changeSet, $draft);
+    }
+
+    /**
+     * Rebuild an existing Secretary draft from a reviewed top-level patch.
+     *
+     * @param  array<string, mixed>  $patch
+     */
+    public function reviseDraft(ChangeSet $changeSet, array $patch, User $user): ChangeSet
+    {
+        if ($changeSet->resource_type !== 'entry'
+            || ! in_array($changeSet->operation, ['create', 'update'], true)
+            || $changeSet->status !== 'draft') {
+            throw new ContentOperationDenied("This entry change cannot be reviewed from its current [{$changeSet->status}] state.");
+        }
+
+        $entry = $this->findEntry((string) $changeSet->resource_id);
+        $this->authorize($user, 'edit', $entry);
+        $current = $this->snapshotter->snapshot($entry);
+
+        if (! hash_equals((string) $changeSet->draft_fingerprint, $this->snapshotter->fingerprint($current))) {
+            throw new ContentConflict('The draft changed after Secretary prepared it. Review the current draft before changing field decisions.');
+        }
+
+        $authoringEntry = $this->snapshotter->authoringEntry($entry);
+
+        if ($changeSet->operation === 'update') {
+            $after = $this->validatedAfterSnapshot($authoringEntry, (array) $changeSet->before, $patch);
+            $values = (array) Arr::get($after, 'data', []);
+        } else {
+            $values = $this->blueprintValues->mergeAndValidate($authoringEntry->blueprint(), [], $patch);
+        }
+
+        $authoringEntry->data($values);
+
+        if ($entry->published() && $entry->revisionsEnabled()) {
+            $saved = $authoringEntry->saveToWorkingCopy();
+        } else {
+            $saved = $authoringEntry->updateLastModified($user)->save();
+        }
+
+        if (! $saved) {
+            throw new ContentOperationDenied('Statamic refused to update the reviewed Secretary draft.');
+        }
+
+        $draft = $this->snapshotter->snapshot($this->findEntry((string) $changeSet->resource_id));
+        $changeSet->update([
+            'patch' => $patch,
+            'after' => $draft,
+            'draft_fingerprint' => $this->snapshotter->fingerprint($draft),
+            'failure' => null,
+        ]);
+
+        return $changeSet->fresh();
     }
 
     public function publish(ChangeSet $changeSet, User $user, ?string $message = null): ChangeSet
@@ -364,6 +421,8 @@ final class EntryChangeService
     /** @param  array<string, mixed>  $draft */
     private function markDraft(ChangeSet $changeSet, array $draft): ChangeSet
     {
+        $alreadyDraft = $changeSet->status === 'draft';
+
         $changeSet->update([
             'status' => 'draft',
             'after' => $draft,
@@ -372,7 +431,13 @@ final class EntryChangeService
             'failure' => null,
         ]);
 
-        return $changeSet->fresh();
+        $fresh = $changeSet->fresh();
+
+        if (! $alreadyDraft) {
+            ChangeSetPrepared::dispatch($fresh);
+        }
+
+        return $fresh;
     }
 
     private function markPublished(ChangeSet $changeSet): ChangeSet

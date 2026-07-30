@@ -92,6 +92,7 @@ final readonly class InstallationManager
             $installation->pendingRouteRotationId,
             $installation->lastRouteRotationId,
             $installation->routeRotationAvailableAt,
+            $installation->publicAlias,
         );
         $this->store->saveInstallation($updated);
 

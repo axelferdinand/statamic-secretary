@@ -4,6 +4,7 @@ namespace AxelFerdinand\StatamicSecretaryRelay\Persistence;
 
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\InstallationAdminStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\PairingStore;
+use AxelFerdinand\StatamicSecretaryRelay\Contracts\PostmarkPollStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\RateLimitStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\RelayStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\SelectionStore;
@@ -17,13 +18,14 @@ use AxelFerdinand\StatamicSecretaryRelay\Data\RateLimitDecision;
 use AxelFerdinand\StatamicSecretaryRelay\Data\RouteRotation;
 use AxelFerdinand\StatamicSecretaryRelay\Data\SecretRotation;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
+use AxelFerdinand\StatamicSecretaryRelay\PublicSiteAlias;
 use AxelFerdinand\StatamicSecretaryRelay\Tokens;
 use Closure;
 use JsonException;
 use PDO;
 use Throwable;
 
-final class SqliteRelayStore implements InstallationAdminStore, PairingStore, RateLimitStore, RelayStore, SelectionStore
+final class SqliteRelayStore implements InstallationAdminStore, PairingStore, PostmarkPollStore, RateLimitStore, RelayStore, SelectionStore
 {
     private const ENCRYPTION_KEY_BYTES = 32;
 
@@ -576,14 +578,16 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
                 (string) $pairing['label'],
                 is_array($senders) ? array_values($senders) : [],
             );
+            $routeToken = Tokens::route();
             $installation = new Installation(
                 Tokens::installation(),
-                Tokens::route(),
+                $routeToken,
                 $webhookUrl,
                 Tokens::signingSecret(),
                 $definition->normalizedSenders(),
                 true,
                 $definition->label,
+                publicAlias: $this->availablePublicAlias($webhookUrl, $routeToken),
             );
             $this->saveInstallationRecord($installation, false);
             $complete = $this->pdo->prepare(
@@ -709,6 +713,124 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
             $installationId,
             $fingerprint,
         );
+    }
+
+    public function claimPostmarkPoll(string $providerMessageId): ClaimState
+    {
+        if (preg_match('/^[A-Za-z0-9-]{1,255}$/D', $providerMessageId) !== 1) {
+            throw new RelayRejected('Postmark poll message identity is invalid.');
+        }
+
+        return $this->immediate(function () use ($providerMessageId): ClaimState {
+            $now = $this->now();
+            $insert = $this->pdo->prepare(
+                <<<'SQL'
+                    INSERT OR IGNORE INTO relay_postmark_poll_claims (
+                        provider_message_id, status, lease_owner, lease_expires_at,
+                        created_at, updated_at
+                    ) VALUES (
+                        :provider_message_id, 'processing', :lease_owner, :lease_expires_at,
+                        :created_at, :updated_at
+                    )
+                    SQL,
+            );
+            $insert->execute([
+                'provider_message_id' => $providerMessageId,
+                'lease_owner' => $this->workerId,
+                'lease_expires_at' => $now + $this->leaseSeconds,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            if ($insert->rowCount() === 1) {
+                return ClaimState::New;
+            }
+
+            $select = $this->pdo->prepare(
+                <<<'SQL'
+                    SELECT status, lease_expires_at
+                    FROM relay_postmark_poll_claims
+                    WHERE provider_message_id = :provider_message_id
+                    LIMIT 1
+                    SQL,
+            );
+            $select->execute(['provider_message_id' => $providerMessageId]);
+            $existing = $select->fetch();
+
+            if (! is_array($existing)) {
+                return ClaimState::Processing;
+            }
+
+            if ($existing['status'] === ClaimState::Complete->value) {
+                return ClaimState::Complete;
+            }
+
+            if ((int) $existing['lease_expires_at'] >= $now) {
+                return ClaimState::Processing;
+            }
+
+            $reclaim = $this->pdo->prepare(
+                <<<'SQL'
+                    UPDATE relay_postmark_poll_claims
+                    SET lease_owner = :lease_owner,
+                        lease_expires_at = :lease_expires_at,
+                        updated_at = :updated_at
+                    WHERE provider_message_id = :provider_message_id
+                      AND status = 'processing'
+                      AND lease_expires_at < :now
+                    SQL,
+            );
+            $reclaim->execute([
+                'lease_owner' => $this->workerId,
+                'lease_expires_at' => $now + $this->leaseSeconds,
+                'updated_at' => $now,
+                'provider_message_id' => $providerMessageId,
+                'now' => $now,
+            ]);
+
+            return $reclaim->rowCount() === 1 ? ClaimState::New : ClaimState::Processing;
+        });
+    }
+
+    public function completePostmarkPoll(string $providerMessageId): void
+    {
+        $statement = $this->pdo->prepare(
+            <<<'SQL'
+                UPDATE relay_postmark_poll_claims
+                SET status = 'complete',
+                    lease_owner = NULL,
+                    lease_expires_at = NULL,
+                    updated_at = :updated_at
+                WHERE provider_message_id = :provider_message_id
+                  AND status = 'processing'
+                  AND lease_owner = :lease_owner
+                SQL,
+        );
+        $statement->execute([
+            'updated_at' => $this->now(),
+            'provider_message_id' => $providerMessageId,
+            'lease_owner' => $this->workerId,
+        ]);
+
+        if ($statement->rowCount() !== 1) {
+            throw new RelayRejected('Postmark poll claim lease is no longer owned by this worker.');
+        }
+    }
+
+    public function releasePostmarkPoll(string $providerMessageId): void
+    {
+        $statement = $this->pdo->prepare(
+            <<<'SQL'
+                DELETE FROM relay_postmark_poll_claims
+                WHERE provider_message_id = :provider_message_id
+                  AND status = 'processing'
+                  AND lease_owner = :lease_owner
+                SQL,
+        );
+        $statement->execute([
+            'provider_message_id' => $providerMessageId,
+            'lease_owner' => $this->workerId,
+        ]);
     }
 
     public function completeInbound(InboundDelivery $delivery): void
@@ -1020,7 +1142,7 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
         return is_string($providerReplyId) && $providerReplyId !== '' ? $providerReplyId : null;
     }
 
-    /** @return array{nonces: int, inbound: int, replies: int, selections: int, pairings: int} */
+    /** @return array{nonces: int, inbound: int, replies: int, selections: int, pairings: int, postmark_poll: int} */
     public function prune(int $completedBefore, ?int $now = null): array
     {
         $now ??= $this->now();
@@ -1062,6 +1184,14 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
                     SQL,
                 ['completed_before' => $completedBefore, 'now' => $now],
             );
+            $postmarkPoll = $this->delete(
+                <<<'SQL'
+                    DELETE FROM relay_postmark_poll_claims
+                    WHERE (status = 'complete' AND updated_at < :completed_before)
+                       OR (status = 'processing' AND lease_expires_at < :now)
+                    SQL,
+                ['completed_before' => $completedBefore, 'now' => $now],
+            );
             $this->delete(
                 <<<'SQL'
                     UPDATE relay_installations
@@ -1076,7 +1206,14 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
                 ['now' => $now],
             );
 
-            return compact('nonces', 'inbound', 'replies', 'selections', 'pairings');
+            return [
+                'nonces' => $nonces,
+                'inbound' => $inbound,
+                'replies' => $replies,
+                'selections' => $selections,
+                'pairings' => $pairings,
+                'postmark_poll' => $postmarkPoll,
+            ];
         });
     }
 
@@ -1087,6 +1224,7 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
             ? <<<'SQL'
                 ON CONFLICT(id) DO UPDATE SET
                     route_token = excluded.route_token,
+                    public_alias = excluded.public_alias,
                     webhook_url = excluded.webhook_url,
                     signing_secret_ciphertext = excluded.signing_secret_ciphertext,
                     pending_signing_secret_ciphertext = excluded.pending_signing_secret_ciphertext,
@@ -1111,14 +1249,14 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
                     previous_secret_expires_at, pending_rotation_id, last_rotation_id,
                     pending_route_token, pending_route_rotation_id,
                     last_route_rotation_id, route_rotation_available_at,
-                    active, label, created_at, updated_at
+                    public_alias, active, label, created_at, updated_at
                 ) VALUES (
                     :id, :route_token, :webhook_url, :signing_secret_ciphertext,
                     :pending_signing_secret_ciphertext, :previous_signing_secret_ciphertext,
                     :previous_secret_expires_at, :pending_rotation_id, :last_rotation_id,
                     :pending_route_token, :pending_route_rotation_id,
                     :last_route_rotation_id, :route_rotation_available_at,
-                    :active, :label, :created_at, :updated_at
+                    :public_alias, :active, :label, :created_at, :updated_at
                 )
                 {$update}
                 SQL,
@@ -1141,6 +1279,7 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
             'pending_route_rotation_id' => $installation->pendingRouteRotationId,
             'last_route_rotation_id' => $installation->lastRouteRotationId,
             'route_rotation_available_at' => $installation->routeRotationAvailableAt,
+            'public_alias' => $installation->publicAlias,
             'active' => $installation->active ? 1 : 0,
             'label' => $installation->label,
             'created_at' => $now,
@@ -1207,7 +1346,43 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Ra
             isset($row['route_rotation_available_at'])
                 ? (int) $row['route_rotation_available_at']
                 : null,
+            is_string($row['public_alias'] ?? null) ? $row['public_alias'] : null,
         );
+    }
+
+    /** @return array<int, Installation> */
+    public function installations(): array
+    {
+        $rows = $this->pdo->query(
+            'SELECT * FROM relay_installations ORDER BY created_at, id',
+        )->fetchAll();
+
+        return array_map(
+            fn (array $row): Installation => $this->hydrateInstallation($row),
+            $rows,
+        );
+    }
+
+    private function availablePublicAlias(string $webhookUrl, string $routeToken): string
+    {
+        $base = PublicSiteAlias::fromWebhookUrl($webhookUrl);
+        $statement = $this->pdo->prepare(
+            'SELECT id FROM relay_installations WHERE public_alias = :public_alias LIMIT 1',
+        );
+        $statement->execute(['public_alias' => $base]);
+
+        if ($statement->fetchColumn() === false) {
+            return $base;
+        }
+
+        $candidate = PublicSiteAlias::withRouteSuffix($base, $routeToken);
+        $statement->execute(['public_alias' => $candidate]);
+
+        if ($statement->fetchColumn() !== false) {
+            throw new RelayRejected('A unique public email alias could not be allocated.');
+        }
+
+        return $candidate;
     }
 
     private function ensureCurrentRoute(Installation $installation, int $now): void

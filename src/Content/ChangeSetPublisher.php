@@ -15,6 +15,10 @@ final class ChangeSetPublisher
 
     public function publish(ChangeSet $changeSet, User $user, ?string $message = null): ChangeSet
     {
+        if (data_get($changeSet->conversation?->context, 'dry_run') === true) {
+            throw new ContentOperationDenied('Dry-run change sets can never be published.');
+        }
+
         return match ($changeSet->resource_type) {
             'entry' => $this->entries->publish($changeSet, $user, $message),
             'term', 'global', 'navigation' => $this->staged->publish($changeSet, $user),

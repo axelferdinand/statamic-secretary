@@ -122,6 +122,37 @@ class HostedRelayPersistenceTest extends TestCase
         $this->assertSame(1, (int) $pdoA->query('SELECT COUNT(*) FROM relay_inbound_claims')->fetchColumn());
     }
 
+    public function test_postmark_poll_claims_are_atomic_and_recover_after_a_crashed_lease(): void
+    {
+        $now = 1500;
+        [$pdoA, $storeA, $path, $key] = $this->database($now, str_repeat('a', 22));
+        $storeB = $this->store($this->connection($path), $key, $now, str_repeat('b', 22));
+
+        $this->assertSame(ClaimState::New, $storeA->claimPostmarkPoll('postmark-message-a'));
+        $this->assertSame(ClaimState::Processing, $storeB->claimPostmarkPoll('postmark-message-a'));
+
+        $now = 1531;
+        $this->assertSame(ClaimState::New, $storeB->claimPostmarkPoll('postmark-message-a'));
+
+        try {
+            $storeA->completePostmarkPoll('postmark-message-a');
+            $this->fail('An expired Postmark poll lease was completed.');
+        } catch (RelayRejected $exception) {
+            $this->assertSame(
+                'Postmark poll claim lease is no longer owned by this worker.',
+                $exception->getMessage(),
+            );
+        }
+
+        $storeA->releasePostmarkPoll('postmark-message-a');
+        $storeB->completePostmarkPoll('postmark-message-a');
+        $this->assertSame(ClaimState::Complete, $storeA->claimPostmarkPoll('postmark-message-a'));
+        $this->assertSame(
+            1,
+            (int) $pdoA->query('SELECT COUNT(*) FROM relay_postmark_poll_claims')->fetchColumn(),
+        );
+    }
+
     public function test_reply_claims_are_atomic_and_an_expired_owner_cannot_complete_or_release_them(): void
     {
         $now = 2000;
@@ -218,6 +249,7 @@ class HostedRelayPersistenceTest extends TestCase
             'replies' => 1,
             'selections' => 1,
             'pairings' => 0,
+            'postmark_poll' => 0,
         ], $counts);
         $this->assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM relay_conversations')->fetchColumn());
         $this->assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM relay_installations')->fetchColumn());

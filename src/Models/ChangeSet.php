@@ -22,6 +22,7 @@ class ChangeSet extends Model
             'before' => 'array',
             'patch' => 'array',
             'after' => 'array',
+            'review' => 'array',
             'applied_at' => 'datetime',
             'published_at' => 'datetime',
         ];

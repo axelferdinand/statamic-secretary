@@ -122,11 +122,12 @@ final class RelayPairingClient
             'route_token',
             'signing_secret',
             'address',
+            'route_address',
         ];
 
         if (! is_array($payload)
             || array_diff(array_keys($payload), $allowed) !== []
-            || array_diff($allowed, array_keys($payload)) !== []
+            || array_diff(array_diff($allowed, ['route_address']), array_keys($payload)) !== []
             || ($payload['accepted'] ?? null) !== true
             || ! in_array($payload['status'] ?? null, ['paired', 'already_paired'], true)
             || ! is_string($payload['installation_id'])
@@ -136,17 +137,23 @@ final class RelayPairingClient
             || ! is_string($payload['signing_secret'])
             || strlen($this->decodeSecret($payload['signing_secret'])) < 32
             || ! is_string($payload['address'])
-            || ! $this->addressMatchesRoute($payload['address'], $payload['route_token'])) {
+            || filter_var($payload['address'], FILTER_VALIDATE_EMAIL) === false) {
             throw new RelayDeliveryFailed('The shared-address relay returned an invalid pairing response.');
         }
 
-        $routeAddress = mb_strtolower($payload['address']);
+        $routeAddress = mb_strtolower((string) ($payload['route_address'] ?? $payload['address']));
+
+        if (! $this->addressMatchesRoute($routeAddress, $payload['route_token'])
+            || ! $this->addressUsesRouteDomain($payload['address'], $routeAddress)) {
+            throw new RelayDeliveryFailed('The shared-address relay returned an invalid pairing response.');
+        }
+
         $settings = [
             'enabled' => true,
             'installation_id' => $payload['installation_id'],
             'route_token' => $payload['route_token'],
             'signing_secret' => $payload['signing_secret'],
-            'address' => $this->sharedAddressFromRoute($routeAddress),
+            'address' => mb_strtolower($payload['address']),
             'route_address' => $routeAddress,
             'sender' => data_get($stored, 'pending_sender'),
             'base_url' => $this->configuration->baseUrl(),
@@ -177,11 +184,11 @@ final class RelayPairingClient
         return str_ends_with($local, '+'.$routeToken);
     }
 
-    private function sharedAddressFromRoute(string $routeAddress): string
+    private function addressUsesRouteDomain(string $address, string $routeAddress): bool
     {
-        [$local, $domain] = explode('@', $routeAddress, 2);
-        [$sharedLocal] = explode('+', $local, 2);
+        [, $addressDomain] = explode('@', mb_strtolower($address), 2);
+        [, $routeDomain] = explode('@', mb_strtolower($routeAddress), 2);
 
-        return $sharedLocal.'@'.$domain;
+        return hash_equals($routeDomain, $addressDomain);
     }
 }

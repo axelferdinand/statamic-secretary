@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretary\Content;
 
+use AxelFerdinand\StatamicSecretary\Events\ChangeSetPrepared;
 use AxelFerdinand\StatamicSecretary\Exceptions\ContentConflict;
 use AxelFerdinand\StatamicSecretary\Exceptions\ContentOperationDenied;
 use AxelFerdinand\StatamicSecretary\Models\ChangeSet;
@@ -83,7 +84,7 @@ final class StagedContentChangeService
             'resolved_data' => $values,
         ];
 
-        return $conversation->changeSets()->create([
+        $changeSet = $conversation->changeSets()->create([
             'proposed_by_message_id' => $message?->id,
             'status' => 'draft',
             'operation' => 'create',
@@ -99,6 +100,10 @@ final class StagedContentChangeService
             'summary' => $summary,
             'applied_at' => now(),
         ]);
+
+        ChangeSetPrepared::dispatch($changeSet);
+
+        return $changeSet;
     }
 
     public function publish(ChangeSet $changeSet, User $user): ChangeSet
@@ -114,6 +119,109 @@ final class StagedContentChangeService
             'global' => $this->publishGlobalUpdate($changeSet, $user),
             'navigation' => $this->publishNavigationUpdate($changeSet, $user),
         };
+    }
+
+    /**
+     * Rebuild a database-staged draft after field-level review.
+     *
+     * @param  array<string, mixed>  $patch
+     */
+    public function reviseDraft(ChangeSet $changeSet, array $patch, User $user): ChangeSet
+    {
+        if ($changeSet->status !== 'draft' || ! in_array($changeSet->resource_type, ['term', 'global', 'navigation'], true)) {
+            throw new ContentOperationDenied("This staged change cannot be reviewed from its current [{$changeSet->status}] state.");
+        }
+
+        $before = (array) $changeSet->before;
+
+        if ($changeSet->resource_type === 'term' && $changeSet->operation === 'create') {
+            [$taxonomy, $blueprint, $site, $slug, $values] = $this->validateTermCreate(
+                (string) $changeSet->collection,
+                (string) $changeSet->blueprint,
+                (string) $changeSet->site,
+                (string) $changeSet->slug,
+                $patch,
+            );
+
+            if (! $user->can('create', [TermContract::class, $taxonomy, $site])) {
+                throw new ContentOperationDenied("The requesting user is not allowed to create terms in [{$taxonomy->handle()}].");
+            }
+
+            $after = [
+                ...(array) $changeSet->after,
+                'title' => $values['title'] ?? $slug,
+                'data' => $values,
+                'resolved_data' => $values,
+                'blueprint' => $blueprint->handle(),
+            ];
+        } elseif ($changeSet->resource_type === 'term') {
+            $term = Term::find((string) $changeSet->resource_id)
+                ?? throw new ContentOperationDenied('The reviewed term no longer exists.');
+            $localized = $term->in((string) $changeSet->site);
+            $this->authorize($user, 'edit', $localized);
+            $data = $this->blueprintValues->mergeAndValidate(
+                $localized->blueprint(),
+                ['slug' => $localized->slug(), ...(array) ($before['resolved_data'] ?? [])],
+                $patch,
+                ['slug'],
+                ['title' => ['required']],
+                (array) ($before['data'] ?? []),
+            );
+            $resolved = array_replace(
+                (array) ($before['resolved_data'] ?? []),
+                array_intersect_key($data, $patch),
+            );
+            $after = [
+                ...$before,
+                'title' => $resolved['title'] ?? ($before['title'] ?? ''),
+                'data' => $data,
+                'resolved_data' => $resolved,
+            ];
+        } elseif ($changeSet->resource_type === 'global') {
+            $set = GlobalSet::findByHandle((string) $changeSet->collection)
+                ?? throw new ContentOperationDenied('The reviewed global set no longer exists.');
+            $variables = $set->in((string) $changeSet->site);
+            $this->authorize($user, 'edit', $variables);
+            $data = $this->blueprintValues->mergeAndValidate(
+                $variables->blueprint(),
+                (array) ($before['resolved_data'] ?? []),
+                $patch,
+                storageExisting: (array) ($before['data'] ?? []),
+            );
+            $after = [
+                ...$before,
+                'data' => $data,
+                'resolved_data' => array_replace(
+                    (array) ($before['resolved_data'] ?? []),
+                    array_intersect_key($data, $patch),
+                ),
+            ];
+        } else {
+            $nav = Nav::findByHandle((string) $changeSet->collection)
+                ?? throw new ContentOperationDenied('The reviewed navigation no longer exists.');
+            $tree = $nav->in((string) $changeSet->site);
+            $this->authorize($user, 'edit', $tree);
+            $reviewedTree = array_key_exists('tree', $patch)
+                ? $this->normalizeNavigationTree(
+                    $nav,
+                    (string) $changeSet->site,
+                    (array) $patch['tree'],
+                    (array) ($before['tree'] ?? []),
+                    $user,
+                )
+                : (array) ($before['tree'] ?? []);
+            $patch = ['tree' => $reviewedTree];
+            $after = [...$before, 'tree' => $reviewedTree];
+        }
+
+        $changeSet->update([
+            'patch' => $patch,
+            'after' => $after,
+            'draft_fingerprint' => $this->catalog->fingerprint($after),
+            'failure' => null,
+        ]);
+
+        return $changeSet->fresh();
     }
 
     /** @param  array<string, mixed>  $patch */
@@ -215,7 +323,7 @@ final class StagedContentChangeService
         ?string $summary,
         ?Message $message,
     ): ChangeSet {
-        return $conversation->changeSets()->create([
+        $changeSet = $conversation->changeSets()->create([
             'proposed_by_message_id' => $message?->id,
             'status' => 'draft',
             'operation' => 'update',
@@ -233,6 +341,10 @@ final class StagedContentChangeService
             'summary' => $summary,
             'applied_at' => now(),
         ]);
+
+        ChangeSetPrepared::dispatch($changeSet);
+
+        return $changeSet;
     }
 
     private function publishTermUpdate(ChangeSet $changeSet, User $user): ChangeSet

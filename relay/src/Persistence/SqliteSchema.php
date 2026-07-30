@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay\Persistence;
 
+use AxelFerdinand\StatamicSecretaryRelay\PublicSiteAlias;
 use PDO;
 
 final class SqliteSchema
@@ -17,6 +18,13 @@ final class SqliteSchema
         }
 
         self::addInstallationRotationColumns($pdo);
+        self::addInstallationAliasColumn($pdo);
+        self::backfillInstallationAliases($pdo);
+        $pdo->exec(
+            'CREATE UNIQUE INDEX IF NOT EXISTS relay_public_alias_unique
+             ON relay_installations(public_alias)
+             WHERE public_alias IS NOT NULL',
+        );
         self::backfillInstallationRoutes($pdo);
     }
 
@@ -41,6 +49,7 @@ final class SqliteSchema
                     pending_route_rotation_id TEXT NULL,
                     last_route_rotation_id TEXT NULL,
                     route_rotation_available_at INTEGER NULL,
+                    public_alias TEXT NULL,
                     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
                     label TEXT NULL,
                     created_at INTEGER NOT NULL,
@@ -173,6 +182,17 @@ final class SqliteSchema
                 )
                 SQL,
             'CREATE INDEX IF NOT EXISTS relay_rate_limit_expiry ON relay_rate_limits(expires_at)',
+            <<<'SQL'
+                CREATE TABLE IF NOT EXISTS relay_postmark_poll_claims (
+                    provider_message_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL CHECK (status IN ('processing', 'complete')),
+                    lease_owner TEXT NULL,
+                    lease_expires_at INTEGER NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+                SQL,
+            'CREATE INDEX IF NOT EXISTS relay_postmark_poll_lease ON relay_postmark_poll_claims(status, lease_expires_at)',
         ];
     }
 
@@ -201,6 +221,59 @@ final class SqliteSchema
             if (! isset($existing[$name])) {
                 $pdo->exec("ALTER TABLE relay_installations ADD COLUMN {$name} {$definition}");
             }
+        }
+    }
+
+    private static function addInstallationAliasColumn(PDO $pdo): void
+    {
+        $columns = $pdo->query('PRAGMA table_info(relay_installations)')->fetchAll(PDO::FETCH_ASSOC);
+        $existing = array_fill_keys(array_map(
+            static fn (array $column): string => (string) $column['name'],
+            $columns,
+        ), true);
+
+        if (! isset($existing['public_alias'])) {
+            $pdo->exec('ALTER TABLE relay_installations ADD COLUMN public_alias TEXT NULL');
+        }
+    }
+
+    private static function backfillInstallationAliases(PDO $pdo): void
+    {
+        $rows = $pdo->query(
+            'SELECT id, route_token, webhook_url, public_alias
+             FROM relay_installations
+             ORDER BY created_at, id',
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $used = [];
+
+        foreach ($rows as $row) {
+            $existing = is_string($row['public_alias'] ?? null)
+                ? mb_strtolower(trim($row['public_alias']))
+                : '';
+
+            if (PublicSiteAlias::valid($existing) && ! isset($used[$existing])) {
+                $used[$existing] = true;
+
+                continue;
+            }
+
+            $base = PublicSiteAlias::fromWebhookUrl((string) $row['webhook_url']);
+            $alias = isset($used[$base])
+                ? PublicSiteAlias::withRouteSuffix($base, (string) $row['route_token'])
+                : $base;
+
+            if (isset($used[$alias])) {
+                throw new \RuntimeException('A unique public email alias could not be backfilled.');
+            }
+
+            $statement = $pdo->prepare(
+                'UPDATE relay_installations SET public_alias = :public_alias WHERE id = :id',
+            );
+            $statement->execute([
+                'public_alias' => $alias,
+                'id' => $row['id'],
+            ]);
+            $used[$alias] = true;
         }
     }
 

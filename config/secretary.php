@@ -36,6 +36,63 @@ return [
         'require_revisions_for_published_entries' => true,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Editorial guidance
+    |--------------------------------------------------------------------------
+    |
+    | The defaults apply to every site. Site-specific values are merged on
+    | top and may also be maintained from the Control Panel. Keeping this
+    | shape in config makes the editorial contract reviewable in source
+    | control and predictable across environments.
+    |
+    */
+    'editorial' => [
+        'defaults' => [
+            'audience' => env('SECRETARY_EDITORIAL_AUDIENCE', ''),
+            'voice' => env('SECRETARY_EDITORIAL_VOICE', ''),
+            'terminology' => env('SECRETARY_EDITORIAL_TERMINOLOGY', ''),
+            'avoid' => env('SECRETARY_EDITORIAL_AVOID', ''),
+        ],
+        'sites' => [
+            // 'default' => [
+            //     'audience' => 'Who the site is written for.',
+            //     'voice' => 'Clear, warm and direct.',
+            //     'terminology' => 'Preferred product and organization names.',
+            //     'avoid' => 'Clichés, jargon and unsupported claims.',
+            // ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Developer integration
+    |--------------------------------------------------------------------------
+    */
+    'developer' => [
+        'mode' => (bool) env('SECRETARY_DEVELOPER_MODE', false),
+        'tools' => [
+            // \App\Secretary\Tools\ReadCampaignContext::class,
+        ],
+        'costs_per_million_tokens' => [
+            'input' => (float) env('SECRETARY_OPENAI_INPUT_COST_PER_MILLION', 0),
+            'output' => (float) env('SECRETARY_OPENAI_OUTPUT_COST_PER_MILLION', 0),
+        ],
+        'webhooks' => [
+            'enabled' => (bool) env('SECRETARY_WEBHOOKS_ENABLED', false),
+            'url' => env('SECRETARY_WEBHOOK_URL'),
+            'secret' => env('SECRETARY_WEBHOOK_SECRET'),
+            'events' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env(
+                    'SECRETARY_WEBHOOK_EVENTS',
+                    'message.received,agent.completed,change.prepared,change.published'
+                ))
+            ))),
+            'timeout' => (int) env('SECRETARY_WEBHOOK_TIMEOUT', 10),
+        ],
+    ],
+
     'email' => [
         // Null enables the zero-config Postmark onboarding flow. Existing
         // installations may still explicitly opt email in or out.

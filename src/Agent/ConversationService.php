@@ -3,6 +3,8 @@
 namespace AxelFerdinand\StatamicSecretary\Agent;
 
 use AxelFerdinand\StatamicSecretary\Content\ChangeSetPublisher;
+use AxelFerdinand\StatamicSecretary\Events\ChangeSetPublished;
+use AxelFerdinand\StatamicSecretary\Events\MessageReceived;
 use AxelFerdinand\StatamicSecretary\Exceptions\ContentOperationDenied;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Models\Message;
@@ -82,6 +84,8 @@ final class ConversationService
             ]]);
         }
 
+        MessageReceived::dispatch($message);
+
         return $message;
     }
 
@@ -157,6 +161,7 @@ final class ConversationService
         ]]);
 
         $changeSet = $this->changes->publish($drafts->first(), $user, 'Published via Statamic Secretary');
+        ChangeSetPublished::dispatch($changeSet);
 
         return $this->assistantMessage(
             $conversation,
@@ -187,6 +192,7 @@ final class ConversationService
 
         try {
             $published = $this->changes->publish($changeSet, $user, 'Published via Statamic Secretary');
+            ChangeSetPublished::dispatch($published);
         } catch (Throwable $exception) {
             $inbound->update([
                 'processed_at' => now(),

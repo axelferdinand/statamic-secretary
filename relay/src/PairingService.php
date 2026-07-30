@@ -3,6 +3,7 @@
 namespace AxelFerdinand\StatamicSecretaryRelay;
 
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\PairingStore;
+use AxelFerdinand\StatamicSecretaryRelay\Contracts\PublicAliasProvisioner;
 use AxelFerdinand\StatamicSecretaryRelay\Data\IssuedPairing;
 use AxelFerdinand\StatamicSecretaryRelay\Data\PairingDefinition;
 use AxelFerdinand\StatamicSecretaryRelay\Data\PairingOutcome;
@@ -16,6 +17,7 @@ final readonly class PairingService
         private PairingStore $store,
         private RelayAddress $address,
         private PublicHttpsUrl $urlPolicy,
+        private ?PublicAliasProvisioner $aliases = null,
     ) {}
 
     /** @param  array<int, string>  $senders */
@@ -94,17 +96,27 @@ final readonly class PairingService
             $payload['webhook_url'],
         ]));
 
-        return $this->store->provisionPairing(
+        $outcome = $this->store->provisionPairing(
             hash('sha256', $payload['pairing_code']),
             $fingerprint,
             $payload['webhook_url'],
         );
+
+        if ($this->aliases) {
+            $this->aliases->provision($outcome->installation);
+        }
+
+        return $outcome;
     }
 
     /** @return array<string, mixed> */
     public function response(PairingOutcome $outcome): array
     {
         $installation = $outcome->installation;
+        $routeAddress = $this->address->routeAddress($installation->routeToken);
+        $publicAddress = $this->aliases && $installation->publicAlias
+            ? $this->address->publicAddress($installation->publicAlias)
+            : $routeAddress;
 
         return [
             'accepted' => true,
@@ -112,7 +124,8 @@ final readonly class PairingService
             'installation_id' => $installation->id,
             'route_token' => $installation->routeToken,
             'signing_secret' => rtrim(strtr(base64_encode($installation->signingSecret), '+/', '-_'), '='),
-            'address' => $this->address->routeAddress($installation->routeToken),
+            'address' => $publicAddress,
+            'route_address' => $routeAddress,
         ];
     }
 }

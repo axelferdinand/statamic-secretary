@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay\Bootstrap;
 
+use AxelFerdinand\StatamicSecretaryRelay\CpanelPublicAliasProvisioner;
 use AxelFerdinand\StatamicSecretaryRelay\CurlHttpTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
 use AxelFerdinand\StatamicSecretaryRelay\HostedRelayApplication;
@@ -34,6 +35,7 @@ final class RelayFactory
         $fromAddress = $this->optional('RELAY_FROM_ADDRESS', $sharedAddress);
         $fromName = $this->optional('RELAY_FROM_NAME', 'Statamic Secretary');
         $messageStream = $this->optional('RELAY_POSTMARK_MESSAGE_STREAM', 'outbound');
+        $aliases = $this->publicAliasProvisioner($address);
         $postmark = new PostmarkMailTransport(
             $http,
             $postmarkToken,
@@ -113,8 +115,9 @@ final class RelayFactory
                     $messageStream,
                 ),
                 $address,
+                $aliases !== null,
             ),
-            new PairingService($store, $address, new PublicHttpsUrl),
+            new PairingService($store, $address, new PublicHttpsUrl, $aliases),
             new PostmarkPairingCodeTransport(
                 $http,
                 $postmarkToken,
@@ -163,6 +166,26 @@ final class RelayFactory
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
+    }
+
+    public function publicAliasProvisioner(
+        ?RelayAddress $address = null,
+    ): ?CpanelPublicAliasProvisioner {
+        if (! $this->boolean('RELAY_FRIENDLY_ALIASES_ENABLED', false)) {
+            return null;
+        }
+
+        $address ??= new RelayAddress(
+            $this->optional('RELAY_SHARED_ADDRESS', 'secretary@statamic.no'),
+        );
+
+        return new CpanelPublicAliasProvisioner(
+            $address,
+            $this->required('RELAY_CPANEL_URL'),
+            $this->required('RELAY_CPANEL_USER'),
+            $this->required('RELAY_CPANEL_TOKEN'),
+            $this->required('RELAY_POSTMARK_INBOUND_ADDRESS'),
+        );
     }
 
     private function required(string $key): string

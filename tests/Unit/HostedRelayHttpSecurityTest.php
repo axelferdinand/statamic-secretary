@@ -9,6 +9,7 @@ use AxelFerdinand\StatamicSecretaryRelay\Data\Installation;
 use AxelFerdinand\StatamicSecretaryRelay\Data\PairingCodeNotice;
 use AxelFerdinand\StatamicSecretaryRelay\Data\SelectionNotice;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
+use AxelFerdinand\StatamicSecretaryRelay\LandingPage;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkMailTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkPairingCodeTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkSelectionTransport;
@@ -17,6 +18,181 @@ use PHPUnit\Framework\TestCase;
 
 class HostedRelayHttpSecurityTest extends TestCase
 {
+    public function test_landing_page_renders_english_and_norwegian_without_booting_the_relay_store(): void
+    {
+        $landing = new LandingPage;
+
+        $english = $landing->render('en');
+        $norwegian = $landing->render('nb');
+
+        $this->assertSame(200, $english->status);
+        $this->assertSame('text/html; charset=UTF-8', $english->headers['Content-Type']);
+        $this->assertSame('en', $english->headers['Content-Language']);
+        $this->assertStringContainsString('<html lang="en"', $english->body);
+        $this->assertStringContainsString('Your Statamic site', $english->body);
+        $this->assertStringContainsString('secretary@statamic.no', $english->body);
+        $this->assertStringContainsString('https://statamic.com/marketplace', $english->body);
+        $this->assertStringContainsString('data-demo', $english->body);
+
+        $this->assertSame(200, $norwegian->status);
+        $this->assertSame('nb', $norwegian->headers['Content-Language']);
+        $this->assertStringContainsString('<html lang="nb"', $norwegian->body);
+        $this->assertStringContainsString('Statamic-siden din', $norwegian->body);
+        $this->assertStringContainsString('lang="en"', $norwegian->body);
+    }
+
+    public function test_landing_page_csp_allows_only_its_own_assets_and_forbids_forms_and_frames(): void
+    {
+        $result = (new LandingPage(''))->render('en');
+        $policy = $result->headers['Content-Security-Policy'];
+
+        $this->assertStringContainsString("default-src 'self'", $policy);
+        $this->assertStringContainsString("script-src 'self'", $policy);
+        $this->assertStringContainsString("style-src 'self'", $policy);
+        $this->assertStringContainsString("connect-src 'none'", $policy);
+        $this->assertStringContainsString("form-action 'none'", $policy);
+        $this->assertStringContainsString("frame-ancestors 'none'", $policy);
+        $this->assertStringNotContainsString("'unsafe-inline'", $policy);
+        $this->assertStringNotContainsString('googletagmanager.com', $policy);
+        $this->assertStringNotContainsString('google-analytics.com', $policy);
+    }
+
+    public function test_landing_page_exposes_google_analytics_only_when_a_valid_measurement_id_is_configured(): void
+    {
+        $disabled = (new LandingPage('not-a-measurement-id'))->render('en');
+        $enabled = (new LandingPage('G-ABC1234567'))->render('en');
+
+        $this->assertStringNotContainsString('google-analytics-id', $disabled->body);
+        $this->assertStringNotContainsString('data-consent-manager', $disabled->body);
+
+        $this->assertStringContainsString(
+            '<meta name="google-analytics-id" content="G-ABC1234567">',
+            $enabled->body,
+        );
+        $this->assertStringContainsString('data-consent-manager', $enabled->body);
+        $this->assertStringContainsString('data-consent-accept', $enabled->body);
+        $this->assertStringContainsString('data-consent-decline', $enabled->body);
+        $this->assertStringContainsString('data-consent-open', $enabled->body);
+        $this->assertStringContainsString(
+            "script-src 'self' https://www.googletagmanager.com",
+            $enabled->headers['Content-Security-Policy'],
+        );
+        $this->assertStringContainsString(
+            'https://www.google-analytics.com',
+            $enabled->headers['Content-Security-Policy'],
+        );
+        $this->assertStringNotContainsString("'unsafe-inline'", $enabled->headers['Content-Security-Policy']);
+    }
+
+    public function test_landing_pages_have_complete_indexable_metadata_and_relevant_schema(): void
+    {
+        $english = (new LandingPage(''))->render('en');
+        $norwegian = (new LandingPage(''))->render('nb');
+
+        foreach ([$english->body, $norwegian->body] as $body) {
+            $this->assertSame(1, substr_count($body, '<h1'));
+            $this->assertStringContainsString('<meta name="description"', $body);
+            $this->assertStringContainsString('<link rel="canonical"', $body);
+            $this->assertStringContainsString('property="og:site_name"', $body);
+            $this->assertStringContainsString('property="og:image:alt"', $body);
+            $this->assertStringContainsString('name="twitter:title"', $body);
+            $this->assertStringContainsString('type="application/ld+json"', $body);
+            $this->assertStringContainsString('"@type":"SoftwareApplication"', $body);
+            $this->assertStringContainsString('"@type":"FAQPage"', $body);
+            $this->assertStringContainsString('"@type":"Organization"', $body);
+        }
+
+        $this->assertStringContainsString(
+            '<link rel="canonical" href="https://secretary.statamic.no/">',
+            $english->body,
+        );
+        $this->assertStringContainsString(
+            '<link rel="canonical" href="https://secretary.statamic.no/no">',
+            $norwegian->body,
+        );
+        $this->assertStringContainsString('/assets/statamic-secretary-og.png', $english->body);
+    }
+
+    public function test_privacy_pages_describe_the_actual_consent_implementation(): void
+    {
+        $landing = new LandingPage('G-ABC1234567');
+        $english = $landing->privacy('en');
+        $norwegian = $landing->privacy('nb');
+
+        $this->assertSame(200, $english->status);
+        $this->assertSame(200, $norwegian->status);
+        $this->assertSame(1, substr_count($english->body, '<h1'));
+        $this->assertSame(1, substr_count($norwegian->body, '<h1'));
+        $this->assertStringContainsString('<title>Privacy – Statamic Secretary</title>', $english->body);
+        $this->assertStringContainsString(
+            '<link rel="canonical" href="https://secretary.statamic.no/privacy">',
+            $english->body,
+        );
+        $this->assertStringContainsString(
+            '<link rel="canonical" href="https://secretary.statamic.no/no/personvern">',
+            $norwegian->body,
+        );
+        $this->assertStringContainsString('Google Analytics 4', $english->body);
+        $this->assertStringContainsString('_ga', $english->body);
+        $this->assertStringContainsString('data-consent-open', $english->body);
+        $this->assertStringContainsString('"@type":"BreadcrumbList"', $english->body);
+    }
+
+    public function test_robots_sitemap_and_html_not_found_responses_are_search_engine_safe(): void
+    {
+        $landing = new LandingPage('');
+        $robots = $landing->robots();
+        $sitemap = $landing->sitemap();
+        $notFound = $landing->notFound('en');
+
+        $this->assertSame(200, $robots->status);
+        $this->assertSame('text/plain; charset=UTF-8', $robots->headers['Content-Type']);
+        $this->assertStringContainsString('Sitemap: https://secretary.statamic.no/sitemap.xml', $robots->body);
+        $this->assertStringContainsString('Disallow: /v1/', $robots->body);
+
+        $this->assertSame(200, $sitemap->status);
+        $this->assertSame('application/xml; charset=UTF-8', $sitemap->headers['Content-Type']);
+        $this->assertStringContainsString('<loc>https://secretary.statamic.no/</loc>', $sitemap->body);
+        $this->assertStringContainsString('<loc>https://secretary.statamic.no/privacy</loc>', $sitemap->body);
+        $this->assertStringContainsString('<loc>https://secretary.statamic.no/no/personvern</loc>', $sitemap->body);
+
+        $this->assertSame(404, $notFound->status);
+        $this->assertSame('noindex, nofollow', $notFound->headers['X-Robots-Tag']);
+        $this->assertSame(1, substr_count($notFound->body, '<h1'));
+        $this->assertStringContainsString('Page not found', $notFound->body);
+    }
+
+    public function test_consent_script_loads_google_only_after_acceptance_and_supports_withdrawal(): void
+    {
+        $script = file_get_contents(dirname(__DIR__, 2).'/relay/public/assets/secretary.js');
+
+        $this->assertIsString($script);
+        $this->assertStringContainsString('statamic-secretary-analytics-consent-v1', $script);
+        $this->assertStringContainsString("document.createElement('script')", $script);
+        $this->assertStringContainsString('www.googletagmanager.com/gtag/js', $script);
+        $this->assertStringContainsString('data-consent-accept', $script);
+        $this->assertStringContainsString('data-consent-decline', $script);
+        $this->assertStringContainsString('data-consent-open', $script);
+        $this->assertStringContainsString('clearAnalyticsCookies', $script);
+        $this->assertStringNotContainsString('G-J7C3EREJW2', $script);
+    }
+
+    public function test_production_htaccess_canonicalizes_http_and_www_requests(): void
+    {
+        $configuration = file_get_contents(dirname(__DIR__, 2).'/relay/public/.htaccess');
+
+        $this->assertIsString($configuration);
+        $this->assertStringContainsString('%{HTTPS} !=on', $configuration);
+        $this->assertStringContainsString('%{HTTP_HOST} !^secretary\\.statamic\\.no$', $configuration);
+        $this->assertStringContainsString(
+            'https://secretary.statamic.no%{REQUEST_URI}',
+            $configuration,
+        );
+        $this->assertStringContainsString('[R=301,L,NE]', $configuration);
+        $this->assertStringContainsString('error_log|php\\.ini', $configuration);
+        $this->assertStringContainsString('Require all denied', $configuration);
+    }
+
     public function test_public_https_policy_resolves_and_returns_only_public_addresses(): void
     {
         $policy = new PublicHttpsUrl(

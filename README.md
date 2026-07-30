@@ -86,19 +86,25 @@ SECRETARY_CONTENT_ROOT=/absolute/path/to/site/content
 
 Run `php please secretary:doctor` after installation and configuration. It checks the database tables, content boundary, model setup, revisions, queue, and optional email setup without printing credentials.
 
+Use `php please secretary:doctor --json` in deployment checks. `php please secretary:dry-run "…" --user=editor@example.com --entry=home --json` runs the real model and authorization/tool inspection while preventing entry writes and permanently blocking the resulting audit records from publication.
+
 Conversation and audit records are self-hosted in the site's database. Use `php please secretary:prune --days=90` for an interactive retention cleanup, or add `--force` only in a deliberate scheduled task. See [PRIVACY.md](PRIVACY.md).
 
 ## Control Panel
 
 Editors with access to Secretary get a floating chat button throughout the Control Panel. It opens a native side panel over the page they are already editing, so they can start or continue a conversation without leaving their work. While Secretary is processing a request, the panel refreshes that conversation automatically and shows the reply and prepared change as soon as they are ready.
 
-The full conversation workspace remains available under **Content → Secretary** for detailed before/after review and publication. Assign these addon permissions to non-super users as needed:
+When the editor invokes the panel from a field, Secretary validates and stores that field as conversation context. Bard and Replicator set context is kept when the Control Panel exposes it. Type `@` followed by an entry title to insert an exact, permission-filtered entry reference.
+
+The full conversation workspace remains available under **Content → Secretary** for detailed before/after review, live-versus-draft preview, editorial guidance, diagnostics, and publication. Every changed field—and each changed Bard/Replicator module—can be kept or rejected independently. Rejected values are removed from the native working copy with the same optimistic-lock safeguards as the original draft. Assign these addon permissions to non-super users as needed:
 
 - `use secretary`
 - `publish with secretary`
 - `configure secretary` (connects or reconnects Postmark)
 
 Every mutation is shown as a change card. Existing published entries are saved to a working copy. Terms, globals, and navigation are instead staged in Secretary's database, because those Statamic resources do not provide working-copy revisions. In both cases, live content does not change until the user selects **Publish** or sends a narrowly recognized immediate publication command.
+
+Site-specific audience, voice, terminology, and “avoid” rules can be maintained in the Control Panel or in `config/secretary.php`. Configuration is the default; Control Panel values override it per site.
 
 ## Postmark email
 
@@ -139,6 +145,12 @@ Use a persistent, shared cache for per-conversation locks. Keep the queue connec
 - All returned content is treated as untrusted data to reduce prompt-injection risk.
 
 See [docs/architecture.md](docs/architecture.md) for the detailed trust boundaries and release limits.
+
+## Developer API
+
+Secretary supports config-as-code editorial guidance, read-only application tools, opt-in execution traces, Laravel events, and signed outgoing webhooks. Mutation extensions are intentionally not supported: content writes continue through the built-in audited change-set workflow.
+
+See [docs/developer-api.md](docs/developer-api.md) for the extension contract, event payloads, webhook verification, developer mode, and CI dry-run examples.
 
 ## Development
 

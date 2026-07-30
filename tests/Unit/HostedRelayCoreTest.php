@@ -171,6 +171,28 @@ class HostedRelayCoreTest extends TestCase
         $this->assertCount(0, $transport->deliveries);
     }
 
+    public function test_registered_sender_is_authorized_without_customer_dkim_when_policy_is_disabled(): void
+    {
+        $store = new MemoryRelayStore([$this->installationA()]);
+        $transport = new MemorySiteTransport;
+        $router = new InboundRouter(
+            $store,
+            $transport,
+            new RelayAddress('secretary@statamic.no'),
+            requireSenderAuthentication: false,
+        );
+
+        $outcome = $router->route($this->message(
+            'registered-without-dkim',
+            $this->alias($this->installationA()->routeToken),
+            authenticated: false,
+        ));
+
+        $this->assertSame('forwarded', $outcome->status);
+        $this->assertCount(1, $transport->deliveries);
+        $this->assertTrue($transport->deliveries[0]['message']->senderAuthenticated);
+    }
+
     public function test_signed_site_transport_uses_the_exact_addon_contract(): void
     {
         $token = 'c'.str_repeat('c', 25);
@@ -407,7 +429,14 @@ class HostedRelayCoreTest extends TestCase
             $this->alias(Tokens::route(), Tokens::conversation()),
             '<postmark-inbound-1@example.com>',
             'https://site-a.example.com/cp/secretary/thread',
-            [['id' => 'draft-1', 'status' => 'draft', 'summary' => 'Oppdatert forside']],
+            [[
+                'id' => 'draft-1',
+                'status' => 'draft',
+                'summary' => 'Oppdatert forside',
+                'native_url' => 'https://site-a.example.com/cp/collections/pages/entries/home',
+                'resource_title' => 'Forsiden',
+                'public_url' => 'https://site-a.example.com/',
+            ]],
         );
 
         $providerMessageId = $transport->send($reply);
@@ -423,7 +452,12 @@ class HostedRelayCoreTest extends TestCase
         $this->assertSame($reply->replyTo, $payload['ReplyTo']);
         $this->assertSame('In-Reply-To', $payload['Headers'][0]['Name']);
         $this->assertSame($reply->inReplyTo, $payload['Headers'][0]['Value']);
-        $this->assertStringContainsString('Oppdatert forside — draft', $payload['TextBody']);
+        $this->assertStringContainsString('Berørt side: Forsiden — https://site-a.example.com/', $payload['TextBody']);
+        $this->assertStringNotContainsString('Klargjorte endringer', $payload['TextBody']);
+        $this->assertStringNotContainsString('Oppdatert forside — utkast', $payload['TextBody']);
+        $this->assertStringContainsString('Åpne utkastet i Statamic', $payload['TextBody']);
+        $this->assertStringContainsString($reply->changeSets[0]['native_url'], $payload['TextBody']);
+        $this->assertStringContainsString('Fortsett samtalen i Secretary', $payload['TextBody']);
         $this->assertStringContainsString($reply->reviewUrl, $payload['TextBody']);
     }
 
@@ -529,6 +563,7 @@ class HostedRelayCoreTest extends TestCase
                 'id' => '01relaychangeset',
                 'status' => 'draft',
                 'summary' => 'Oppdatert forside',
+                'native_url' => 'https://site-a.example.com/cp/collections/pages/entries/home',
             ]],
             'route_token' => $installation->routeToken,
             'conversation_token' => $conversationToken,

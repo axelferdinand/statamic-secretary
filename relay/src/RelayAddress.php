@@ -66,6 +66,26 @@ final class RelayAddress
         return $address;
     }
 
+    public function publicAddress(string $local): string
+    {
+        if (! PublicSiteAlias::valid($local)) {
+            throw new RelayRejected('Public relay alias is invalid.');
+        }
+
+        $address = $local.'@'.$this->domain();
+
+        if (filter_var($address, FILTER_VALIDATE_EMAIL) === false) {
+            throw new RelayRejected('Public relay address is invalid.');
+        }
+
+        return $address;
+    }
+
+    public function domain(): string
+    {
+        return explode('@', mb_strtolower($this->sharedAddress), 2)[1];
+    }
+
     private function taggedAddress(string $routeToken, string $conversationToken): string
     {
         [$local, $domain] = explode('@', mb_strtolower($this->sharedAddress), 2);

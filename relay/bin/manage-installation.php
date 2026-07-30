@@ -52,7 +52,10 @@ function publicInstallation(Installation $installation, RelayAddress $address): 
         'label' => $installation->label,
         'active' => $installation->active,
         'route_token' => $installation->routeToken,
-        'address' => $address->routeAddress($installation->routeToken),
+        'address' => $installation->publicAlias
+            ? $address->publicAddress($installation->publicAlias)
+            : $address->routeAddress($installation->routeToken),
+        'route_address' => $address->routeAddress($installation->routeToken),
         'webhook_url' => $installation->webhookUrl,
         'senders' => $installation->senders,
         'secret_rotation' => [

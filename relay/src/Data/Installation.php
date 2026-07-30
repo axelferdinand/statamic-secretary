@@ -3,6 +3,7 @@
 namespace AxelFerdinand\StatamicSecretaryRelay\Data;
 
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
+use AxelFerdinand\StatamicSecretaryRelay\PublicSiteAlias;
 
 final readonly class Installation
 {
@@ -24,6 +25,7 @@ final readonly class Installation
         public ?string $pendingRouteRotationId = null,
         public ?string $lastRouteRotationId = null,
         public ?int $routeRotationAvailableAt = null,
+        public ?string $publicAlias = null,
     ) {
         if (preg_match('/^si_[a-z0-9_-]{20,125}$/D', $id) !== 1
             || preg_match('/^r[a-z0-9]{25}$/D', $routeToken) !== 1
@@ -47,6 +49,7 @@ final readonly class Installation
             || ($lastRouteRotationId !== null
                 && ! self::validRouteRotationId($lastRouteRotationId))
             || ($routeRotationAvailableAt !== null && $routeRotationAvailableAt < 1)
+            || ($publicAlias !== null && ! PublicSiteAlias::valid($publicAlias))
             || ! self::validSenders($senders)) {
             throw new RelayRejected('Installation configuration is invalid.');
         }
@@ -103,6 +106,7 @@ final readonly class Installation
             null,
             $this->lastRouteRotationId,
             $this->routeRotationAvailableAt,
+            $this->publicAlias,
         );
     }
 

@@ -2,6 +2,7 @@
 
 use AxelFerdinand\StatamicSecretaryRelay\Bootstrap\RelayFactory;
 use AxelFerdinand\StatamicSecretaryRelay\Data\Installation;
+use AxelFerdinand\StatamicSecretaryRelay\PublicSiteAlias;
 use AxelFerdinand\StatamicSecretaryRelay\RelayAddress;
 use AxelFerdinand\StatamicSecretaryRelay\Tokens;
 
@@ -37,16 +38,19 @@ try {
         $senders,
         true,
         $label,
+        publicAlias: PublicSiteAlias::fromWebhookUrl($webhook),
     );
     $factory->store()->saveInstallation($installation);
     $sharedAddress = trim((string) getenv('RELAY_SHARED_ADDRESS')) ?: 'secretary@statamic.no';
-    $alias = (new RelayAddress($sharedAddress))->routeAddress($routeToken);
+    $address = new RelayAddress($sharedAddress);
+    $alias = $address->publicAddress($installation->publicAlias);
     $encodedSecret = rtrim(strtr(base64_encode($signingSecret), '+/', '-_'), '=');
     fwrite(STDOUT, json_encode([
         'installation_id' => $installation->id,
         'route_token' => $routeToken,
         'signing_secret' => $encodedSecret,
         'address' => $alias,
+        'route_address' => $address->routeAddress($routeToken),
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
     exit(0);
 } catch (Throwable $exception) {

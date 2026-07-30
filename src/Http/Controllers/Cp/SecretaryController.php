@@ -3,6 +3,10 @@
 namespace AxelFerdinand\StatamicSecretary\Http\Controllers\Cp;
 
 use AxelFerdinand\StatamicSecretary\Agent\ConversationService;
+use AxelFerdinand\StatamicSecretary\Content\ChangePreviewService;
+use AxelFerdinand\StatamicSecretary\Content\ChangeSetReviewService;
+use AxelFerdinand\StatamicSecretary\Diagnostics\DoctorReport;
+use AxelFerdinand\StatamicSecretary\Editorial\EditorialStyleGuide;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessCpMessage;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
@@ -11,6 +15,7 @@ use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
 use AxelFerdinand\StatamicSecretary\Relay\RelayPairingClient;
 use AxelFerdinand\StatamicSecretary\Support\PublicError;
 use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -30,6 +35,10 @@ final class SecretaryController extends CpController
         private readonly Dispatcher $bus,
         private readonly EmailConfiguration $email,
         private readonly RelayConfiguration $relay,
+        private readonly ChangeSetReviewService $reviews,
+        private readonly ChangePreviewService $previews,
+        private readonly EditorialStyleGuide $styleGuide,
+        private readonly DoctorReport $doctor,
     ) {}
 
     public function index(?Conversation $conversation = null): Response
@@ -80,12 +89,40 @@ final class SecretaryController extends CpController
                 'suggested_public_url' => $this->email->suggestedPublicUrl(),
             ],
             'success' => session('secretary_success'),
+            'style_guides' => [
+                'sites' => $this->styleGuide->all(),
+                'can_configure' => $user->can('configure secretary'),
+                'save_url' => cp_route('secretary.settings.editorial'),
+            ],
+            'diagnostics' => [
+                'checks' => $this->doctor->checks($this->email, $this->relay),
+                'can_configure' => $user->can('configure secretary'),
+            ],
+            'developer_mode' => (bool) config('secretary.developer.mode')
+                && $user->can('configure secretary'),
             'max_input_characters' => max(1, (int) config('secretary.limits.max_input_characters', 20000)),
             'endpoints' => [
                 'create' => cp_route('secretary.store'),
                 'home' => cp_route('secretary.index'),
             ],
         ]);
+    }
+
+    public function saveEditorialGuide(Request $request): RedirectResponse
+    {
+        $user = $this->user();
+        abort_unless($user->can('configure secretary'), 403);
+        $validated = $request->validate([
+            'site' => ['required', 'string', 'max:100'],
+            'audience' => ['nullable', 'string', 'max:1000'],
+            'voice' => ['nullable', 'string', 'max:2000'],
+            'terminology' => ['nullable', 'string', 'max:3000'],
+            'avoid' => ['nullable', 'string', 'max:3000'],
+        ]);
+
+        $this->styleGuide->update((string) $validated['site'], $validated);
+
+        return back()->with('secretary_success', 'Den redaksjonelle guiden er lagret.');
     }
 
     public function store(): RedirectResponse
@@ -286,10 +323,55 @@ final class SecretaryController extends CpController
         return redirect()->to(cp_route('secretary.show', $conversation));
     }
 
+    public function review(Request $request, Conversation $conversation, string $changeSet): JsonResponse
+    {
+        $user = $this->user();
+        $this->ensureCanUse($user);
+        $this->ensureOwnsConversation($conversation, $user);
+        $validated = $request->validate([
+            'target' => ['required', 'string', 'max:255'],
+            'decision' => ['required', 'string', 'in:pending,accepted,rejected'],
+        ]);
+        $change = $conversation->changeSets()->whereKey($changeSet)->firstOrFail();
+
+        try {
+            $this->reviews->decide($change, $validated['target'], $validated['decision'], $user);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => PublicError::message($exception, 'Secretary kunne ikke oppdatere feltvalget.'),
+            ], 422);
+        }
+
+        return response()->json([
+            'change' => $this->changePayload($change->fresh(), $conversation, $user),
+        ]);
+    }
+
+    public function preview(Conversation $conversation, string $changeSet): JsonResponse
+    {
+        $user = $this->user();
+        $this->ensureCanUse($user);
+        $this->ensureOwnsConversation($conversation, $user);
+        $change = $conversation->changeSets()->whereKey($changeSet)->firstOrFail();
+
+        try {
+            return response()->json($this->previews->urls($change, $user));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => PublicError::message($exception, 'Forhåndsvisningen kunne ikke åpnes.'),
+            ], 422);
+        }
+    }
+
     private function conversationPayload(Conversation $conversation, $user): array
     {
         $conversation->load(['messages', 'changeSets']);
         $latestInbound = $conversation->messages->where('direction', 'inbound')->last();
+        $pendingPosition = 0;
 
         return [
             'id' => $conversation->id,
@@ -300,34 +382,63 @@ final class SecretaryController extends CpController
                 ->contains(fn ($message): bool => $message->processed_at === null),
             'processing_error' => data_get($latestInbound?->metadata, 'processing_error'),
             'send_url' => cp_route('secretary.messages.store', $conversation),
-            'messages' => $conversation->messages->map(fn ($message): array => [
-                'id' => $message->id,
-                'role' => $message->role,
-                'channel' => $message->channel,
-                'body' => $message->body,
-                'pending' => $message->direction === 'inbound' && $message->processed_at === null,
-                'metadata' => $message->metadata ?: [],
-                'created_at' => $message->created_at?->toIso8601String(),
-            ])->values(),
-            'changes' => $conversation->changeSets->map(fn ($change): array => [
-                'id' => $change->id,
-                'status' => $change->status,
-                'operation' => $change->operation,
-                'resource_type' => $change->resource_type,
-                'entry_id' => $change->resource_id,
-                'collection' => $change->collection,
-                'site' => $change->site,
-                'slug' => $change->slug,
-                'summary' => $change->summary,
-                'patch' => $change->patch ?: [],
-                'before' => $change->before ?: null,
-                'after' => $change->after ?: null,
-                'failure' => $change->failure,
-                'native_url' => $this->nativeContentUrl($change, $user),
-                'publish_url' => cp_route('secretary.changes.publish', [$conversation, $change->id]),
-                'created_at' => $change->created_at?->toIso8601String(),
-            ])->values(),
+            'context' => $this->conversationContext($conversation),
+            'messages' => $conversation->messages->map(function ($message) use ($user, &$pendingPosition): array {
+                $pending = $message->direction === 'inbound' && $message->processed_at === null;
+                $payload = [
+                    'id' => $message->id,
+                    'role' => $message->role,
+                    'channel' => $message->channel,
+                    'body' => $message->body,
+                    'pending' => $pending,
+                    'queue_position' => $pending ? ++$pendingPosition : null,
+                    'metadata' => $message->metadata ?: [],
+                    'created_at' => $message->created_at?->toIso8601String(),
+                ];
+
+                if (! config('secretary.developer.mode') || ! $user->can('configure secretary')) {
+                    unset($payload['metadata']['developer_trace']);
+                }
+
+                return $payload;
+            })->values(),
+            'changes' => $conversation->changeSets->map(
+                fn ($change): array => $this->changePayload($change, $conversation, $user)
+            )->values(),
         ];
+    }
+
+    private function changePayload($change, Conversation $conversation, $user): array
+    {
+        return [
+            'id' => $change->id,
+            'status' => $change->status,
+            'operation' => $change->operation,
+            'resource_type' => $change->resource_type,
+            'entry_id' => $change->resource_id,
+            'collection' => $change->collection,
+            'site' => $change->site,
+            'slug' => $change->slug,
+            'summary' => $change->summary,
+            'patch' => $change->patch ?: [],
+            'before' => $change->before ?: null,
+            'after' => $change->after ?: null,
+            'failure' => $change->failure,
+            'native_url' => $this->nativeContentUrl($change, $user),
+            'preview_available' => $change->resource_type === 'entry' && $change->status === 'draft',
+            'preview_url' => cp_route('secretary.changes.preview', [$conversation, $change->id]),
+            'review' => $this->reviews->present($change),
+            'review_url' => cp_route('secretary.changes.review', [$conversation, $change->id]),
+            'publish_url' => cp_route('secretary.changes.publish', [$conversation, $change->id]),
+            'created_at' => $change->created_at?->toIso8601String(),
+        ];
+    }
+
+    private function conversationContext(Conversation $conversation): ?array
+    {
+        $context = data_get($conversation->context, 'cp_context');
+
+        return is_array($context) ? $context : null;
     }
 
     private function nativeContentUrl($change, $user): ?string

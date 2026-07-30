@@ -86,21 +86,63 @@ final class PostmarkMailTransport implements MailTransport
     private function textBody(OutboundReply $reply): string
     {
         $body = trim($reply->body);
+        $affectedChanges = array_values(array_filter(
+            $reply->changeSets,
+            fn (array $changeSet): bool => is_string($changeSet['public_url'] ?? null)
+                && is_string($changeSet['resource_title'] ?? null),
+        ));
+        $affectedChange = count($affectedChanges) === 1 ? $affectedChanges[0] : null;
 
-        if ($reply->changeSets !== []) {
-            $body .= "\n\nEndringer i denne meldingen:";
+        $body = $this->withAffectedPage($body, $affectedChange);
+
+        if (count($reply->changeSets) > 1
+            || (count($reply->changeSets) === 1 && $affectedChange === null)) {
+            $body .= "\n\nKlargjorte endringer:";
 
             foreach ($reply->changeSets as $changeSet) {
-                $status = $changeSet['status'] === 'published' ? 'publisert' : $changeSet['status'];
+                $status = $changeSet['status'] === 'published' ? 'publisert' : 'utkast';
                 $body .= "\n- {$changeSet['summary']} — {$status}";
             }
         }
 
+        $nativeChanges = array_values(array_filter(
+            $reply->changeSets,
+            fn (array $changeSet): bool => is_string($changeSet['native_url'] ?? null),
+        ));
+
+        if (count($nativeChanges) === 1) {
+            $nativeChange = $nativeChanges[0];
+            $label = $nativeChange['status'] === 'published'
+                ? 'Åpne siden i Statamic'
+                : 'Åpne utkastet i Statamic';
+            $body .= "\n\n{$label}:\n{$nativeChange['native_url']}";
+        }
+
         if ($reply->reviewUrl !== null) {
-            $body .= "\n\nSe samtale og utkast:\n{$reply->reviewUrl}";
+            $body .= "\n\nFortsett samtalen i Secretary:\n{$reply->reviewUrl}";
         }
 
         return $body."\n\nSvar på denne e-posten for å fortsette samme samtale.";
+    }
+
+    /** @param  array<string, mixed>|null  $affectedChange */
+    private function withAffectedPage(string $body, ?array $affectedChange): string
+    {
+        if (! $affectedChange) {
+            return $body;
+        }
+
+        $line = "Berørt side: {$affectedChange['resource_title']} — {$affectedChange['public_url']}";
+
+        if (preg_match('/^Status:\s*.+$/miu', $body, $status, PREG_OFFSET_CAPTURE) !== 1) {
+            return $body."\n\n".$line;
+        }
+
+        $offset = (int) $status[0][1];
+        $before = rtrim(substr($body, 0, $offset));
+        $after = ltrim(substr($body, $offset));
+
+        return $before."\n\n".$line."\n\n".$after;
     }
 
     private static function validEndpoint(string $url): bool

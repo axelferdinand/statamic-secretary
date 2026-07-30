@@ -31,4 +31,18 @@ final readonly class InboundMessage
             'rfc_message_id' => $this->rfcMessageId,
         ];
     }
+
+    public function authorizedForRegisteredSender(): self
+    {
+        return new self(
+            $this->providerMessageId,
+            $this->recipient,
+            $this->sender,
+            $this->body,
+            $this->subject,
+            true,
+            $this->spamScore,
+            $this->rfcMessageId,
+        );
+    }
 }

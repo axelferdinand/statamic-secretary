@@ -1,6 +1,9 @@
 <script setup>
 import { Head, Link, router, usePoll } from '@statamic/cms/inertia';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, getCurrentInstance, nextTick, onMounted, ref, watch } from 'vue';
+import ChangePreviewModal from '../components/ChangePreviewModal.vue';
+import ChangeReview from '../components/ChangeReview.vue';
+import DeveloperTrace from '../components/DeveloperTrace.vue';
 
 const props = defineProps({
     conversations: { type: Array, required: true },
@@ -10,16 +13,34 @@ const props = defineProps({
     email_enabled: { type: Boolean, required: true },
     email_setup: { type: Object, required: true },
     relay_setup: { type: Object, required: true },
+    style_guides: { type: Object, required: true },
+    diagnostics: { type: Object, required: true },
+    developer_mode: { type: Boolean, required: true },
     success: { type: String, default: null },
     max_input_characters: { type: Number, required: true },
     endpoints: { type: Object, required: true },
     errors: { type: Object, default: () => ({}) },
 });
 
+const axios = getCurrentInstance()?.proxy?.$axios;
 const message = ref('');
 const feed = ref(null);
 const busy = ref(false);
 const setupBusy = ref(false);
+const publishCandidate = ref(null);
+const reviewingTarget = ref(null);
+const previewOpen = ref(false);
+const previewLoading = ref(false);
+const previewData = ref(null);
+const previewError = ref(null);
+const guideBusy = ref(false);
+const guideSite = ref(props.style_guides.sites?.[0]?.handle ?? '');
+const guideForm = ref({
+    audience: '',
+    voice: '',
+    terminology: '',
+    avoid: '',
+});
 const emailConnected = computed(() => props.email_setup.connected || props.relay_setup.connected);
 const showSetup = ref(!emailConnected.value);
 const setupMode = ref(props.relay_setup.connected || (!props.email_setup.token_configured && props.relay_setup.pairing_available)
@@ -33,7 +54,8 @@ const relayEmail = ref(props.relay_setup.pending_sender
     ?? props.relay_setup.suggested_sender
     ?? '');
 const relayPublicUrl = ref(props.relay_setup.suggested_public_url ?? '');
-const error = computed(() => props.errors?.secretary ?? null);
+const actionError = ref(null);
+const error = computed(() => props.errors?.secretary ?? actionError.value ?? null);
 const setupError = computed(() => props.errors?.relay_setup
     ?? props.errors?.pairing_code
     ?? props.errors?.relay_email
@@ -42,6 +64,42 @@ const setupError = computed(() => props.errors?.relay_setup
     ?? props.errors?.public_url
     ?? null);
 const processing = computed(() => props.conversation?.processing === true);
+const diagnosticSummary = computed(() => {
+    const checks = props.diagnostics.checks ?? [];
+    const blockers = checks.filter(check => check.required && !check.passed).length;
+    const warnings = checks.filter(check => !check.required && !check.passed).length;
+
+    return { blockers, warnings, ready: blockers === 0 };
+});
+const promptSuggestions = computed(() => {
+    const field = props.conversation?.context?.field;
+
+    if (field?.type === 'bard' || field?.type === 'replicator') {
+        return [
+            `Forbedre teksten i ${field.set_type ? `${field.set_type}-modulen` : field.display}.`,
+            'Gjør denne modulen kortere uten å endre resten av siden.',
+            'Foreslå en bedre rekkefølge på innholdsmodulene.',
+        ];
+    }
+
+    if (field) {
+        return [
+            `Gjør feltet «${field.display}» tydeligere.`,
+            `Korrekturles bare «${field.display}».`,
+            `Lag tre alternative forslag til «${field.display}».`,
+        ];
+    }
+
+    return props.conversation?.context ? [
+        'Gjør ingressen tydeligere og kortere.',
+        'Finn språklige feil på denne siden.',
+        'Lag et bedre forslag til sidetittel.',
+    ] : [
+    'Gjør ingressen på forsiden tydeligere.',
+    'Finn siden «Om oss» og foreslå en bedre tittel.',
+    'Lag et utkast til en ny kontaktside.',
+    ];
+});
 const { start: startPolling, stop: stopPolling } = usePoll(2000, {
     only: ['conversation', 'conversations'],
     preserveScroll: true,
@@ -97,7 +155,7 @@ function requestRelayCode() {
 }
 
 function send() {
-    if (!props.conversation || !message.value.trim() || busy.value || processing.value || !props.configured) return;
+    if (!props.conversation || !message.value.trim() || busy.value || !props.configured) return;
 
     router.post(props.conversation.send_url, { message: message.value.trim() }, {
         preserveScroll: true,
@@ -107,14 +165,100 @@ function send() {
     });
 }
 
-function publish(change) {
+function requestPublish(change) {
     if (!props.can_publish || change.status !== 'draft' || busy.value || processing.value) return;
+
+    publishCandidate.value = change;
+}
+
+function publish() {
+    const change = publishCandidate.value;
+
+    if (!change || !props.can_publish || change.status !== 'draft' || busy.value || processing.value) return;
 
     router.post(change.publish_url, {}, {
         preserveScroll: true,
         onStart: () => busy.value = true,
+        onSuccess: () => publishCandidate.value = null,
         onFinish: () => busy.value = false,
     });
+}
+
+function responseError(exception, fallback) {
+    return exception?.response?.data?.message
+        ?? Object.values(exception?.response?.data?.errors ?? {}).flat()[0]
+        ?? fallback;
+}
+
+async function review(change, target, decision) {
+    if (!axios || !change?.review_url || reviewingTarget.value || processing.value) return;
+
+    reviewingTarget.value = target.key;
+    actionError.value = null;
+
+    try {
+        const response = await axios.post(change.review_url, {
+            target: target.key,
+            decision,
+        });
+        Object.assign(change, response.data.change);
+    } catch (exception) {
+        actionError.value = responseError(exception, 'Secretary kunne ikke oppdatere feltvalget.');
+    } finally {
+        reviewingTarget.value = null;
+    }
+}
+
+async function openPreview(change) {
+    if (!axios || !change?.preview_url || previewLoading.value) return;
+
+    previewOpen.value = true;
+    previewLoading.value = true;
+    previewData.value = null;
+    previewError.value = null;
+
+    try {
+        const response = await axios.get(change.preview_url);
+        previewData.value = response.data;
+    } catch (exception) {
+        previewError.value = responseError(exception, 'Forhåndsvisningen kunne ikke åpnes.');
+    } finally {
+        previewLoading.value = false;
+    }
+}
+
+function closePreview() {
+    previewOpen.value = false;
+    previewData.value = null;
+    previewError.value = null;
+}
+
+function loadGuide() {
+    const site = props.style_guides.sites?.find(item => item.handle === guideSite.value);
+    guideForm.value = {
+        audience: site?.guide?.audience ?? '',
+        voice: site?.guide?.voice ?? '',
+        terminology: site?.guide?.terminology ?? '',
+        avoid: site?.guide?.avoid ?? '',
+    };
+}
+
+function saveGuide() {
+    if (!props.style_guides.can_configure || !guideSite.value || guideBusy.value) return;
+
+    router.post(props.style_guides.save_url, {
+        site: guideSite.value,
+        ...guideForm.value,
+    }, {
+        preserveScroll: true,
+        onStart: () => guideBusy.value = true,
+        onFinish: () => guideBusy.value = false,
+    });
+}
+
+function useSuggestion(suggestion) {
+    message.value = suggestion;
+    nextTick(() => document.getElementById('secretary-message')?.focus());
 }
 
 function onComposerKeydown(event) {
@@ -129,7 +273,12 @@ function statusVariant(status) {
 }
 
 function statusLabel(status) {
-    return ({ proposed: 'Foreslått', draft: 'Utkast', published: 'Publisert', failed: 'Feilet' })[status] ?? status;
+    return ({
+        proposed: 'Foreslått',
+        draft: 'Klar som utkast',
+        published: 'Publisert',
+        failed: 'Kunne ikke lagres',
+    })[status] ?? status;
 }
 
 function changedFields(change) {
@@ -139,11 +288,54 @@ function changedFields(change) {
 }
 
 function resourceLabel(type) {
-    return ({ entry: 'Side/innlegg', term: 'Taksonomibegrep', global: 'Globalt innhold', navigation: 'Navigasjon' })[type] ?? type;
+    return ({
+        entry: 'Side eller innlegg',
+        term: 'Taksonomibegrep',
+        global: 'Globalt innhold',
+        navigation: 'Navigasjon',
+    })[type] ?? type;
 }
 
 function channelLabel(channel) {
-    return channel === 'email' ? 'E-post' : 'CP';
+    return channel === 'email' ? 'E-post' : 'Kontrollpanel';
+}
+
+function fieldLabel(handle) {
+    const known = {
+        title: 'Tittel',
+        content: 'Innhold',
+        intro: 'Ingress',
+        description: 'Beskrivelse',
+        bard: 'Innhold',
+        slug: 'URL-segment',
+    };
+
+    if (known[handle]) return known[handle];
+
+    const label = String(handle).replaceAll('_', ' ');
+
+    return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function relativeTime(value) {
+    if (!value) return '';
+
+    const date = new Date(value);
+    const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+    const formatter = new Intl.RelativeTimeFormat('nb', { numeric: 'auto' });
+    const units = [
+        ['day', 86400],
+        ['hour', 3600],
+        ['minute', 60],
+    ];
+
+    for (const [unit, size] of units) {
+        if (Math.abs(seconds) >= size || unit === 'minute') {
+            return formatter.format(Math.round(seconds / size), unit);
+        }
+    }
+
+    return '';
 }
 
 function nodeCount(branches = []) {
@@ -193,6 +385,7 @@ onMounted(() => {
     pollingMounted = true;
     scrollToLatest();
     syncPolling();
+    loadGuide();
 });
 watch(() => props.conversation?.messages?.length, scrollToLatest);
 watch(processing, syncPolling);
@@ -202,6 +395,7 @@ watch(() => props.email_setup.connected, connected => {
 watch(() => props.relay_setup.connected, connected => {
     if (connected) showSetup.value = false;
 });
+watch(guideSite, loadGuide);
 </script>
 
 <template>
@@ -209,10 +403,10 @@ watch(() => props.relay_setup.connected, connected => {
 
     <ui-header title="Secretary">
         <template #description>
-            Be om innholdsendringer på vanlig norsk. Secretary klargjør utkast; du bestemmer når de publiseres.
+            Be om en endring. Secretary gjør grunnarbeidet; du ser over og publiserer.
         </template>
         <template #actions>
-            <ui-button icon="plus" :disabled="busy" @click="newConversation">
+            <ui-button icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
                 Ny samtale
             </ui-button>
         </template>
@@ -498,6 +692,128 @@ watch(() => props.relay_setup.connected, connected => {
             text="En administrator med «configure secretary» må koble til e-post."
         />
 
+        <div class="grid gap-4 xl:grid-cols-2">
+            <ui-panel class="overflow-hidden">
+                <details class="secretary-tools-panel">
+                    <summary>
+                        <span class="secretary-tools-panel-icon"><ui-icon name="edit" aria-hidden="true" /></span>
+                        <span class="min-w-0 flex-1">
+                            <strong>Redaksjonell guide</strong>
+                            <small>Fast tone, målgruppe og terminologi per nettsted</small>
+                        </span>
+                        <ui-badge variant="default">{{ style_guides.sites.length }} {{ style_guides.sites.length === 1 ? 'nettsted' : 'nettsteder' }}</ui-badge>
+                        <ui-icon name="chevron-down" class="secretary-tools-chevron size-4" aria-hidden="true" />
+                    </summary>
+
+                    <form class="secretary-tools-panel-content space-y-4" @submit.prevent="saveGuide">
+                        <div>
+                            <label for="secretary-guide-site" class="mb-1.5 block text-sm font-semibold">Nettsted</label>
+                            <select id="secretary-guide-site" v-model="guideSite" class="input-text w-full" :disabled="guideBusy">
+                                <option v-for="site in style_guides.sites" :key="site.handle" :value="site.handle">
+                                    {{ site.name }} · {{ site.handle }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="grid gap-4 md:grid-cols-2">
+                            <div>
+                                <label for="secretary-guide-audience" class="mb-1.5 block text-sm font-semibold">Målgruppe</label>
+                                <textarea
+                                    id="secretary-guide-audience"
+                                    v-model="guideForm.audience"
+                                    class="input-text min-h-24 w-full resize-y"
+                                    maxlength="1000"
+                                    placeholder="Hvem skriver nettstedet for?"
+                                    :readonly="!style_guides.can_configure"
+                                />
+                            </div>
+                            <div>
+                                <label for="secretary-guide-voice" class="mb-1.5 block text-sm font-semibold">Stemme og tone</label>
+                                <textarea
+                                    id="secretary-guide-voice"
+                                    v-model="guideForm.voice"
+                                    class="input-text min-h-24 w-full resize-y"
+                                    maxlength="2000"
+                                    placeholder="For eksempel: varm, tydelig og direkte."
+                                    :readonly="!style_guides.can_configure"
+                                />
+                            </div>
+                            <div>
+                                <label for="secretary-guide-terminology" class="mb-1.5 block text-sm font-semibold">Foretrukne ord</label>
+                                <textarea
+                                    id="secretary-guide-terminology"
+                                    v-model="guideForm.terminology"
+                                    class="input-text min-h-24 w-full resize-y"
+                                    maxlength="3000"
+                                    placeholder="Produktnavn, skrivemåter og faguttrykk."
+                                    :readonly="!style_guides.can_configure"
+                                />
+                            </div>
+                            <div>
+                                <label for="secretary-guide-avoid" class="mb-1.5 block text-sm font-semibold">Unngå</label>
+                                <textarea
+                                    id="secretary-guide-avoid"
+                                    v-model="guideForm.avoid"
+                                    class="input-text min-h-24 w-full resize-y"
+                                    maxlength="3000"
+                                    placeholder="Klisjeer, sjargong eller formuleringer Secretary ikke skal bruke."
+                                    :readonly="!style_guides.can_configure"
+                                />
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                                Config-verdier er standard; CP-verdier overstyrer dem for dette nettstedet.
+                            </p>
+                            <ui-button
+                                v-if="style_guides.can_configure"
+                                type="submit"
+                                size="sm"
+                                :loading="guideBusy"
+                                :disabled="guideBusy || !guideSite"
+                            >
+                                Lagre guide
+                            </ui-button>
+                        </div>
+                    </form>
+                </details>
+            </ui-panel>
+
+            <ui-panel class="overflow-hidden">
+                <details class="secretary-tools-panel">
+                    <summary>
+                        <span class="secretary-tools-panel-icon"><ui-icon name="dashboard" aria-hidden="true" /></span>
+                        <span class="min-w-0 flex-1">
+                            <strong>Systemstatus</strong>
+                            <small>Samme kontroller som <code>secretary:doctor</code></small>
+                        </span>
+                        <ui-badge :variant="diagnosticSummary.ready ? (diagnosticSummary.warnings ? 'warning' : 'success') : 'error'">
+                            {{ diagnosticSummary.ready ? (diagnosticSummary.warnings ? `${diagnosticSummary.warnings} varsler` : 'Alt klart') : `${diagnosticSummary.blockers} feil` }}
+                        </ui-badge>
+                        <ui-icon name="chevron-down" class="secretary-tools-chevron size-4" aria-hidden="true" />
+                    </summary>
+
+                    <div class="secretary-tools-panel-content">
+                        <ul class="secretary-diagnostics">
+                            <li v-for="check in diagnostics.checks" :key="check.key">
+                                <span class="secretary-diagnostic-icon" :class="check.passed ? 'is-ok' : check.required ? 'is-error' : 'is-warning'">
+                                    <ui-icon :name="check.passed ? 'checkmark' : check.required ? 'x' : 'warning-diamond'" aria-hidden="true" />
+                                </span>
+                                <span class="min-w-0 flex-1">
+                                    <strong>{{ check.label }}</strong>
+                                    <small>{{ check.passed ? check.success_details : check.details }}</small>
+                                </span>
+                            </li>
+                        </ul>
+                        <p class="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                            CLI: <code>php please secretary:doctor --json</code>
+                        </p>
+                    </div>
+                </details>
+            </ui-panel>
+        </div>
+
         <ui-alert
             v-if="error"
             variant="error"
@@ -505,101 +821,169 @@ watch(() => props.relay_setup.connected, connected => {
             :text="error"
         />
 
-        <div class="grid min-h-[36rem] gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <div class="secretary-workspace grid min-h-[38rem] gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
             <ui-panel class="h-fit overflow-hidden lg:sticky lg:top-4">
-                <div class="border-b px-4 py-3 dark:border-gray-700">
-                    <div class="text-sm font-semibold">Samtaler</div>
-                    <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {{ email_enabled ? 'CP og e-post er tilgjengelig' : 'Kontrollpanelet er aktivt' }}
+                <div class="border-b px-4 py-3.5 dark:border-gray-700">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="text-sm font-semibold">Samtaler</div>
+                        <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ conversations.length }}</span>
+                    </div>
+                    <div class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                        {{ email_enabled ? 'Samme historikk i kontrollpanelet og på e-post.' : 'Chat i kontrollpanelet er klar.' }}
                     </div>
                 </div>
 
-                <nav class="flex max-w-full gap-2 overflow-x-auto p-2 lg:block lg:max-h-[31rem] lg:space-y-1" aria-label="Secretary-samtaler">
+                <nav class="secretary-conversation-list flex max-w-full gap-2 overflow-x-auto p-2 lg:block lg:max-h-[34rem] lg:space-y-1" aria-label="Secretary-samtaler">
                     <Link
                         v-for="item in conversations"
                         :key="item.id"
                         :href="item.url"
-                        class="block min-w-56 rounded-lg px-3 py-2 text-sm transition lg:min-w-0"
-                        :class="item.id === conversation?.id
-                            ? 'bg-gray-100 font-semibold text-gray-950 dark:bg-gray-700 dark:text-white'
-                            : 'text-gray-700 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 dark:text-gray-200 dark:hover:bg-gray-800'"
+                        class="secretary-conversation-link block min-w-64 rounded-lg px-3 py-2.5 text-sm transition lg:min-w-0"
+                        :class="{ 'is-active': item.id === conversation?.id }"
                     >
-                        <span class="flex items-start justify-between gap-2">
-                            <span class="line-clamp-2 min-w-0">{{ item.title }}</span>
-                            <span class="shrink-0 text-[0.6875rem] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                                {{ channelLabel(item.channel) }}
-                            </span>
+                        <span class="line-clamp-2 min-w-0 font-semibold leading-5">{{ item.title }}</span>
+                        <span class="mt-1 flex items-center gap-1.5 text-[0.6875rem] text-gray-500 dark:text-gray-400">
+                            <span>{{ channelLabel(item.channel) }}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{{ relativeTime(item.updated_at) }}</span>
                         </span>
                     </Link>
 
-                    <div v-if="!conversations.length" class="px-3 py-5 text-sm text-gray-500">
+                    <div v-if="!conversations.length" class="px-3 py-6 text-center text-sm text-gray-500">
                         Ingen samtaler ennå.
                     </div>
                 </nav>
             </ui-panel>
 
-            <ui-panel class="flex min-w-0 flex-col overflow-hidden" :aria-busy="busy || processing">
+            <ui-panel class="secretary-main-panel flex min-w-0 flex-col overflow-hidden" :aria-busy="busy || processing">
                 <template v-if="conversation">
-                    <div class="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 dark:border-gray-700">
+                    <header class="secretary-main-header">
                         <div class="min-w-0">
                             <h2 class="truncate text-base font-bold">{{ conversation.title }}</h2>
-                            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                                {{ conversation.channel === 'email' ? 'E-postsamtale · ' : '' }}Endringer klargjøres uten å påvirke publisert innhold.
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                {{ channelLabel(conversation.channel) }} · Publisert innhold endres først når du godkjenner.
                             </p>
                         </div>
-                        <ui-badge :variant="processing ? 'warning' : 'default'">
-                            {{ processing ? 'Secretary arbeider …' : `${conversation.messages.length} meldinger` }}
-                        </ui-badge>
-                    </div>
+                        <span
+                            class="secretary-status-pill"
+                            :class="processing ? 'is-processing' : 'is-ready'"
+                        >
+                            <span class="secretary-status-dot" aria-hidden="true" />
+                            {{ processing ? 'Secretary jobber' : 'Klar' }}
+                        </span>
+                    </header>
+
+                    <Link
+                        v-if="conversation.context?.edit_url"
+                        :href="conversation.context.edit_url"
+                        class="secretary-context-bar"
+                    >
+                        <ui-icon name="entry" class="size-4 shrink-0" aria-hidden="true" />
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-[0.6875rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Denne samtalen gjelder</span>
+                            <span class="block truncate text-sm font-semibold">
+                                {{ conversation.context.title }}
+                                <span v-if="conversation.context.uri" class="font-normal text-gray-500 dark:text-gray-400">· {{ conversation.context.uri }}</span>
+                            </span>
+                            <span v-if="conversation.context.field" class="block truncate text-xs text-gray-500 dark:text-gray-400">
+                                Aktivt felt: {{ conversation.context.field.display }}
+                                <template v-if="conversation.context.field.set_type"> · {{ conversation.context.field.set_type }}</template>
+                            </span>
+                        </span>
+                        <ui-icon name="arrow-up-right" class="size-4 shrink-0 text-gray-400" aria-hidden="true" />
+                    </Link>
 
                     <ui-alert
                         v-if="conversation.processing_error"
                         class="m-4 mb-0"
                         variant="error"
-                        heading="Behandlingen stoppet"
+                        heading="Secretary stoppet underveis"
                         :text="conversation.processing_error"
                     />
 
-                    <div ref="feed" class="secretary-scrollbar flex-1 space-y-5 overflow-y-auto px-4 py-6 sm:px-6" aria-live="polite">
-                        <div v-if="!conversation.messages.length" class="mx-auto max-w-lg py-12 text-center">
-                            <div class="text-base font-bold">Hva vil du endre?</div>
-                            <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                                Prøv for eksempel: «Endre ingressen på Om oss-siden til …» eller «Lag en ny kladd i sider-samlingen».
+                    <div ref="feed" class="secretary-scrollbar flex-1 space-y-6 overflow-y-auto px-4 py-6 sm:px-6" role="log" aria-label="Secretary-samtale">
+                        <div v-if="!conversation.messages.length" class="mx-auto max-w-xl py-10 text-center">
+                            <div class="secretary-empty-icon mx-auto">
+                                <ui-icon name="ai-chat-spark" aria-hidden="true" />
+                            </div>
+                            <div class="mt-4 text-base font-bold">Hva skal vi fikse?</div>
+                            <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
+                                Skriv som du ville gjort til en kollega. Secretary leser innholdsstrukturen og eksisterende innhold før den lager et utkast.
                             </p>
+                            <div class="mx-auto mt-6 grid max-w-lg gap-2 text-left">
+                                <button
+                                    v-for="suggestion in promptSuggestions"
+                                    :key="suggestion"
+                                    type="button"
+                                    class="secretary-prompt-suggestion"
+                                    @click="useSuggestion(suggestion)"
+                                >
+                                    <span>{{ suggestion }}</span>
+                                    <ui-icon name="arrow-right" class="size-4 shrink-0" aria-hidden="true" />
+                                </button>
+                            </div>
                         </div>
 
                         <article
                             v-for="item in conversation.messages"
                             :key="item.id"
-                            class="flex"
-                            :class="item.role === 'user' ? 'justify-end' : 'justify-start'"
+                            class="secretary-message-row"
+                            :class="{ 'is-user': item.role === 'user' }"
                         >
-                            <div
-                                class="secretary-message max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm sm:max-w-[75%]"
-                                :class="item.role === 'user'
-                                    ? 'rounded-br-md bg-blue-600 text-white'
-                                    : 'rounded-bl-md border bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100'"
-                            >
-                                <div v-if="item.channel === 'email'" class="mb-1 text-[0.6875rem] font-semibold uppercase tracking-wide opacity-60">E-post</div>
-                                {{ item.body }}
-                                <div v-if="item.pending" class="mt-1 text-xs font-medium opacity-70">Behandles …</div>
+                            <div v-if="item.role !== 'user'" class="secretary-assistant-mark" aria-hidden="true">
+                                <ui-icon name="ai-spark" />
+                            </div>
+                            <div class="min-w-0" :class="item.role === 'user' ? 'max-w-[82%] sm:max-w-[72%]' : 'max-w-[88%] sm:max-w-[78%]'">
+                                <div v-if="item.role !== 'user'" class="mb-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                    Secretary
+                                    <span v-if="item.channel === 'email'" class="font-normal">· via e-post</span>
+                                </div>
+                                <div
+                                    class="secretary-message rounded-xl px-4 py-3 text-sm leading-6"
+                                    :class="item.role === 'user'
+                                        ? 'rounded-br-sm bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-950'
+                                        : 'rounded-bl-sm border bg-white text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100'"
+                                >
+                                    {{ item.body }}
+                                    <div v-if="item.pending" class="mt-2 flex items-center gap-2 text-xs font-semibold opacity-70">
+                                        <span class="secretary-working-dots" aria-hidden="true"><i /><i /><i /></span>
+                                        {{ item.queue_position > 1 ? `I kø · nummer ${item.queue_position}` : 'Sendt til Secretary' }}
+                                    </div>
+                                    <DeveloperTrace
+                                        v-if="developer_mode && item.metadata?.developer_trace"
+                                        :trace="item.metadata.developer_trace"
+                                    />
+                                </div>
                             </div>
                         </article>
 
-                        <section v-if="conversation.changes.length" class="space-y-3" aria-label="Secretary-endringer">
-                            <h3 class="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Endringer</h3>
+                        <div v-if="processing" class="secretary-processing-card" role="status">
+                            <span class="secretary-working-dots" aria-hidden="true"><i /><i /><i /></span>
+                            <span>
+                                <strong>Secretary jobber.</strong>
+                                Leser innhold, kontrollerer feltene og klargjør et trygt utkast.
+                            </span>
+                        </div>
 
-                            <div
+                        <section v-if="conversation.changes.length" class="space-y-3 pt-2" aria-label="Secretary-endringer">
+                            <div>
+                                <h3 class="text-sm font-bold">
+                                    {{ conversation.changes.length === 1 ? 'Klargjort endring' : `${conversation.changes.length} klargjorte endringer` }}
+                                </h3>
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Kontroller detaljene. Publiser bare når du er fornøyd.</p>
+                            </div>
+
+                            <article
                                 v-for="change in conversation.changes"
                                 :key="change.id"
-                                class="rounded-xl border bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40"
+                                class="secretary-change-card p-4 sm:p-5"
                             >
                                 <div class="flex flex-wrap items-start justify-between gap-3">
                                     <div class="min-w-0">
                                         <div class="break-words font-semibold">{{ change.summary || `${change.operation} ${change.slug || change.entry_id}` }}</div>
-                                        <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        <div class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                                             {{ resourceLabel(change.resource_type) }} · {{ change.collection }} · {{ change.site }}
-                                            <span v-if="changedFields(change).length"> · {{ changedFields(change).join(', ') }}</span>
+                                            <span v-if="changedFields(change).length"> · {{ changedFields(change).map(fieldLabel).join(', ') }}</span>
                                         </div>
                                     </div>
                                     <ui-badge :variant="statusVariant(change.status)">{{ statusLabel(change.status) }}</ui-badge>
@@ -607,9 +991,9 @@ watch(() => props.relay_setup.connected, connected => {
 
                                 <p v-if="change.failure" class="mt-3 text-sm text-red-700 dark:text-red-300">{{ change.failure }}</p>
 
-                                <details v-if="changeValues(change).length" class="mt-4 rounded-lg border bg-white dark:border-gray-700 dark:bg-gray-800">
-                                    <summary class="cursor-pointer px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2">
-                                        Se før og etter
+                                <details v-if="changeValues(change).length" class="secretary-diff mt-4">
+                                    <summary class="cursor-pointer px-3 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2">
+                                        Se hva som ble endret
                                     </summary>
                                     <dl class="space-y-4 border-t p-3 dark:border-gray-700">
                                         <div v-for="item in changeValues(change)" :key="item.field" class="min-w-0">
@@ -628,36 +1012,69 @@ watch(() => props.relay_setup.connected, connected => {
                                     </dl>
                                 </details>
 
-                                <div v-if="change.native_url || (change.status === 'draft' && can_publish)" class="mt-4 flex flex-wrap items-center gap-3 border-t pt-3 dark:border-gray-700">
-                                    <Link v-if="change.native_url" :href="change.native_url" class="text-sm font-semibold text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 dark:text-blue-300">
-                                        Åpne i Statamic
-                                    </Link>
-                                    <ui-button v-if="change.status === 'draft' && can_publish" variant="primary" size="sm" :disabled="busy || processing" @click="publish(change)">
+                                <ChangeReview
+                                    :change="change"
+                                    :busy-target="reviewingTarget"
+                                    @decide="(target, decision) => review(change, target, decision)"
+                                />
+
+                                <div v-if="change.native_url || change.preview_available || (change.status === 'draft' && can_publish)" class="mt-4 flex flex-wrap items-center gap-2 border-t pt-4 dark:border-gray-700">
+                                    <ui-button
+                                        v-if="change.native_url"
+                                        :href="change.native_url"
+                                        icon="entry"
+                                        size="sm"
+                                    >
+                                        {{ change.status === 'draft' ? 'Åpne utkast' : 'Åpne i Statamic' }}
+                                    </ui-button>
+                                    <ui-button
+                                        v-if="change.preview_available"
+                                        icon="eye"
+                                        size="sm"
+                                        variant="default"
+                                        :disabled="previewLoading"
+                                        @click="openPreview(change)"
+                                    >
+                                        Sammenlign live og utkast
+                                    </ui-button>
+                                    <ui-button
+                                        v-if="change.status === 'draft' && can_publish"
+                                        variant="primary"
+                                        size="sm"
+                                        :disabled="busy || processing"
+                                        @click="requestPublish(change)"
+                                    >
                                         Publiser
                                     </ui-button>
                                 </div>
-                            </div>
+                            </article>
                         </section>
                     </div>
 
-                    <form class="border-t bg-white p-4 dark:border-gray-700 dark:bg-gray-800 sm:p-5" @submit.prevent="send">
+                    <form class="secretary-composer p-4 sm:p-5" @submit.prevent="send">
                         <label for="secretary-message" class="sr-only">Melding til Secretary</label>
                         <textarea
                             id="secretary-message"
                             v-model="message"
                             rows="3"
-                            class="input-text w-full resize-y"
-                            placeholder="Beskriv endringen du ønsker …"
+                            class="input-text secretary-composer-input w-full resize-y"
+                            placeholder="Be Secretary om en endring …"
                             :maxlength="max_input_characters"
-                            :disabled="busy || processing || !configured"
+                            :disabled="busy || !configured"
                             @keydown="onComposerKeydown"
                         />
                         <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
                             <span class="text-xs text-gray-500 dark:text-gray-400">
-                                ⌘/Ctrl + Enter · {{ message.length }}/{{ max_input_characters }} tegn
+                                <template v-if="message.length > max_input_characters * 0.8">{{ message.length }}/{{ max_input_characters }} · </template>
+                                ⌘/Ctrl + Enter
                             </span>
-                            <ui-button variant="primary" type="submit" :disabled="busy || processing || !configured || !message.trim()">
-                                {{ busy || processing ? 'Arbeider …' : 'Send til Secretary' }}
+                            <ui-button
+                                variant="primary"
+                                type="submit"
+                                :loading="busy && !publishCandidate"
+                                :disabled="busy || !configured || !message.trim()"
+                            >
+                                {{ processing ? 'Sett i kø' : 'Send' }}
                             </ui-button>
                         </div>
                     </form>
@@ -665,16 +1082,45 @@ watch(() => props.relay_setup.connected, connected => {
 
                 <div v-else class="grid flex-1 place-items-center px-6 py-20 text-center">
                     <div class="max-w-md">
-                        <h2 class="text-lg font-bold">Start en samtale</h2>
+                        <div class="secretary-empty-icon mx-auto">
+                            <ui-icon name="ai-chat-spark" aria-hidden="true" />
+                        </div>
+                        <h2 class="mt-4 text-lg font-bold">Secretary er klar</h2>
                         <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                            Secretary undersøker nettstedets faktiske collections, innholdskilder og blueprints før den klargjør noe.
+                            Start med en helt vanlig beskjed. Secretary undersøker nettstedets faktiske struktur før noe klargjøres.
                         </p>
-                        <ui-button class="mt-5" variant="primary" :disabled="busy" @click="newConversation">
-                            Ny samtale
+                        <ui-button class="mt-5" variant="primary" icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
+                            Start en samtale
                         </ui-button>
                     </div>
                 </div>
             </ui-panel>
         </div>
     </div>
+
+    <ui-modal
+        :open="Boolean(publishCandidate)"
+        title="Publisere denne endringen?"
+        icon="checkmark"
+        @update:open="value => { if (!value && !busy) publishCandidate = null }"
+    >
+        <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
+            <strong class="text-gray-950 dark:text-white">{{ publishCandidate?.summary }}</strong>
+            blir synlig på nettstedet. Dette er den eneste handlingen her som påvirker publisert innhold.
+        </p>
+        <template #footer>
+            <div class="flex w-full justify-end gap-2">
+                <ui-button variant="ghost" :disabled="busy" @click="publishCandidate = null">Ikke ennå</ui-button>
+                <ui-button variant="primary" :loading="busy" :disabled="busy" @click="publish">Ja, publiser</ui-button>
+            </div>
+        </template>
+    </ui-modal>
+
+    <ChangePreviewModal
+        :open="previewOpen"
+        :preview="previewData"
+        :loading="previewLoading"
+        :error="previewError"
+        @close="closePreview"
+    />
 </template>

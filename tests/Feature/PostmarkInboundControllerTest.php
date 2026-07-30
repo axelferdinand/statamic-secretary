@@ -481,15 +481,78 @@ class PostmarkInboundControllerTest extends TestCase
         $this->assertSame('Utkastet er klart.', $conversation->messages()->where('role', 'assistant')->first()->body);
         Mail::assertSent(SecretaryReply::class, function (SecretaryReply $mail) use ($conversation): bool {
             $mail->assertSeeInText('Utkastet er klart.')
-                ->assertSeeInText('Se samtale og utkast:');
+                ->assertSeeInText('Åpne samtalen i Secretary:');
             $headers = $mail->headers();
 
             return $mail->envelope()->replyTo[0]->address === 'secretary+'.$conversation->id.'@example.test'
                 && $mail->envelope()->subject === 'Re: Forsiden med ny tittel'
                 && $headers->references === ['<original-message@example.com>']
                 && $headers->text['In-Reply-To'] === '<original-message@example.com>'
-                && str_contains($mail->render(), 'Se samtale og utkast');
+                && str_contains($mail->render(), 'Åpne samtalen i Secretary');
         });
+    }
+
+    public function test_the_email_reply_links_directly_to_a_single_entry_draft(): void
+    {
+        config()->set('secretary.email.address', 'secretary@example.test');
+        config()->set('secretary.email.from_address', 'secretary@example.test');
+        $collection = Collection::make('pages')
+            ->title('Pages')
+            ->routes('/{slug}')
+            ->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()
+            ->id('home')
+            ->collection($collection)
+            ->slug('home')
+            ->published(true)
+            ->data(['title' => 'Før'])
+            ->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = app(ConversationService::class)->start(
+            'email',
+            $user,
+            'editor@example.com',
+            'draft-link-thread',
+        );
+        $changes = app(EntryChangeService::class);
+        $draft = $changes->proposeUpdate(
+            $conversation,
+            'home',
+            ['title' => 'Etter'],
+            'Endret tittel',
+        );
+        $changes->applyDraft($draft, $user);
+        $reply = $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'email',
+            'role' => 'assistant',
+            'body' => "Tittelen på forsiden er endret fra «Før» til «Etter».\n\nBerørt side: Forsiden (`/`)\nStatus: Klar som utkast – ikke publisert.",
+            'metadata' => ['change_set_ids' => [$draft->id]],
+            'processed_at' => now(),
+        ]);
+        $mail = new SecretaryReply($conversation, $reply);
+        $draftUrl = Entry::find('home')->editUrl();
+        $publicUrl = Entry::find('home')->absoluteUrl();
+        $conversationUrl = $draftUrl.'?secretary='.$conversation->id;
+
+        $mail->assertSeeInText('Åpne utkastet i Statamic:')
+            ->assertSeeInText($conversationUrl)
+            ->assertSeeInText('Berørt side: Forsiden — '.$publicUrl)
+            ->assertDontSeeInText('Fortsett samtalen i Secretary:')
+            ->assertDontSeeInText('Endringer i denne meldingen')
+            ->assertDontSeeInText('Klargjorte endringer')
+            ->assertDontSeeInText('Berørt side: Forsiden (`/`)');
+        $rendered = $mail->render();
+        $this->assertStringNotContainsString('href="'.$draftUrl.'"', $rendered);
+        $this->assertStringContainsString('href="'.$publicUrl.'"', $rendered);
+        $this->assertStringContainsString('href="'.$conversationUrl.'"', $rendered);
+        $this->assertStringNotContainsString('Fortsett samtalen i Secretary', $rendered);
+        $this->assertLessThan(
+            strpos($rendered, 'Status: Klar som utkast'),
+            strpos($rendered, 'Berørt side:'),
+        );
     }
 
     public function test_the_email_job_reuses_a_stored_reply_after_a_mail_failure_without_calling_the_agent_again(): void

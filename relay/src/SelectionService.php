@@ -20,6 +20,7 @@ final class SelectionService
         private readonly SelectionStore $claims,
         private readonly SelectionTransport $mail,
         private readonly RelayAddress $address,
+        private readonly bool $usePublicAliases = false,
     ) {}
 
     /** @param  array<int, string>  $routeTokens */
@@ -51,7 +52,9 @@ final class SelectionService
 
             $candidates[] = [
                 'label' => $installation->label,
-                'address' => $this->address->routeAddress($routeToken),
+                'address' => $this->usePublicAliases && $installation->publicAlias
+                    ? $this->address->publicAddress($installation->publicAlias)
+                    : $this->address->routeAddress($routeToken),
             ];
             $candidateIdentity[] = [$installation->id, $routeToken];
         }

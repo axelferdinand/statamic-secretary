@@ -3,6 +3,7 @@
 namespace AxelFerdinand\StatamicSecretary\Mail;
 
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
+use AxelFerdinand\StatamicSecretary\Email\ReplyChangeSetPresenter;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Models\Message;
 use Illuminate\Bus\Queueable;
@@ -40,23 +41,53 @@ final class SecretaryReply extends Mailable
 
     public function content(): Content
     {
-        $changeSetIds = (array) data_get($this->reply->metadata, 'change_set_ids', []);
-        $changeSets = $this->conversation->changeSets()
-            ->whereIn('id', $changeSetIds)
-            ->get()
-            ->map(fn ($change): array => [
-                'id' => $change->id,
-                'status' => $change->status,
-                'summary' => $change->summary ?: $change->resource_id,
-            ])->values()->all();
+        $changeSets = app(ReplyChangeSetPresenter::class)->present(
+            $this->conversation,
+            $this->reply,
+        );
+        $nativeChanges = array_values(array_filter(
+            $changeSets,
+            fn (array $changeSet): bool => is_string($changeSet['native_url']),
+        ));
+        $primaryChange = count($nativeChanges) === 1 ? $nativeChanges[0] : null;
+        $affectedChanges = array_values(array_filter(
+            $changeSets,
+            fn (array $changeSet): bool => is_string($changeSet['public_url']),
+        ));
+        $affectedChange = count($affectedChanges) === 1 ? $affectedChanges[0] : null;
+        $conversationUrl = app(ReplyChangeSetPresenter::class)->conversationUrl(
+            $this->conversation,
+            $changeSets,
+        );
+        $bodySections = app(ReplyChangeSetPresenter::class)->emailBodySections(
+            $this->reply->body,
+            $changeSets,
+        );
+        $primaryUrl = $primaryChange
+            ? ($primaryChange['status'] === 'draft'
+                ? $conversationUrl
+                : $primaryChange['native_url'])
+            : $conversationUrl;
 
         return new Content(
             view: 'statamic-secretary::emails.reply',
             text: 'statamic-secretary::emails.reply-text',
             with: [
-                'body' => $this->reply->body,
-                'reviewUrl' => cp_route('secretary.show', $this->conversation),
+                'bodyBeforeAffected' => $bodySections['before'],
+                'bodyAfterAffected' => $bodySections['after'],
+                'primaryUrl' => $primaryUrl,
+                'primaryLabel' => $primaryChange
+                    ? ($primaryChange['status'] === 'published'
+                        ? 'Åpne siden i Statamic'
+                        : 'Åpne utkastet i Statamic')
+                    : ($changeSets === []
+                        ? 'Åpne samtalen i Secretary'
+                        : 'Se endringene i Secretary'),
+                'conversationUrl' => $conversationUrl,
                 'changeSets' => $changeSets,
+                'affectedChange' => $affectedChange,
+                'showChangeList' => count($changeSets) > 1
+                    || (count($changeSets) === 1 && $affectedChange === null),
             ],
         );
     }

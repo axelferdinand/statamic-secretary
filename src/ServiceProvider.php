@@ -3,12 +3,20 @@
 namespace AxelFerdinand\StatamicSecretary;
 
 use AxelFerdinand\StatamicSecretary\Commands\DoctorCommand;
+use AxelFerdinand\StatamicSecretary\Commands\DryRunCommand;
 use AxelFerdinand\StatamicSecretary\Commands\PruneCommand;
 use AxelFerdinand\StatamicSecretary\Commands\RelayRotateRouteCommand;
 use AxelFerdinand\StatamicSecretary\Commands\RelayRotateSecretCommand;
 use AxelFerdinand\StatamicSecretary\Contracts\AgentClient;
+use AxelFerdinand\StatamicSecretary\Developer\ToolRegistry;
+use AxelFerdinand\StatamicSecretary\Events\AgentCompleted;
+use AxelFerdinand\StatamicSecretary\Events\ChangeSetPrepared;
+use AxelFerdinand\StatamicSecretary\Events\ChangeSetPublished;
+use AxelFerdinand\StatamicSecretary\Events\MessageReceived;
+use AxelFerdinand\StatamicSecretary\Listeners\QueueSecretaryWebhook;
 use AxelFerdinand\StatamicSecretary\OpenAI\ResponsesAgentClient;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
+use Illuminate\Support\Facades\Event;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
@@ -17,6 +25,7 @@ class ServiceProvider extends AddonServiceProvider
 {
     protected $commands = [
         DoctorCommand::class,
+        DryRunCommand::class,
         PruneCommand::class,
         RelayRotateRouteCommand::class,
         RelayRotateSecretCommand::class,
@@ -50,6 +59,7 @@ class ServiceProvider extends AddonServiceProvider
         ]);
 
         $this->app->bind(AgentClient::class, ResponsesAgentClient::class);
+        $this->app->singleton(ToolRegistry::class);
         $this->app->scoped(
             RelayConfiguration::class,
             static fn (): RelayConfiguration => new RelayConfiguration,
@@ -63,6 +73,15 @@ class ServiceProvider extends AddonServiceProvider
         $this->publishes([
             __DIR__.'/../config/secretary.php' => config_path('secretary.php'),
         ], 'statamic-secretary-config');
+
+        foreach ([
+            MessageReceived::class,
+            AgentCompleted::class,
+            ChangeSetPrepared::class,
+            ChangeSetPublished::class,
+        ] as $event) {
+            Event::listen($event, QueueSecretaryWebhook::class);
+        }
 
         Permission::extend(function (): void {
             Permission::group('secretary', 'Secretary', function (): void {

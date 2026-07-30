@@ -44,8 +44,10 @@ final class ProcessCpMessage implements ShouldQueue
 
     public function handle(ConversationService $conversations): void
     {
+        $processed = false;
+
         try {
-            $this->process($conversations);
+            $processed = $this->process($conversations);
         } catch (Throwable $exception) {
             // The sync driver runs after-response jobs during kernel termination.
             // Contain the exception there so Laravel does not attempt to rewrite
@@ -56,10 +58,15 @@ final class ProcessCpMessage implements ShouldQueue
             }
 
             $this->failed($exception);
+            $processed = true;
+        }
+
+        if (config('queue.default') === 'sync' && $processed) {
+            $this->drainPendingConversation($conversations);
         }
     }
 
-    private function process(ConversationService $conversations): void
+    private function process(ConversationService $conversations): bool
     {
         $message = Message::query()->with('conversation')->findOrFail($this->messageId);
 
@@ -68,19 +75,26 @@ final class ProcessCpMessage implements ShouldQueue
                 $this->release(10);
             }
 
-            return;
+            return false;
         }
 
         $user = User::find($message->conversation->user_id)
             ?? throw new RuntimeException('The Statamic user for this Secretary conversation no longer exists.');
 
         $conversations->respondTo($message, $user);
+
+        return true;
     }
 
     public function failed(?Throwable $exception): void
     {
         report($exception ?? new RuntimeException('Secretary CP processing failed.'));
-        $message = Message::query()->find($this->messageId);
+        $this->markFailed($this->messageId);
+    }
+
+    private function markFailed(string $messageId): void
+    {
+        $message = Message::query()->find($messageId);
 
         if ($message && ! $message->processed_at) {
             $message->update([
@@ -90,6 +104,39 @@ final class ProcessCpMessage implements ShouldQueue
                     'processing_error' => 'Secretary kunne ikke behandle meldingen. Kontroller loggen og prøv igjen.',
                 ],
             ]);
+        }
+    }
+
+    private function drainPendingConversation(ConversationService $conversations): void
+    {
+        $conversationId = Message::query()->whereKey($this->messageId)->value('conversation_id');
+
+        if (! $conversationId) {
+            return;
+        }
+
+        for ($processed = 0; $processed < 50; $processed++) {
+            $next = Message::query()
+                ->where('conversation_id', $conversationId)
+                ->where('direction', 'inbound')
+                ->whereNull('processed_at')
+                ->oldest('created_at')
+                ->oldest('id')
+                ->first();
+
+            if (! $next) {
+                return;
+            }
+
+            try {
+                $user = User::find($next->conversation->user_id)
+                    ?? throw new RuntimeException('The Statamic user for this Secretary conversation no longer exists.');
+
+                $conversations->respondTo($next, $user);
+            } catch (Throwable $exception) {
+                report($exception);
+                $this->markFailed($next->id);
+            }
         }
     }
 

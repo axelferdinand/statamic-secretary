@@ -207,17 +207,33 @@ final class ReplyService
 
         foreach ($changeSets as $changeSet) {
             if (! is_array($changeSet)
-                || array_diff(array_keys($changeSet), ['id', 'status', 'summary']) !== []
+                || array_diff(array_keys($changeSet), [
+                    'id',
+                    'status',
+                    'summary',
+                    'native_url',
+                    'resource_title',
+                    'public_url',
+                ]) !== []
                 || array_diff(['id', 'status', 'summary'], array_keys($changeSet)) !== []
                 || ! is_string($changeSet['id'])
                 || ! is_string($changeSet['status'])
                 || ! in_array($changeSet['status'], ['draft', 'published', 'failed'], true)
                 || ! is_string($changeSet['summary'])
-                || mb_strlen($changeSet['summary']) > 500) {
+                || mb_strlen($changeSet['summary']) > 500
+                || ! $this->validOptionalReviewUrl($changeSet['native_url'] ?? null)
+                || ! $this->validOptionalReviewUrl($changeSet['public_url'] ?? null)
+                || ! $this->validOptionalResourceTitle($changeSet['resource_title'] ?? null)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    private function validOptionalResourceTitle(mixed $value): bool
+    {
+        return $value === null
+            || (is_string($value) && trim($value) !== '' && mb_strlen($value) <= 500);
     }
 }
