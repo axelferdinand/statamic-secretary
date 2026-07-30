@@ -90,6 +90,29 @@ class ControlPanelAssetsTest extends TestCase
         $this->assertStringNotContainsString('conversation.full_url', $component);
     }
 
+    public function test_the_empty_panel_has_one_clear_starting_point(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $component = file_get_contents($root.'/resources/js/components/SecretaryPanel.vue');
+        $stylesheet = file_get_contents($root.'/resources/css/addon.css');
+
+        $this->assertIsString($component);
+        $this->assertStringContainsString(
+            '<div v-if="contextConversations.length" class="secretary-panel-toolbar">',
+            $component,
+        );
+        $this->assertStringNotContainsString('Ingen samtaler om denne siden', $component);
+        $this->assertStringContainsString('Fortsett en tidligere samtale …', $component);
+        $this->assertStringContainsString('v-if="conversation"'.PHP_EOL.'                        icon="plus"', $component);
+        $this->assertStringContainsString('class="secretary-panel-empty"', $component);
+        $this->assertStringContainsString('Hva vil du endre?', $component);
+        $this->assertStringContainsString('Start om denne siden', $component);
+
+        $this->assertIsString($stylesheet);
+        $this->assertStringContainsString('.secretary-panel-empty {', $stylesheet);
+        $this->assertStringContainsString('.secretary-empty-context {', $stylesheet);
+    }
+
     public function test_compiled_control_panel_assets_match_the_manifest(): void
     {
         $root = dirname(__DIR__, 2);

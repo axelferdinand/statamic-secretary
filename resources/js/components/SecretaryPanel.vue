@@ -559,32 +559,34 @@ onBeforeUnmount(() => {
             </template>
 
             <div class="secretary-panel-shell flex min-h-0 flex-col bg-white dark:bg-gray-900">
-                <div class="secretary-panel-toolbar">
+                <div v-if="contextConversations.length" class="secretary-panel-toolbar">
                     <label for="secretary-panel-conversation" class="sr-only">Velg Secretary-samtale</label>
                     <select
                         id="secretary-panel-conversation"
                         v-model="selectedConversation"
-                        class="input-text min-w-0 flex-1 text-sm"
-                        :disabled="loading || busy || !contextConversations.length"
+                        class="input-text secretary-conversation-select min-w-0 flex-1 text-sm"
+                        :disabled="loading || busy"
                         @change="changeConversation"
                     >
-                        <option v-if="!contextConversations.length" value="">
-                            {{ activeContext ? 'Ingen samtaler om denne siden' : 'Ingen generell samtale' }}
+                        <option v-if="!conversation" value="" disabled>
+                            Fortsett en tidligere samtale …
                         </option>
                         <option v-for="item in contextConversations" :key="item.id" :value="item.id">
                             {{ item.title }} · {{ channelLabel(item.channel) }}
                         </option>
                     </select>
                     <ui-button
+                        v-if="conversation"
                         icon="plus"
                         variant="default"
                         size="sm"
                         :loading="busy && !publishingId"
                         :disabled="busy"
                         :title="currentEntryUrl() ? 'Ny samtale om denne siden' : 'Start ny samtale'"
+                        :aria-label="currentEntryUrl() ? 'Ny samtale om denne siden' : 'Start ny samtale'"
                         @click="createConversation"
                     >
-                        Ny
+                        Ny samtale
                     </ui-button>
                 </div>
 
@@ -882,14 +884,25 @@ onBeforeUnmount(() => {
                     </form>
                 </template>
 
-                <div v-else class="grid flex-1 place-items-center p-8 text-center">
-                    <div class="max-w-xs">
+                <div v-else class="secretary-panel-empty">
+                    <div class="secretary-panel-empty-inner">
+                        <div v-if="activeContext" class="secretary-empty-context">
+                            <ui-icon name="entry" class="size-4 shrink-0" aria-hidden="true" />
+                            <span class="truncate">{{ activeContext.title }}</span>
+                        </div>
                         <div class="secretary-empty-icon mx-auto">
                             <ui-icon name="ai-chat-spark" aria-hidden="true" />
                         </div>
-                        <div class="mt-4 font-bold">Secretary er klar</div>
+                        <div class="mt-4 text-lg font-bold">
+                            {{ activeContext ? 'Hva vil du endre?' : 'Hva skal vi lage?' }}
+                        </div>
                         <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                            Be om en endring herfra, eller fortsett en samtale du startet på e-post.
+                            <template v-if="activeContext">
+                                Start en samtale om denne siden. Secretary leser innholdet og strukturen før noe endres.
+                            </template>
+                            <template v-else>
+                                Be om en endring, finn innhold eller lag et nytt utkast.
+                            </template>
                         </p>
                         <ui-button
                             class="mt-5"
@@ -899,7 +912,7 @@ onBeforeUnmount(() => {
                             :disabled="busy"
                             @click="createConversation"
                         >
-                            {{ currentEntryUrl() ? 'Start om denne siden' : 'Start en samtale' }}
+                            {{ activeContext ? 'Start om denne siden' : 'Start en samtale' }}
                         </ui-button>
                     </div>
                 </div>
