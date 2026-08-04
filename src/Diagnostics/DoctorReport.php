@@ -6,6 +6,8 @@ use AxelFerdinand\StatamicSecretary\Developer\ToolRegistry;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
 use Illuminate\Support\Facades\Schema;
+use Statamic\Assets\AssetUploader;
+use Statamic\Facades\AssetContainer;
 use Symfony\Component\Mailer\Bridge\Postmark\Transport\PostmarkTransportFactory;
 use Throwable;
 
@@ -79,6 +81,7 @@ final class DoctorReport
                 $emailEnabled ? 'Ready' : ($email->tokenConfigured() ? 'Ready after Postmark setup.' : 'Not configured.'),
             ),
             $this->customToolCheck(),
+            $this->assetCheck(),
             $this->webhookCheck(),
         ];
     }
@@ -190,6 +193,43 @@ final class DoctorReport
         } catch (Throwable $exception) {
             return $this->check('developer_tools', 'Developer tools', false, true, $exception->getMessage());
         }
+    }
+
+    private function assetCheck(): array
+    {
+        $enabled = (bool) config('secretary.assets.enabled', true);
+
+        if (! $enabled) {
+            return $this->check('assets', 'Asset access', true, false, '', 'Disabled.');
+        }
+
+        $configured = array_values(array_filter(array_map(
+            static fn (mixed $handle): string => trim((string) $handle),
+            (array) config('secretary.assets.containers', []),
+        )));
+        $available = AssetContainer::all()
+            ->filter(fn ($container): bool => $configured === [] || in_array($container->handle(), $configured, true))
+            ->values();
+        $attachmentContainer = trim((string) config('secretary.assets.attachment_container'));
+        $folder = trim((string) config('secretary.assets.attachment_folder', 'secretary-inbox'), " \t\n\r\0\x0B/\\");
+        $folderIsSafe = $folder === AssetUploader::getSafePath($folder) && ! str_contains($folder, '..');
+        $configuredExist = collect($configured)->every(
+            fn (string $handle): bool => AssetContainer::find($handle) !== null,
+        );
+        $attachmentContainerIsValid = $attachmentContainer !== ''
+            ? AssetContainer::find($attachmentContainer) !== null
+                && ($configured === [] || in_array($attachmentContainer, $configured, true))
+            : $available->count() === 1;
+        $passed = $folderIsSafe && $configuredExist && $attachmentContainerIsValid;
+
+        return $this->check(
+            'assets',
+            'Asset access',
+            $passed,
+            false,
+            'Configure one valid SECRETARY_ATTACHMENT_CONTAINER (and optional SECRETARY_ASSET_CONTAINERS) plus a safe relative attachment folder.',
+            'Ready for existing assets and authenticated image attachments.',
+        );
     }
 
     private function webhookCheck(): array

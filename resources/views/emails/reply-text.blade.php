@@ -20,6 +20,14 @@ Klargjorte endringer:
 @endforeach
 
 @endif
+@if ($attachments)
+Vedlegg i Statamic:
+@foreach ($attachments as $attachment)
+- {{ $attachment['name'] }}
+  {{ $attachment['native_url'] }}
+@endforeach
+
+@endif
 {{ $primaryLabel }}:
 {{ $primaryUrl }}
 

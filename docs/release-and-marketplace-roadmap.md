@@ -23,12 +23,12 @@ The product must not be described as production-proven until these gates pass.
 
 ## Distribution cleanup
 
-- Add `/relay export-ignore` to `.gitattributes` before the first public tag. Composer's `archive.exclude` removes the hosted service from locally built archives, but GitHub-generated source archives currently include it.
+- Keep `/relay` and local deployment helpers excluded through `.gitattributes`, and verify both Composer-built and GitHub/Packagist-style archives in CI.
 - Run the complete PHP and asset CI matrix and resolve every warning as well as every failure.
 - Build and inspect a clean release archive.
 - Install that archive as a non-symlink Composer artifact in a fresh Statamic 6 project.
 - Confirm that no `.env` files, API keys, deployment helpers, databases, logs, test fixtures, or hosted-relay runtime files are present.
-- Decide and document the commercial license before selling. The package currently declares MIT, which conflicts with advertising it as a paid Marketplace license.
+- Keep the commercial license, Composer metadata, Marketplace price, and production-site licensing language aligned before every release.
 - Prepare a changelog, version support policy, privacy page, security policy, and support contact.
 
 ## Packagist and Composer release

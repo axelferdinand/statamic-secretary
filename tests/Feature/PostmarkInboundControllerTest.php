@@ -20,12 +20,142 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
 use RuntimeException;
+use Statamic\Facades\Asset;
+use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\User;
 
 class PostmarkInboundControllerTest extends TestCase
 {
+    public function test_an_authenticated_image_attachment_is_imported_append_only_into_statamic_assets(): void
+    {
+        $this->configureInboundEmail();
+        $this->configureAssets();
+        User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper()->save();
+        Bus::fake();
+        $attachment = $this->pngAttachment('hero.png');
+        $payload = [
+            'MessageID' => 'postmark-image-1',
+            'Subject' => 'Forsiden',
+            'TextBody' => 'Bruk vedlagte bilde i hero.',
+            'FromFull' => ['Email' => 'editor@example.com'],
+            'Headers' => $this->authenticatedHeaders(),
+            'Attachments' => [$attachment],
+        ];
+
+        $this->withBasicAuth('postmark', 'webhook-secret')
+            ->postJson('/_secretary/webhooks/postmark/inbound', $payload)
+            ->assertOk()
+            ->assertJson(['accepted' => true]);
+
+        $message = Message::where('provider_message_id', 'postmark-image-1')->firstOrFail();
+        $imported = data_get($message->metadata, 'attachments.0');
+        $this->assertSame('hero.png', $imported['name']);
+        $this->assertSame('assets', $imported['container']);
+        $this->assertSame(hash('sha256', $this->pngBytes()), $imported['sha256']);
+        $this->assertStringStartsWith('assets::secretary-inbox/', $imported['id']);
+        $asset = Asset::find($imported['id']);
+        $this->assertNotNull($asset);
+        $this->assertSame($this->pngBytes(), $asset->disk()->get($asset->path()));
+
+        $this->withBasicAuth('postmark', 'webhook-secret')
+            ->postJson('/_secretary/webhooks/postmark/inbound', $payload)
+            ->assertOk()
+            ->assertJson(['duplicate' => true]);
+
+        $payload['MessageID'] = 'postmark-image-2';
+        $this->withBasicAuth('postmark', 'webhook-secret')
+            ->postJson('/_secretary/webhooks/postmark/inbound', $payload)
+            ->assertOk()
+            ->assertJson(['accepted' => true]);
+
+        $this->assertCount(1, AssetContainer::find('assets')->assets());
+        $this->assertDatabaseCount('secretary_messages', 2);
+    }
+
+    public function test_an_attachment_only_email_is_accepted_but_an_invalid_image_is_rejected_without_storage(): void
+    {
+        $this->configureInboundEmail();
+        $this->configureAssets();
+        User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper()->save();
+        Bus::fake();
+
+        $this->withBasicAuth('postmark', 'webhook-secret')->postJson('/_secretary/webhooks/postmark/inbound', [
+            'MessageID' => 'postmark-image-only',
+            'TextBody' => '',
+            'FromFull' => ['Email' => 'editor@example.com'],
+            'Headers' => $this->authenticatedHeaders(),
+            'Attachments' => [$this->pngAttachment('photo.png')],
+        ])->assertOk();
+
+        $this->assertSame(
+            'Vedlagt bilde: photo.png',
+            Message::where('provider_message_id', 'postmark-image-only')->firstOrFail()->body,
+        );
+
+        $invalid = $this->pngAttachment('fake.png');
+        $invalid['Content'] = base64_encode('not an image');
+        $invalid['ContentLength'] = strlen('not an image');
+
+        $this->withBasicAuth('postmark', 'webhook-secret')->postJson('/_secretary/webhooks/postmark/inbound', [
+            'MessageID' => 'postmark-invalid-image',
+            'TextBody' => 'Bruk bildet.',
+            'FromFull' => ['Email' => 'editor@example.com'],
+            'Headers' => $this->authenticatedHeaders(),
+            'Attachments' => [$invalid],
+        ])->assertForbidden();
+
+        $this->assertDatabaseMissing('secretary_messages', ['provider_message_id' => 'postmark-invalid-image']);
+        $this->assertCount(1, AssetContainer::find('assets')->assets());
+    }
+
+    public function test_an_imported_attachment_links_directly_to_its_statamic_asset_editor_in_the_reply(): void
+    {
+        $this->configureInboundEmail();
+        $this->configureAssets();
+        User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper()->save();
+        Bus::fake();
+
+        $this->withBasicAuth('postmark', 'webhook-secret')
+            ->postJson('/_secretary/webhooks/postmark/inbound', [
+                'MessageID' => 'postmark-clickable-image',
+                'Subject' => 'Teknisk vedleggstest',
+                'TextBody' => 'Hvilket bilde mottok du?',
+                'FromFull' => ['Email' => 'editor@example.com'],
+                'Headers' => $this->authenticatedHeaders(),
+                'Attachments' => [$this->pngAttachment('secretary-live-attachment-smoke.png')],
+            ])
+            ->assertOk();
+
+        $inbound = Message::where('provider_message_id', 'postmark-clickable-image')->firstOrFail();
+        $reply = $inbound->conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'email',
+            'role' => 'assistant',
+            'body' => 'Jeg har mottatt bildet.',
+            'reply_to_message_id' => $inbound->id,
+            'metadata' => ['reply_to_message_id' => $inbound->id],
+            'processed_at' => now(),
+        ]);
+        $asset = Asset::find((string) data_get($inbound->metadata, 'attachments.0.id'));
+        $this->assertNotNull($asset);
+
+        $mail = new SecretaryReply($inbound->conversation, $reply);
+        $editUrl = $asset->editUrl();
+
+        $mail->assertSeeInText('Vedlegg i Statamic:')
+            ->assertSeeInText('secretary-live-attachment-smoke.png')
+            ->assertSeeInText($editUrl);
+        $rendered = $mail->render();
+        $this->assertStringContainsString('Vedlegg i Statamic', $rendered);
+        $this->assertStringContainsString(
+            'href="'.htmlspecialchars($editUrl, ENT_QUOTES, 'UTF-8').'"',
+            $rendered,
+        );
+        $this->assertStringContainsString('secretary-live-attachment-smoke.png</a>', $rendered);
+    }
+
     public function test_queue_jobs_allow_fifo_deferrals_beyond_one_model_timeout(): void
     {
         config()->set('secretary.limits.job_timeout', 1200);
@@ -717,6 +847,37 @@ class PostmarkInboundControllerTest extends TestCase
         config()->set('secretary.email.allowed_senders', ['editor@example.com']);
         config()->set('secretary.email.postmark.username', 'postmark');
         config()->set('secretary.email.postmark.password', 'webhook-secret');
+    }
+
+    private function configureAssets(): void
+    {
+        config()->set('filesystems.disks.secretary_test_assets', [
+            'driver' => 'local',
+            'root' => __DIR__.'/../__fixtures__/content/uploads',
+            'throw' => false,
+        ]);
+        AssetContainer::make('assets')
+            ->title('Assets')
+            ->disk('secretary_test_assets')
+            ->save();
+        config()->set('secretary.assets.attachment_container', 'assets');
+        config()->set('secretary.assets.containers', ['assets']);
+    }
+
+    /** @return array<string, mixed> */
+    private function pngAttachment(string $name): array
+    {
+        return [
+            'Name' => $name,
+            'ContentType' => 'image/png',
+            'Content' => base64_encode($this->pngBytes()),
+            'ContentLength' => strlen($this->pngBytes()),
+        ];
+    }
+
+    private function pngBytes(): string
+    {
+        return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true);
     }
 
     /** @return array<int, array{Name: string, Value: string}> */

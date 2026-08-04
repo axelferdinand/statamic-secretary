@@ -66,7 +66,7 @@ final class SecretaryController extends CpController
                 ->get()
                 ->map(fn (Conversation $item): array => [
                     'id' => $item->id,
-                    'title' => data_get($item->context, 'title', 'Samtale'),
+                    'title' => data_get($item->context, 'title', 'Conversation'),
                     'channel' => $item->channel,
                     'updated_at' => $item->updated_at?->toIso8601String(),
                     'url' => cp_route('secretary.show', $item),
@@ -104,6 +104,7 @@ final class SecretaryController extends CpController
             'endpoints' => [
                 'create' => cp_route('secretary.store'),
                 'home' => cp_route('secretary.index'),
+                'references' => cp_route('secretary.panel.references'),
             ],
         ]);
     }
@@ -122,7 +123,7 @@ final class SecretaryController extends CpController
 
         $this->styleGuide->update((string) $validated['site'], $validated);
 
-        return back()->with('secretary_success', 'Den redaksjonelle guiden er lagret.');
+        return back()->with('secretary_success', 'The editorial guide has been saved.');
     }
 
     public function store(): RedirectResponse
@@ -147,15 +148,15 @@ final class SecretaryController extends CpController
                 'max:2048',
                 function (string $attribute, mixed $value, \Closure $fail): void {
                     if (! is_string($value) || ! $this->email->isPublicHttpsUrl($value)) {
-                        $fail('Webhook-adressen må være en offentlig HTTPS-adresse.');
+                        $fail('The webhook URL must be a public HTTPS URL.');
                     }
                 },
             ],
         ], [
-            'email.required' => 'Skriv inn Secretary-adressen.',
-            'email.email' => 'Secretary-adressen må være en gyldig e-postadresse.',
-            'public_url.required' => 'Skriv inn nettstedets offentlige HTTPS-adresse.',
-            'public_url.url' => 'Webhook-adressen må være en gyldig HTTPS-adresse.',
+            'email.required' => 'Enter the Secretary address.',
+            'email.email' => 'The Secretary address must be a valid email address.',
+            'public_url.required' => 'Enter the site’s public HTTPS URL.',
+            'public_url.url' => 'The webhook URL must be a valid HTTPS URL.',
         ]);
 
         try {
@@ -166,13 +167,13 @@ final class SecretaryController extends CpController
             return back()->withErrors([
                 'postmark_setup' => PublicError::message(
                     $exception,
-                    'Secretary kunne ikke koble til Postmark. Kontroller Server API Token og prøv igjen.',
+                    'Secretary could not connect to Postmark. Check the Server API Token and try again.',
                 ),
             ]);
         }
 
         return redirect()->to(cp_route('secretary.index'))
-            ->with('secretary_success', 'Postmark er koblet til. Sett opp videresendingen som vises nedenfor.');
+            ->with('secretary_success', 'Postmark is connected. Set up the forwarding address shown below.');
     }
 
     public function connectRelay(Request $request, RelayPairingClient $pairing): RedirectResponse
@@ -189,15 +190,15 @@ final class SecretaryController extends CpController
                 'max:2048',
                 function (string $attribute, mixed $value, \Closure $fail): void {
                     if (! is_string($value) || ! $this->email->isPublicHttpsUrl($value)) {
-                        $fail('Webhook-adressen må være en offentlig HTTPS-adresse.');
+                        $fail('The webhook URL must be a public HTTPS URL.');
                     }
                 },
             ],
         ], [
-            'pairing_code.required' => 'Lim inn engangskoden.',
-            'pairing_code.regex' => 'Engangskoden er ugyldig eller ufullstendig.',
-            'public_url.required' => 'Skriv inn nettstedets offentlige HTTPS-adresse.',
-            'public_url.url' => 'Webhook-adressen må være en gyldig HTTPS-adresse.',
+            'pairing_code.required' => 'Enter the one-time code.',
+            'pairing_code.regex' => 'The one-time code is invalid or incomplete.',
+            'public_url.required' => 'Enter the site’s public HTTPS URL.',
+            'public_url.url' => 'The webhook URL must be a valid HTTPS URL.',
         ]);
 
         try {
@@ -208,13 +209,13 @@ final class SecretaryController extends CpController
             return back()->withErrors([
                 'relay_setup' => PublicError::message(
                     $exception,
-                    'Secretary kunne ikke koble til fellesadressen. Kontroller engangskoden og prøv igjen.',
+                    'Secretary could not connect the shared address. Check the one-time code and try again.',
                 ),
             ]);
         }
 
         return redirect()->to(cp_route('secretary.index'))
-            ->with('secretary_success', 'Fellesadressen er klar: '.$settings['address']);
+            ->with('secretary_success', 'The shared address is ready: '.$settings['address']);
     }
 
     public function requestRelayCode(Request $request, RelayPairingClient $pairing): RedirectResponse
@@ -226,22 +227,22 @@ final class SecretaryController extends CpController
         $validated = $request->validate([
             'email' => ['required', 'email:rfc', 'max:255'],
         ], [
-            'email.required' => 'Skriv inn e-postadressen som skal bruke Secretary.',
-            'email.email' => 'Avsenderen må være en gyldig e-postadresse.',
+            'email.required' => 'Enter the email address that will use Secretary.',
+            'email.email' => 'The sender must be a valid email address.',
         ]);
         $email = mb_strtolower(trim($validated['email']));
         $sender = User::findByEmail($email);
 
         if (! $sender || ! $sender->can('use secretary')) {
             return back()->withErrors([
-                'relay_email' => 'Adressen må tilhøre en Statamic-bruker med tilgang til Secretary.',
+                'relay_email' => 'The address must belong to a Statamic user with access to Secretary.',
             ]);
         }
 
         $label = trim((string) config('app.name'));
 
         if ($label === '') {
-            $label = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'Statamic-nettsted';
+            $label = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'Statamic site';
         }
 
         try {
@@ -252,13 +253,13 @@ final class SecretaryController extends CpController
             return back()->withErrors([
                 'relay_setup' => PublicError::message(
                     $exception,
-                    'Secretary kunne ikke sende engangskoden. Prøv igjen om litt.',
+                    'Secretary could not send the one-time code. Try again shortly.',
                 ),
             ]);
         }
 
         return redirect()->to(cp_route('secretary.index'))
-            ->with('secretary_success', 'Engangskoden er sendt til '.$email.'.');
+            ->with('secretary_success', 'The one-time code was sent to '.$email.'.');
     }
 
     public function send(Request $request, Conversation $conversation): RedirectResponse
@@ -268,7 +269,7 @@ final class SecretaryController extends CpController
         $this->ensureOwnsConversation($conversation, $user);
 
         if (blank(config('secretary.openai.api_key'))) {
-            return back()->withErrors(['secretary' => 'OpenAI er ikke konfigurert for Secretary.']);
+            return back()->withErrors(['secretary' => 'OpenAI is not configured for Secretary.']);
         }
 
         $validated = $request->validate(['message' => ['required', 'string', 'max:'.config('secretary.limits.max_input_characters', 20000)]]);
@@ -286,7 +287,7 @@ final class SecretaryController extends CpController
             }
         } catch (Throwable $exception) {
             report($exception);
-            $error = PublicError::message($exception, 'Secretary kunne ikke starte behandlingen. Kontroller loggen og prøv igjen.');
+            $error = PublicError::message($exception, 'Secretary could not start processing. Check the application log and try again.');
 
             if ($message && ! $message->processed_at) {
                 $message->update([
@@ -316,7 +317,7 @@ final class SecretaryController extends CpController
             report($exception);
 
             return back()->withErrors([
-                'secretary' => PublicError::message($exception, 'Secretary kunne ikke publisere endringen. Kontroller loggen og prøv igjen.'),
+                'secretary' => PublicError::message($exception, 'Secretary could not publish the change. Check the application log and try again.'),
             ]);
         }
 
@@ -340,7 +341,7 @@ final class SecretaryController extends CpController
             report($exception);
 
             return response()->json([
-                'message' => PublicError::message($exception, 'Secretary kunne ikke oppdatere feltvalget.'),
+                'message' => PublicError::message($exception, 'Secretary could not update the field selection.'),
             ], 422);
         }
 
@@ -362,7 +363,7 @@ final class SecretaryController extends CpController
             report($exception);
 
             return response()->json([
-                'message' => PublicError::message($exception, 'Forhåndsvisningen kunne ikke åpnes.'),
+                'message' => PublicError::message($exception, 'The preview could not be opened.'),
             ], 422);
         }
     }
@@ -372,26 +373,54 @@ final class SecretaryController extends CpController
         $conversation->load(['messages', 'changeSets']);
         $latestInbound = $conversation->messages->where('direction', 'inbound')->last();
         $pendingPosition = 0;
+        $messageLookup = $conversation->messages->keyBy('id');
 
         return [
             'id' => $conversation->id,
-            'title' => data_get($conversation->context, 'title', 'Samtale'),
+            'title' => data_get($conversation->context, 'title', 'Conversation'),
             'channel' => $conversation->channel,
             'processing' => $conversation->messages
                 ->where('direction', 'inbound')
                 ->contains(fn ($message): bool => $message->processed_at === null),
             'processing_error' => data_get($latestInbound?->metadata, 'processing_error'),
+            'failed_message_body' => data_get($latestInbound?->metadata, 'processing_error')
+                ? $latestInbound?->body
+                : null,
             'send_url' => cp_route('secretary.messages.store', $conversation),
             'context' => $this->conversationContext($conversation),
-            'messages' => $conversation->messages->map(function ($message) use ($user, &$pendingPosition): array {
+            'messages' => $conversation->messages->map(function ($message) use ($user, &$pendingPosition, $messageLookup): array {
                 $pending = $message->direction === 'inbound' && $message->processed_at === null;
+                $systemGenerated = data_get($message->metadata, 'system_generated') === true
+                    || (
+                        data_get($message->metadata, 'explicit_publish_action') === true
+                        && str_starts_with($message->body, 'Publiser endringen:')
+                    );
+                $replySource = $message->reply_to_message_id
+                    ? $messageLookup->get($message->reply_to_message_id)
+                    : null;
+                $replyToSystemAction = $replySource
+                    && (
+                        data_get($replySource->metadata, 'system_generated') === true
+                        || (
+                            data_get($replySource->metadata, 'explicit_publish_action') === true
+                            && str_starts_with($replySource->body, 'Publiser endringen:')
+                        )
+                    );
+                $systemEvent = data_get($message->metadata, 'system_event')
+                    ?: ($replyToSystemAction ? 'published' : null);
                 $payload = [
                     'id' => $message->id,
                     'role' => $message->role,
+                    'presentation' => $systemGenerated ? 'hidden' : ($systemEvent ? 'system' : $message->role),
+                    'system_event' => $systemEvent,
                     'channel' => $message->channel,
                     'body' => $message->body,
                     'pending' => $pending,
                     'queue_position' => $pending ? ++$pendingPosition : null,
+                    'processing_stage' => $pending
+                        ? data_get($message->metadata, 'processing_stage', 'queued')
+                        : null,
+                    'reply_to_message_id' => $message->reply_to_message_id,
                     'metadata' => $message->metadata ?: [],
                     'created_at' => $message->created_at?->toIso8601String(),
                 ];
@@ -419,7 +448,8 @@ final class SecretaryController extends CpController
             'collection' => $change->collection,
             'site' => $change->site,
             'slug' => $change->slug,
-            'summary' => $change->summary,
+            'summary' => $change->summary ?: trim($change->operation.' '.($change->slug ?: $change->resource_id)),
+            'proposed_by_message_id' => $change->proposed_by_message_id,
             'patch' => $change->patch ?: [],
             'before' => $change->before ?: null,
             'after' => $change->after ?: null,

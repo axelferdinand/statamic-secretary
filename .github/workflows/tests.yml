@@ -57,10 +57,32 @@ jobs:
         with:
           php-version: '8.3'
           coverage: none
-      - run: COMPOSER_ROOT_VERSION=0.1.0 composer archive --format=zip --dir=/tmp --file=statamic-secretary
-      - run: unzip -Z1 /tmp/statamic-secretary.zip > /tmp/archive-files.txt
-      - run: '! grep -E "(^|/)(node_modules|vendor|sandbox|tests|relay)(/|$)|(^|/)\.env$|\.phpunit" /tmp/archive-files.txt'
-      - run: grep -E '(^|/)resources/dist/build/manifest.json$' /tmp/archive-files.txt
-      - run: grep -E '(^|/)database/migrations/2026_07_21_000006_create_secretary_settings_table.php$' /tmp/archive-files.txt
-      - run: grep -E '(^|/)src/Http/Controllers/Web/RelayInboundController.php$' /tmp/archive-files.txt
-      - run: grep -E '(^|/)src/Relay/RelayClient.php$' /tmp/archive-files.txt
+      - name: Build Composer and Packagist-style archives
+        run: |
+          COMPOSER_ROOT_VERSION=0.1.0 composer archive --format=zip --dir=/tmp --file=statamic-secretary
+          git archive --format=zip --output=/tmp/statamic-secretary-git.zip HEAD
+      - name: Inspect release archives
+        run: |
+          for archive in /tmp/statamic-secretary.zip /tmp/statamic-secretary-git.zip; do
+            unzip -Z1 "$archive" > /tmp/archive-files.txt
+            ! grep -E '(^|/)(\.secretary-deploy|node_modules|vendor|sandbox|tests|relay)(/|$)|(^|/)\.env$|\.phpunit' /tmp/archive-files.txt
+            grep -E '(^|/)resources/dist/build/manifest.json$' /tmp/archive-files.txt
+            grep -E '(^|/)database/migrations/2026_07_21_000006_create_secretary_settings_table.php$' /tmp/archive-files.txt
+            grep -E '(^|/)src/Http/Controllers/Web/RelayInboundController.php$' /tmp/archive-files.txt
+            grep -E '(^|/)src/Relay/RelayClient.php$' /tmp/archive-files.txt
+          done
+      - name: Install the Packagist-style archive in a clean Statamic site
+        run: |
+          mkdir -p /tmp/secretary-package /tmp/secretary-artifacts
+          unzip -q /tmp/statamic-secretary-git.zip -d /tmp/secretary-package
+          php -r '$path = "/tmp/secretary-package/composer.json"; $data = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR); $data["version"] = "0.1.0"; file_put_contents($path, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL);'
+          (cd /tmp/secretary-package && zip -qr /tmp/secretary-artifacts/axelferdinand-statamic-secretary-0.1.0.zip .)
+          composer create-project statamic/statamic /tmp/secretary-smoke '^6.0' --no-interaction --prefer-dist
+          composer --working-dir=/tmp/secretary-smoke config repositories.secretary artifact /tmp/secretary-artifacts
+          composer --working-dir=/tmp/secretary-smoke require axelferdinand/statamic-secretary:^0.1 --no-interaction --prefer-dist
+          php /tmp/secretary-smoke/artisan migrate --force --no-interaction
+          php /tmp/secretary-smoke/please stache:refresh --no-interaction
+          composer --working-dir=/tmp/secretary-smoke show axelferdinand/statamic-secretary
+          php /tmp/secretary-smoke/artisan list --raw | grep -q '^secretary:doctor'
+          php /tmp/secretary-smoke/artisan route:list --path=secretary | grep -q 'cp/secretary'
+          test -f /tmp/secretary-smoke/public/vendor/statamic-secretary/build/manifest.json

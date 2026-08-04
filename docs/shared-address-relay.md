@@ -28,7 +28,7 @@ SECRETARY_RELAY_CACHE_STORE=redis
 
 The signing secret must decode to at least 256 bits. `SECRETARY_RELAY_CACHE_STORE` must be a persistent shared Laravel cache; the array store is refused by `secretary:doctor` because it cannot prevent a nonce replay in a later request. These values are intentionally separate from the site's OpenAI and Postmark credentials.
 
-The relay posts to `POST /_secretary/webhooks/relay/inbound`. The route is disabled until the installation is fully configured. It accepts only the normalized version-1 JSON fields documented below, verifies the signature before parsing them, then reuses the same sender allowlist, native Statamic user/permission check, input limit, queue, idempotency, publication gate, and audit path as direct Postmark delivery.
+The relay posts to `POST /_secretary/webhooks/relay/inbound`. The route is disabled until the installation is fully configured. It accepts the normalized version-1 fields for ordinary messages and version 2 only when validated image attachments are present. It verifies the signature before parsing, then reuses the same sender allowlist, native Statamic user/permission check, input/attachment limits, queue, idempotency, publication gate, and audit path as direct Postmark delivery.
 
 ## Non-negotiable isolation rules
 
@@ -50,7 +50,7 @@ secretary+r<25-lowercase-random-characters>@statamic.no
 
 The route token is public but unguessable and maps to one active installation. It is not a database ID and can be rotated without changing the installation secret.
 
-The public domain's catch-all forwarding must preserve the plus tag when it forwards to the Postmark inbound address. Postmark exposes that value as `MailboxHash`, which the relay converts back into the public Secretary alias before routing. The core never chooses a site from `To`, `OriginalRecipient`, a subject, or message content. [Postmark documents `MailboxHash` as its plus-addressing field and retries non-200 inbound webhooks.](https://postmarkapp.com/developer/webhooks/inbound-webhook)
+Exact public aliases forward to the Postmark inbound address with the installation route as a plus tag. Postmark normally exposes that value as the top-level `MailboxHash`, which the relay converts back into the public Secretary alias before routing. Some forwarding servers strip the plus tag from the envelope on replies while Postmark still retains the original tagged address and its per-recipient `MailboxHash` in `ToFull`. When the top-level value is empty, the relay may use exactly one `ToFull` fallback only when the shared-domain address, its plus tag, and its per-recipient hash agree exactly. The normal sender, installation, route, and conversation bindings still apply; mismatched or ambiguous recipient data is rejected. The core never derives routing from the legacy `To` string, `OriginalRecipient`, a subject, or message content. [Postmark documents `MailboxHash` on both the main payload and full recipient objects, plus retry behavior for non-200 inbound webhooks.](https://postmarkapp.com/developer/webhooks/inbound-webhook)
 
 Plain mail to `secretary@statamic.no` is supported only when the normalized sender address maps to exactly one active installation. If the sender belongs to zero installations, the relay rejects the message. If it belongs to more than one, the relay atomically sends one site-selection response and forwards no instruction or attachment. The response contains only labels and exact site-bound aliases, and tells the sender to resend the original request to one alias. The relay does not store or echo the original instruction in the notice and does not remember a global default that could silently route a future message to the wrong customer.
 
@@ -76,9 +76,11 @@ Secretary-Signature: v1=<hex HMAC-SHA256>
 
 The canonical signature input is the HTTP method, request path, installation ID, timestamp, nonce, and content digest separated by newlines. The addon accepts a narrow clock skew, compares signatures in constant time, consumes the nonce atomically, and then applies its existing payload-size, sender, native-user, DKIM, spam, threading, queue, and publication checks.
 
-The normalized payload must retain the provider message ID, plain-text body, subject, authenticated sender, author-domain authentication result, spam score, route token, and conversation token. HTML and attachments are excluded from the first relay version.
+The normalized payload retains the provider message ID, plain-text body, subject, authenticated sender, author-domain authentication result, spam score, route token, and conversation token. HTML is excluded. Ordinary messages remain version 1 for backward compatibility. Version 2 adds an `attachments` array containing only validated JPEG, PNG, or WebP images with filename, MIME type, base64 bytes, exact byte length, and SHA-256 checksum. The exact signed body covers those bytes.
 
 The implemented version-1 field names are `provider_message_id`, `sender`, `subject`, `body`, `sender_authenticated`, `spam_score`, `route_token`, `conversation_token`, and `rfc_message_id`. Unknown fields are rejected. A new conversation receives a compact random token stored only in that site's database. Follow-ups must supply both that token and the same route token.
+
+The relay validates count, per-image bytes, total bytes, extension/MIME agreement, and the actual decodable image before routing. It does not persist attachment content in SQLite. The paired addon validates the image and checksum again, applies the authorized Statamic user's native upload policy, and imports append-only into its configured asset container. Invalid or unsupported attachments are permanently rejected rather than silently discarded.
 
 ## Replies
 

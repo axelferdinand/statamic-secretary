@@ -32,9 +32,10 @@
 
 - [x] Build and inspect a clean Composer archive containing runtime files and compiled assets only.
 - [x] Install the clean archive as a non-symlink Composer artifact in a separate Statamic 6 app and verify discovery, routes, and published assets.
-- [x] Use the MIT license declared in `composer.json` and `LICENSE.md`.
+- [x] Use a proprietary commercial license for a USD 49 per-production-site Statamic Marketplace addon, with development/testing use permitted.
 - [x] Set the public repository and support URLs in `composer.json`.
 - [ ] Run the GitHub Actions PHP matrix and asset reproducibility job.
+- [ ] Send a real JPEG/PNG/WebP attachment through the hosted address, verify one append-only Statamic asset, visual model context, draft use, retry idempotency, and no relay-body persistence/logging.
 - [ ] Tag a semantic `v0.1.0` prerelease only after live proof.
 - [ ] Publish the package on Packagist.
 - [ ] Confirm `composer require axelferdinand/statamic-secretary` in a fresh site.

@@ -1,9 +1,9 @@
 <script setup>
 import { Head, Link, router, usePoll } from '@statamic/cms/inertia';
-import { computed, getCurrentInstance, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import ChangePreviewModal from '../components/ChangePreviewModal.vue';
-import ChangeReview from '../components/ChangeReview.vue';
 import DeveloperTrace from '../components/DeveloperTrace.vue';
+import SecretaryChangeList from '../components/SecretaryChangeList.vue';
 
 const props = defineProps({
     conversations: { type: Array, required: true },
@@ -25,6 +25,11 @@ const props = defineProps({
 const axios = getCurrentInstance()?.proxy?.$axios;
 const message = ref('');
 const feed = ref(null);
+const composerInput = ref(null);
+const references = ref([]);
+const referenceLoading = ref(false);
+const conversationQuery = ref('');
+const conversationMenuOpen = ref(false);
 const busy = ref(false);
 const setupBusy = ref(false);
 const publishCandidate = ref(null);
@@ -42,6 +47,17 @@ const guideForm = ref({
     avoid: '',
 });
 const emailConnected = computed(() => props.email_setup.connected || props.relay_setup.connected);
+const activeEmailAddress = computed(() => {
+    if (props.relay_setup.connected && props.relay_setup.address) {
+        return props.relay_setup.address;
+    }
+
+    if (props.email_setup.connected && props.email_setup.from_address) {
+        return props.email_setup.from_address;
+    }
+
+    return null;
+});
 const showSetup = ref(!emailConnected.value);
 const setupMode = ref(props.relay_setup.connected || (!props.email_setup.token_configured && props.relay_setup.pairing_available)
     ? 'relay'
@@ -54,6 +70,23 @@ const relayEmail = ref(props.relay_setup.pending_sender
     ?? props.relay_setup.suggested_sender
     ?? '');
 const relayPublicUrl = ref(props.relay_setup.suggested_public_url ?? '');
+const sharedAddressPreview = computed(() => {
+    if (props.relay_setup.address) {
+        return props.relay_setup.address;
+    }
+
+    try {
+        const hostname = new URL(relayPublicUrl.value).hostname.replace(/^www\./, '');
+
+        if (hostname && !hostname.endsWith('.test')) {
+            return `${hostname}@statamic.no`;
+        }
+    } catch {
+        // Keep the example until a valid public URL has been entered.
+    }
+
+    return 'yourdomain.com@statamic.no';
+});
 const actionError = ref(null);
 const error = computed(() => props.errors?.secretary ?? actionError.value ?? null);
 const setupError = computed(() => props.errors?.relay_setup
@@ -64,6 +97,33 @@ const setupError = computed(() => props.errors?.relay_setup
     ?? props.errors?.public_url
     ?? null);
 const processing = computed(() => props.conversation?.processing === true);
+const visibleMessages = computed(() => (
+    props.conversation?.messages?.filter(item => item.presentation !== 'hidden')
+    ?? []
+));
+const pendingMessages = computed(() => visibleMessages.value.filter(item => item.pending));
+const activePendingMessage = computed(() => pendingMessages.value[0] ?? null);
+const processingStatus = computed(() => ({
+    queued: 'Waiting for Secretary',
+    understanding: 'Understanding your request',
+    finding_content: 'Finding the right content',
+    reading_content: 'Reading content and fields',
+    reviewing_assets: 'Reviewing available images',
+    saving_draft: 'Validating and saving the draft',
+    writing_reply: 'Preparing the response',
+    publishing: 'Publishing the approved change',
+    working: 'Working on your request',
+})[activePendingMessage.value?.processing_stage] ?? 'Working on your request');
+const filteredConversations = computed(() => {
+    const query = conversationQuery.value.trim().toLocaleLowerCase('en');
+
+    if (!query) return props.conversations;
+
+    return props.conversations.filter(item => [
+        item.title,
+        channelLabel(item.channel),
+    ].some(value => String(value ?? '').toLocaleLowerCase('en').includes(query)));
+});
 const diagnosticSummary = computed(() => {
     const checks = props.diagnostics.checks ?? [];
     const blockers = checks.filter(check => check.required && !check.passed).length;
@@ -76,28 +136,28 @@ const promptSuggestions = computed(() => {
 
     if (field?.type === 'bard' || field?.type === 'replicator') {
         return [
-            `Forbedre teksten i ${field.set_type ? `${field.set_type}-modulen` : field.display}.`,
-            'Gjør denne modulen kortere uten å endre resten av siden.',
-            'Foreslå en bedre rekkefølge på innholdsmodulene.',
+            `Improve the copy in the ${field.set_type ? `${field.set_type} module` : field.display}.`,
+            'Make this module shorter without changing the rest of the page.',
+            'Suggest a better order for the content modules.',
         ];
     }
 
     if (field) {
         return [
-            `Gjør feltet «${field.display}» tydeligere.`,
-            `Korrekturles bare «${field.display}».`,
-            `Lag tre alternative forslag til «${field.display}».`,
+            `Make the “${field.display}” field clearer.`,
+            `Proofread only “${field.display}”.`,
+            `Write three alternatives for “${field.display}”.`,
         ];
     }
 
     return props.conversation?.context ? [
-        'Gjør ingressen tydeligere og kortere.',
-        'Finn språklige feil på denne siden.',
-        'Lag et bedre forslag til sidetittel.',
+        'Make the introduction clearer and shorter.',
+        'Find language issues on this page.',
+        'Suggest a better page title.',
     ] : [
-    'Gjør ingressen på forsiden tydeligere.',
-    'Finn siden «Om oss» og foreslå en bedre tittel.',
-    'Lag et utkast til en ny kontaktside.',
+        'Make the homepage introduction clearer.',
+        'Find the “About us” page and suggest a better title.',
+        'Draft a new contact page.',
     ];
 });
 const { start: startPolling, stop: stopPolling } = usePoll(2000, {
@@ -105,6 +165,7 @@ const { start: startPolling, stop: stopPolling } = usePoll(2000, {
     preserveScroll: true,
 }, { autoStart: false });
 let pollingMounted = false;
+let referenceTimer = null;
 
 function newConversation() {
     router.post(props.endpoints.create, {}, { onStart: () => busy.value = true, onFinish: () => busy.value = false });
@@ -190,6 +251,74 @@ function responseError(exception, fallback) {
         ?? fallback;
 }
 
+function referenceMatch(value) {
+    return value.match(/(?:^|\s)@([\p{L}\p{N}_ -]{2,80})$/u);
+}
+
+async function loadReferences(query) {
+    if (!props.endpoints.references || !query || !axios) return;
+
+    referenceLoading.value = true;
+
+    try {
+        const response = await axios.get(props.endpoints.references, { params: { q: query } });
+        references.value = response.data.references ?? [];
+    } catch {
+        references.value = [];
+    } finally {
+        referenceLoading.value = false;
+    }
+}
+
+function scheduleReferences(value) {
+    if (referenceTimer) window.clearTimeout(referenceTimer);
+    const match = referenceMatch(value);
+
+    if (!match) {
+        references.value = [];
+        return;
+    }
+
+    referenceTimer = window.setTimeout(() => loadReferences(match[1].trim()), 220);
+}
+
+function insertReference(reference) {
+    const match = referenceMatch(message.value);
+
+    if (!match) return;
+
+    const start = (match.index ?? 0) + match[0].lastIndexOf('@');
+    message.value = `${message.value.slice(0, start)}${reference.token} `;
+    references.value = [];
+    nextTick(() => composerInput.value?.focus());
+}
+
+function startReference() {
+    const spacer = message.value && !/\s$/.test(message.value) ? ' ' : '';
+    message.value = `${message.value}${spacer}@`;
+    nextTick(() => composerInput.value?.focus());
+}
+
+function resizeComposer() {
+    const input = composerInput.value;
+
+    if (!input) return;
+
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 224)}px`;
+}
+
+function reuseFailedMessage() {
+    if (!props.conversation?.failed_message_body) return;
+
+    message.value = props.conversation.failed_message_body;
+    actionError.value = null;
+    nextTick(() => {
+        resizeComposer();
+        composerInput.value?.focus();
+    });
+}
+
 async function review(change, target, decision) {
     if (!axios || !change?.review_url || reviewingTarget.value || processing.value) return;
 
@@ -203,7 +332,7 @@ async function review(change, target, decision) {
         });
         Object.assign(change, response.data.change);
     } catch (exception) {
-        actionError.value = responseError(exception, 'Secretary kunne ikke oppdatere feltvalget.');
+        actionError.value = responseError(exception, 'Secretary could not update the field selection.');
     } finally {
         reviewingTarget.value = null;
     }
@@ -221,7 +350,7 @@ async function openPreview(change) {
         const response = await axios.get(change.preview_url);
         previewData.value = response.data;
     } catch (exception) {
-        previewError.value = responseError(exception, 'Forhåndsvisningen kunne ikke åpnes.');
+        previewError.value = responseError(exception, 'The preview could not be opened.');
     } finally {
         previewLoading.value = false;
     }
@@ -268,53 +397,8 @@ function onComposerKeydown(event) {
     }
 }
 
-function statusVariant(status) {
-    return ({ draft: 'warning', published: 'success', failed: 'error' })[status] ?? 'default';
-}
-
-function statusLabel(status) {
-    return ({
-        proposed: 'Foreslått',
-        draft: 'Klar som utkast',
-        published: 'Publisert',
-        failed: 'Kunne ikke lagres',
-    })[status] ?? status;
-}
-
-function changedFields(change) {
-    return change.resource_type === 'navigation'
-        ? ['komplett navigasjonstre']
-        : Object.keys(change.patch ?? {});
-}
-
-function resourceLabel(type) {
-    return ({
-        entry: 'Side eller innlegg',
-        term: 'Taksonomibegrep',
-        global: 'Globalt innhold',
-        navigation: 'Navigasjon',
-    })[type] ?? type;
-}
-
 function channelLabel(channel) {
-    return channel === 'email' ? 'E-post' : 'Kontrollpanel';
-}
-
-function fieldLabel(handle) {
-    const known = {
-        title: 'Tittel',
-        content: 'Innhold',
-        intro: 'Ingress',
-        description: 'Beskrivelse',
-        bard: 'Innhold',
-        slug: 'URL-segment',
-    };
-
-    if (known[handle]) return known[handle];
-
-    const label = String(handle).replaceAll('_', ' ');
-
-    return label.charAt(0).toUpperCase() + label.slice(1);
+    return channel === 'email' ? 'Email' : 'Control Panel';
 }
 
 function relativeTime(value) {
@@ -322,7 +406,7 @@ function relativeTime(value) {
 
     const date = new Date(value);
     const seconds = Math.round((date.getTime() - Date.now()) / 1000);
-    const formatter = new Intl.RelativeTimeFormat('nb', { numeric: 'auto' });
+    const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
     const units = [
         ['day', 86400],
         ['hour', 3600],
@@ -338,37 +422,39 @@ function relativeTime(value) {
     return '';
 }
 
-function nodeCount(branches = []) {
-    return branches.reduce((total, branch) => total + 1 + nodeCount(branch.children ?? []), 0);
+function changesForMessage(item) {
+    if (item?.role === 'user' || !item?.reply_to_message_id) return [];
+
+    return props.conversation?.changes?.filter(
+        change => change.proposed_by_message_id === item.reply_to_message_id,
+    ) ?? [];
 }
 
-function changeValues(change) {
-    if (change.resource_type === 'navigation') {
-        return [{
-            field: `tree (${nodeCount(change.before?.tree)} → ${nodeCount(change.after?.tree)} navigasjonspunkter)`,
-            before: change.before?.tree ?? [],
-            after: change.after?.tree ?? [],
-        }];
+const latestChangeMessageId = computed(() => {
+    for (let index = visibleMessages.value.length - 1; index >= 0; index -= 1) {
+        const item = visibleMessages.value[index];
+
+        if (!changesForMessage(item).length) continue;
+
+        const newerUserRequest = visibleMessages.value
+            .slice(index + 1)
+            .some(messageItem => messageItem.presentation === 'user');
+
+        return newerUserRequest ? null : item.id;
     }
 
-    const before = change.before?.data ?? {};
-    const after = change.after?.data ?? {};
-
-    return Object.keys(change.patch ?? {}).map(field => ({
-        field,
-        before: before[field],
-        after: after[field],
-    }));
-}
-
-function formatValue(value) {
-    if (value === undefined || value === null || value === '') return '—';
-    if (typeof value === 'boolean') return value ? 'Ja' : 'Nei';
-    if (typeof value === 'string') return value.length > 4000 ? `${value.slice(0, 4000)}…` : value;
-
-    const json = JSON.stringify(value, null, 2);
-    return json.length > 4000 ? `${json.slice(0, 4000)}…` : json;
-}
+    return null;
+});
+const activeChangeIds = computed(() => new Set(
+    latestChangeMessageId.value
+        ? changesForMessage(visibleMessages.value.find(item => item.id === latestChangeMessageId.value))
+            .map(change => change.id)
+        : [],
+));
+const previousChanges = computed(() => (
+    props.conversation?.changes?.filter(change => !activeChangeIds.value.has(change.id))
+    ?? []
+));
 
 function scrollToLatest() {
     nextTick(() => {
@@ -389,11 +475,16 @@ onMounted(() => {
 });
 watch(() => props.conversation?.messages?.length, scrollToLatest);
 watch(processing, syncPolling);
+watch(message, scheduleReferences);
+watch(message, () => nextTick(resizeComposer));
 watch(() => props.email_setup.connected, connected => {
     if (connected) showSetup.value = false;
 });
 watch(() => props.relay_setup.connected, connected => {
     if (connected) showSetup.value = false;
+});
+onBeforeUnmount(() => {
+    if (referenceTimer) window.clearTimeout(referenceTimer);
 });
 watch(guideSite, loadGuide);
 </script>
@@ -402,102 +493,132 @@ watch(guideSite, loadGuide);
     <Head title="Secretary" />
 
     <ui-header title="Secretary">
-        <template #description>
-            Be om en endring. Secretary gjør grunnarbeidet; du ser over og publiserer.
-        </template>
         <template #actions>
             <ui-button icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
-                Ny samtale
+                New conversation
             </ui-button>
         </template>
     </ui-header>
+
+    <p class="secretary-page-lead">
+        Ask for a change. Secretary prepares the draft; you review and publish.
+    </p>
 
     <div class="space-y-4">
         <ui-alert
             v-if="!configured"
             variant="warning"
-            heading="OpenAI er ikke konfigurert"
-            text="Legg OPENAI_API_KEY i miljøet før Secretary kan behandle meldinger. Nøkkelen vises eller lagres aldri her."
+            heading="OpenAI is not configured"
+            text="Add OPENAI_API_KEY to the environment before Secretary can process messages. The key is never displayed or stored here."
         />
 
         <ui-alert
             v-if="success"
             variant="success"
-            heading="Klart"
+            heading="Done"
             :text="success"
         />
 
         <ui-alert
             v-if="!emailConnected && !email_setup.token_configured && !relay_setup.pairing_available"
             variant="warning"
-            heading="E-post er ikke koblet til"
-            text="Legg POSTMARK_API_KEY i miljøet, eller aktiver Secretary-fellesadressen. Deretter kan en administrator fullføre oppsettet her."
+            heading="Email is not connected"
+            text="Add POSTMARK_API_KEY to the environment, or enable the shared Secretary address. An administrator can then finish setup here."
         />
 
-        <ui-panel v-if="relay_setup.connected && !showSetup" class="overflow-hidden">
-            <div class="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div class="min-w-0">
+        <section class="secretary-page-settings">
+            <details :open="!emailConnected || Boolean(setupError)">
+                <summary class="secretary-page-settings-summary">
+                    <span class="secretary-tools-panel-icon"><ui-icon name="cog" aria-hidden="true" /></span>
+                    <span class="min-w-0 flex-1">
+                        <strong>Settings and status</strong>
+                        <small v-if="activeEmailAddress" class="secretary-settings-email-preview">
+                            {{ activeEmailAddress }}
+                        </small>
+                        <small v-else>Email, editorial guide, and system status</small>
+                    </span>
+                    <span class="secretary-page-settings-badges">
+                        <ui-badge :variant="emailConnected ? 'success' : 'warning'">
+                            {{ emailConnected ? 'Email ready' : 'Email missing' }}
+                        </ui-badge>
+                        <ui-badge :variant="diagnosticSummary.ready ? (diagnosticSummary.warnings ? 'warning' : 'success') : 'error'">
+                            {{ diagnosticSummary.ready ? (diagnosticSummary.warnings ? `${diagnosticSummary.warnings} warnings` : 'System ready') : `${diagnosticSummary.blockers} errors` }}
+                        </ui-badge>
+                    </span>
+                    <span class="secretary-settings-summary-action">
+                        <span class="secretary-settings-action-open">Show details</span>
+                        <span class="secretary-settings-action-close">Hide</span>
+                        <ui-icon name="chevron-down" class="secretary-page-settings-chevron size-4" aria-hidden="true" />
+                    </span>
+                </summary>
+
+                <div class="secretary-page-settings-content">
+        <section v-if="relay_setup.connected && !showSetup" class="secretary-settings-card secretary-email-card">
+            <div class="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
-                        <ui-badge variant="success">E-post klar</ui-badge>
-                        <span class="truncate text-sm text-gray-500 dark:text-gray-400">Fellesadresse</span>
+                        <span class="secretary-settings-eyebrow">Secretary address</span>
+                        <ui-badge variant="success">Recommended setup</ui-badge>
                     </div>
-                    <p class="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-200">
-                        Send instruksjoner til
-                        <strong class="break-all">{{ relay_setup.address }}</strong>.
-                        Secretary svarer fra samme adresse og holder samtalen samlet
+                    <a :href="`mailto:${relay_setup.address}`" class="secretary-email-address">
+                        {{ relay_setup.address }}
+                    </a>
+                    <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                        Send instructions here. Secretary replies from the same address and keeps the conversation together
                         <template v-if="relay_setup.sender">
                             for <strong>{{ relay_setup.sender }}</strong>
                         </template>.
                     </p>
-                    <p v-if="relay_setup.route_address" class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                        Hvis samme avsender senere kobles til flere nettsteder, kan du bruke nettstedets unike adresse:
-                        <code class="break-all">{{ relay_setup.route_address }}</code>.
-                    </p>
+                    <details v-if="relay_setup.route_address && relay_setup.route_address !== relay_setup.address" class="secretary-technical-address">
+                        <summary>Show technical fallback address</summary>
+                        <code>{{ relay_setup.route_address }}</code>
+                    </details>
                 </div>
                 <ui-button
                     v-if="relay_setup.can_configure"
-                    variant="ghost"
                     size="sm"
                     @click="setupMode = 'relay'; showSetup = true"
                 >
-                    Endre oppsett
+                    Change setup
                 </ui-button>
             </div>
-        </ui-panel>
+        </section>
 
-        <ui-panel v-else-if="email_setup.connected && !showSetup" class="overflow-hidden">
-            <div class="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div class="min-w-0">
+        <section v-else-if="email_setup.connected && !showSetup" class="secretary-settings-card secretary-email-card">
+            <div class="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
-                        <ui-badge variant="success">E-post klar</ui-badge>
-                        <span v-if="email_setup.server_name" class="truncate text-sm text-gray-500 dark:text-gray-400">
-                            {{ email_setup.server_name }}
-                        </span>
+                        <span class="secretary-settings-eyebrow">Secretary address</span>
+                        <ui-badge variant="default">Your Postmark server</ui-badge>
                     </div>
-                    <p class="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-200">
-                        Videresend
-                        <strong>{{ email_setup.from_address }}</strong>
-                        til
-                        <code class="break-all rounded bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800">{{ email_setup.inbound_address }}</code>.
+                    <a :href="`mailto:${email_setup.from_address}`" class="secretary-email-address">
+                        {{ email_setup.from_address }}
+                    </a>
+                    <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                        <template v-if="email_setup.server_name">{{ email_setup.server_name }} · </template>
+                        Forwarded to the Postmark address below.
                     </p>
+                    <details class="secretary-technical-address">
+                        <summary>Show technical Postmark address</summary>
+                        <code>{{ email_setup.inbound_address }}</code>
+                    </details>
                 </div>
                 <ui-button
                     v-if="email_setup.can_configure"
-                    variant="ghost"
                     size="sm"
                     @click="setupMode = 'postmark'; showSetup = true"
                 >
-                    Endre oppsett
+                    Change setup
                 </ui-button>
             </div>
-        </ui-panel>
+        </section>
 
-        <ui-panel v-else-if="email_setup.can_configure" class="overflow-hidden">
+        <section v-else-if="email_setup.can_configure" class="secretary-settings-card">
             <div class="space-y-5 px-5 py-5">
                 <div>
-                    <h2 class="text-base font-bold">Koble e-post til Secretary</h2>
+                    <h2 class="text-base font-bold">Connect email to Secretary</h2>
                     <p class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                        Velg fellesadressen for kortest oppsett, eller bruk din egen Postmark-server.
+                        Choose the shared address for the shortest setup, or use your own Postmark server.
                     </p>
                 </div>
 
@@ -505,7 +626,7 @@ watch(guideSite, loadGuide);
                     v-if="relay_setup.pairing_available"
                     class="secretary-setup-tabs grid gap-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-800"
                     role="group"
-                    aria-label="Velg e-postoppsett"
+                    aria-label="Choose email setup"
                 >
                     <button
                         type="button"
@@ -516,7 +637,8 @@ watch(guideSite, loadGuide);
                             : 'text-gray-600 hover:text-gray-950 dark:text-gray-300 dark:hover:text-white'"
                         @click="setupMode = 'relay'"
                     >
-                        Fellesadresse
+                        Shared address
+                        <span class="secretary-setup-recommended">Recommended</span>
                     </button>
                     <button
                         type="button"
@@ -527,42 +649,51 @@ watch(guideSite, loadGuide);
                             : 'text-gray-600 hover:text-gray-950 dark:text-gray-300 dark:hover:text-white'"
                         @click="setupMode = 'postmark'"
                     >
-                        Egen Postmark-server
+                        Your Postmark server
                     </button>
                 </div>
 
                 <ui-alert
                     v-if="setupError"
                     variant="error"
-                    heading="E-post kunne ikke kobles til"
+                    heading="Email could not be connected"
                     :text="setupError"
                 />
 
                 <div v-if="setupMode === 'relay' && relay_setup.pairing_available" class="space-y-5">
                     <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
-                        Verifiser en eksisterende Statamic-bruker. Deretter kan brukeren sende instruksjoner direkte til
-                        <strong>secretary@statamic.no</strong>, uten egen Postmark-server.
+                        Fastest setup: verify an existing Statamic user without creating your own Postmark server.
+                    </p>
+                    <div class="secretary-email-example">
+                        <span>
+                            <small>Your Secretary address</small>
+                            <strong>{{ sharedAddressPreview }}</strong>
+                        </span>
+                        <ui-badge variant="success">Recommended</ui-badge>
+                    </div>
+                    <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                        You can also use <strong>secretary@statamic.no</strong> when the sender is connected to only one site.
                     </p>
 
                     <form class="rounded-lg border p-4 dark:border-gray-700" @submit.prevent="requestRelayCode">
                         <div class="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                             <div>
-                                <label for="secretary-relay-email" class="mb-1.5 block text-sm font-semibold">Godkjent avsender</label>
+                                <label for="secretary-relay-email" class="mb-1.5 block text-sm font-semibold">Authorized sender</label>
                                 <input
                                     id="secretary-relay-email"
                                     v-model="relayEmail"
-                                    class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:ring-blue-900"
+                                    class="secretary-settings-input w-full"
                                     type="email"
                                     autocomplete="email"
                                     placeholder="redaktor@example.com"
                                     required
                                 >
                                 <p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                                    Adressen må tilhøre en Statamic-bruker med tilgang til Secretary.
+                                    The address must belong to a Statamic user with access to Secretary.
                                 </p>
                             </div>
                             <ui-button type="submit" :disabled="setupBusy || !relayEmail.trim()">
-                                {{ setupBusy ? 'Sender …' : 'Send engangskode' }}
+                                {{ setupBusy ? 'Sending …' : 'Send one-time code' }}
                             </ui-button>
                         </div>
                     </form>
@@ -570,11 +701,11 @@ watch(guideSite, loadGuide);
                     <form class="space-y-4" @submit.prevent="connectRelay">
                         <div class="grid gap-4 md:grid-cols-2">
                         <div>
-                            <label for="secretary-pairing-code" class="mb-1.5 block text-sm font-semibold">Engangskode</label>
+                            <label for="secretary-pairing-code" class="mb-1.5 block text-sm font-semibold">One-time code</label>
                             <input
                                 id="secretary-pairing-code"
                                 v-model="pairingCode"
-                                class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:ring-blue-900"
+                                class="secretary-settings-input w-full font-mono"
                                 type="text"
                                 autocomplete="one-time-code"
                                 autocapitalize="none"
@@ -583,30 +714,30 @@ watch(guideSite, loadGuide);
                                 required
                             >
                             <p v-if="relay_setup.pending_sender" class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                                Koden ble sendt til {{ relay_setup.pending_sender }} og er gyldig i 15 minutter.
+                                The code was sent to {{ relay_setup.pending_sender }} and is valid for 15 minutes.
                             </p>
                         </div>
 
                         <div>
-                            <label for="secretary-relay-public-url" class="mb-1.5 block text-sm font-semibold">Nettstedets offentlige HTTPS-adresse</label>
+                            <label for="secretary-relay-public-url" class="mb-1.5 block text-sm font-semibold">Site’s public HTTPS URL</label>
                             <input
                                 id="secretary-relay-public-url"
                                 v-model="relayPublicUrl"
-                                class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:ring-blue-900"
+                                class="secretary-settings-input w-full"
                                 type="url"
                                 inputmode="url"
                                 placeholder="https://example.com"
                                 required
                             >
                             <p v-if="!relay_setup.suggested_public_url" class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                                Lokal test: lim inn HTTPS-adressen fra Herd Share. Relayet kan ikke nå en <code>.test</code>-adresse.
+                                Local testing: paste the HTTPS URL from Herd Share. The relay cannot reach a <code>.test</code> address.
                             </p>
                         </div>
                         </div>
 
                         <div class="flex flex-wrap items-center gap-3">
                             <ui-button type="submit" :disabled="setupBusy || !pairingCode.trim() || !relayPublicUrl.trim()">
-                                {{ setupBusy ? 'Kobler til …' : 'Koble til fellesadressen' }}
+                                {{ setupBusy ? 'Connecting …' : 'Connect shared address' }}
                             </ui-button>
                             <ui-button
                                 v-if="emailConnected"
@@ -614,32 +745,32 @@ watch(guideSite, loadGuide);
                                 variant="ghost"
                                 @click="showSetup = false"
                             >
-                                Avbryt
+                                Cancel
                             </ui-button>
-                            <span class="text-xs text-gray-500 dark:text-gray-400">Engangskoden lagres aldri.</span>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">The one-time code is never stored.</span>
                         </div>
                     </form>
                 </div>
 
                 <form v-else class="space-y-5" @submit.prevent="connectPostmark">
                     <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
-                        Secretary finner inbound-adressen og registrerer webhooken automatisk i din Postmark-server.
+                        Secretary finds the inbound address and registers the webhook automatically in your Postmark server.
                     </p>
 
                     <ui-alert
                         v-if="!email_setup.token_configured"
                         variant="warning"
-                        heading="Postmark-nøkkelen mangler"
-                        text="Legg POSTMARK_API_KEY i miljøet før du kobler til din egen server."
+                        heading="Postmark key is missing"
+                        text="Add POSTMARK_API_KEY to the environment before connecting your own server."
                     />
 
                     <div class="grid gap-4 md:grid-cols-2">
                         <div>
-                            <label for="secretary-email" class="mb-1.5 block text-sm font-semibold">Secretary-adresse</label>
+                            <label for="secretary-email" class="mb-1.5 block text-sm font-semibold">Secretary address</label>
                             <input
                                 id="secretary-email"
                                 v-model="emailAddress"
-                                class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:ring-blue-900"
+                                class="secretary-settings-input w-full"
                                 type="email"
                                 autocomplete="email"
                                 placeholder="secretary@example.com"
@@ -648,18 +779,18 @@ watch(guideSite, loadGuide);
                         </div>
 
                         <div>
-                            <label for="secretary-public-url" class="mb-1.5 block text-sm font-semibold">Nettstedets offentlige HTTPS-adresse</label>
+                            <label for="secretary-public-url" class="mb-1.5 block text-sm font-semibold">Site’s public HTTPS URL</label>
                             <input
                                 id="secretary-public-url"
                                 v-model="publicUrl"
-                                class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:ring-blue-900"
+                                class="secretary-settings-input w-full"
                                 type="url"
                                 inputmode="url"
                                 placeholder="https://example.com"
                                 required
                             >
                             <p v-if="!email_setup.suggested_public_url" class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                                Lokal test: lim inn HTTPS-adressen fra Herd Share. Postmark kan ikke nå en <code>.test</code>-adresse.
+                                Local testing: paste the HTTPS URL from Herd Share. Postmark cannot reach a <code>.test</code> address.
                             </p>
                         </div>
                     </div>
@@ -669,7 +800,7 @@ watch(guideSite, loadGuide);
                             type="submit"
                             :disabled="setupBusy || !email_setup.token_configured || !emailAddress.trim() || !publicUrl.trim()"
                         >
-                            {{ setupBusy ? 'Kobler til …' : 'Koble til Postmark' }}
+                            {{ setupBusy ? 'Connecting …' : 'Connect Postmark' }}
                         </ui-button>
                         <ui-button
                             v-if="emailConnected"
@@ -677,38 +808,42 @@ watch(guideSite, loadGuide);
                             variant="ghost"
                             @click="showSetup = false"
                         >
-                            Avbryt
+                            Cancel
                         </ui-button>
-                        <span class="text-xs text-gray-500 dark:text-gray-400">API-nøkkelen vises eller lagres aldri her.</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">The API key is never displayed or stored here.</span>
                     </div>
                 </form>
             </div>
-        </ui-panel>
+        </section>
 
         <ui-alert
             v-else-if="!emailConnected"
             variant="warning"
-            heading="E-post venter på oppsett"
-            text="En administrator med «configure secretary» må koble til e-post."
+            heading="Email setup required"
+            text="An administrator with “configure secretary” permission must connect email."
         />
 
         <div class="grid gap-4 xl:grid-cols-2">
-            <ui-panel class="overflow-hidden">
+            <section class="secretary-settings-card secretary-settings-disclosure">
                 <details class="secretary-tools-panel">
                     <summary>
                         <span class="secretary-tools-panel-icon"><ui-icon name="edit" aria-hidden="true" /></span>
                         <span class="min-w-0 flex-1">
-                            <strong>Redaksjonell guide</strong>
-                            <small>Fast tone, målgruppe og terminologi per nettsted</small>
+                            <strong>Editorial guide</strong>
+                            <small>Voice, audience, and terminology for each site</small>
                         </span>
-                        <ui-badge variant="default">{{ style_guides.sites.length }} {{ style_guides.sites.length === 1 ? 'nettsted' : 'nettsteder' }}</ui-badge>
-                        <ui-icon name="chevron-down" class="secretary-tools-chevron size-4" aria-hidden="true" />
+                        <ui-badge class="secretary-disclosure-badge" variant="default">{{ style_guides.sites.length }} {{ style_guides.sites.length === 1 ? 'site' : 'sites' }}</ui-badge>
+                        <span class="secretary-disclosure-action">
+                            <span class="secretary-settings-action-open">Open</span>
+                            <span class="secretary-settings-action-close">Close</span>
+                            <ui-icon name="chevron-down" class="secretary-tools-chevron size-4" aria-hidden="true" />
+                        </span>
                     </summary>
 
                     <form class="secretary-tools-panel-content space-y-4" @submit.prevent="saveGuide">
                         <div>
-                            <label for="secretary-guide-site" class="mb-1.5 block text-sm font-semibold">Nettsted</label>
-                            <select id="secretary-guide-site" v-model="guideSite" class="input-text w-full" :disabled="guideBusy">
+                            <label for="secretary-guide-site" class="mb-1.5 block text-sm font-semibold">Site</label>
+                            <select id="secretary-guide-site" v-model="guideSite" class="secretary-settings-input w-full" :disabled="guideBusy">
                                 <option v-for="site in style_guides.sites" :key="site.handle" :value="site.handle">
                                     {{ site.name }} · {{ site.handle }}
                                 </option>
@@ -717,46 +852,46 @@ watch(guideSite, loadGuide);
 
                         <div class="grid gap-4 md:grid-cols-2">
                             <div>
-                                <label for="secretary-guide-audience" class="mb-1.5 block text-sm font-semibold">Målgruppe</label>
+                                <label for="secretary-guide-audience" class="mb-1.5 block text-sm font-semibold">Audience</label>
                                 <textarea
                                     id="secretary-guide-audience"
                                     v-model="guideForm.audience"
-                                    class="input-text min-h-24 w-full resize-y"
+                                    class="secretary-settings-input min-h-24 w-full resize-y"
                                     maxlength="1000"
-                                    placeholder="Hvem skriver nettstedet for?"
+                                    placeholder="Who is this site for?"
                                     :readonly="!style_guides.can_configure"
                                 />
                             </div>
                             <div>
-                                <label for="secretary-guide-voice" class="mb-1.5 block text-sm font-semibold">Stemme og tone</label>
+                                <label for="secretary-guide-voice" class="mb-1.5 block text-sm font-semibold">Voice and tone</label>
                                 <textarea
                                     id="secretary-guide-voice"
                                     v-model="guideForm.voice"
-                                    class="input-text min-h-24 w-full resize-y"
+                                    class="secretary-settings-input min-h-24 w-full resize-y"
                                     maxlength="2000"
-                                    placeholder="For eksempel: varm, tydelig og direkte."
+                                    placeholder="For example: warm, clear, and direct."
                                     :readonly="!style_guides.can_configure"
                                 />
                             </div>
                             <div>
-                                <label for="secretary-guide-terminology" class="mb-1.5 block text-sm font-semibold">Foretrukne ord</label>
+                                <label for="secretary-guide-terminology" class="mb-1.5 block text-sm font-semibold">Preferred terminology</label>
                                 <textarea
                                     id="secretary-guide-terminology"
                                     v-model="guideForm.terminology"
-                                    class="input-text min-h-24 w-full resize-y"
+                                    class="secretary-settings-input min-h-24 w-full resize-y"
                                     maxlength="3000"
-                                    placeholder="Produktnavn, skrivemåter og faguttrykk."
+                                    placeholder="Product names, preferred spellings, and specialist terms."
                                     :readonly="!style_guides.can_configure"
                                 />
                             </div>
                             <div>
-                                <label for="secretary-guide-avoid" class="mb-1.5 block text-sm font-semibold">Unngå</label>
+                                <label for="secretary-guide-avoid" class="mb-1.5 block text-sm font-semibold">Avoid</label>
                                 <textarea
                                     id="secretary-guide-avoid"
                                     v-model="guideForm.avoid"
-                                    class="input-text min-h-24 w-full resize-y"
+                                    class="secretary-settings-input min-h-24 w-full resize-y"
                                     maxlength="3000"
-                                    placeholder="Klisjeer, sjargong eller formuleringer Secretary ikke skal bruke."
+                                    placeholder="Clichés, jargon, or phrases Secretary should not use."
                                     :readonly="!style_guides.can_configure"
                                 />
                             </div>
@@ -764,7 +899,7 @@ watch(guideSite, loadGuide);
 
                         <div class="flex flex-wrap items-center justify-between gap-3">
                             <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
-                                Config-verdier er standard; CP-verdier overstyrer dem for dette nettstedet.
+                                Config values are the defaults; Control Panel values override them for this site.
                             </p>
                             <ui-button
                                 v-if="style_guides.can_configure"
@@ -773,25 +908,29 @@ watch(guideSite, loadGuide);
                                 :loading="guideBusy"
                                 :disabled="guideBusy || !guideSite"
                             >
-                                Lagre guide
+                                Save guide
                             </ui-button>
                         </div>
                     </form>
                 </details>
-            </ui-panel>
+            </section>
 
-            <ui-panel class="overflow-hidden">
+            <section class="secretary-settings-card secretary-settings-disclosure">
                 <details class="secretary-tools-panel">
                     <summary>
                         <span class="secretary-tools-panel-icon"><ui-icon name="dashboard" aria-hidden="true" /></span>
                         <span class="min-w-0 flex-1">
-                            <strong>Systemstatus</strong>
-                            <small>Samme kontroller som <code>secretary:doctor</code></small>
+                            <strong>System status</strong>
+                            <small>The same checks as <code>secretary:doctor</code></small>
                         </span>
-                        <ui-badge :variant="diagnosticSummary.ready ? (diagnosticSummary.warnings ? 'warning' : 'success') : 'error'">
-                            {{ diagnosticSummary.ready ? (diagnosticSummary.warnings ? `${diagnosticSummary.warnings} varsler` : 'Alt klart') : `${diagnosticSummary.blockers} feil` }}
+                        <ui-badge class="secretary-disclosure-badge" :variant="diagnosticSummary.ready ? (diagnosticSummary.warnings ? 'warning' : 'success') : 'error'">
+                            {{ diagnosticSummary.ready ? (diagnosticSummary.warnings ? `${diagnosticSummary.warnings} warnings` : 'All clear') : `${diagnosticSummary.blockers} errors` }}
                         </ui-badge>
-                        <ui-icon name="chevron-down" class="secretary-tools-chevron size-4" aria-hidden="true" />
+                        <span class="secretary-disclosure-action">
+                            <span class="secretary-settings-action-open">Open</span>
+                            <span class="secretary-settings-action-close">Close</span>
+                            <ui-icon name="chevron-down" class="secretary-tools-chevron size-4" aria-hidden="true" />
+                        </span>
                     </summary>
 
                     <div class="secretary-tools-panel-content">
@@ -811,46 +950,90 @@ watch(guideSite, loadGuide);
                         </p>
                     </div>
                 </details>
-            </ui-panel>
+            </section>
         </div>
+                </div>
+            </details>
+        </section>
 
         <ui-alert
             v-if="error"
             variant="error"
-            heading="Secretary kunne ikke fullføre"
+            heading="Secretary could not complete the request"
             :text="error"
         />
 
-        <div class="secretary-workspace grid min-h-[38rem] gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
-            <ui-panel class="h-fit overflow-hidden lg:sticky lg:top-4">
-                <div class="border-b px-4 py-3.5 dark:border-gray-700">
+        <div class="secretary-workspace">
+            <ui-panel class="secretary-conversation-panel overflow-hidden">
+                <div class="secretary-conversation-panel-header">
                     <div class="flex items-center justify-between gap-3">
-                        <div class="text-sm font-semibold">Samtaler</div>
+                        <div class="text-sm font-semibold">Conversations</div>
                         <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ conversations.length }}</span>
                     </div>
                     <div class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                        {{ email_enabled ? 'Samme historikk i kontrollpanelet og på e-post.' : 'Chat i kontrollpanelet er klar.' }}
+                        {{ email_enabled ? 'The same history in the Control Panel and email.' : 'Control Panel chat is ready.' }}
                     </div>
+                    <button
+                        type="button"
+                        class="secretary-conversation-toggle"
+                        :aria-expanded="conversationMenuOpen"
+                        aria-controls="secretary-conversation-list"
+                        @click="conversationMenuOpen = !conversationMenuOpen"
+                    >
+                        <span class="min-w-0 flex-1 text-left">
+                            <span class="block text-[0.6875rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Selected conversation</span>
+                            <span class="mt-0.5 block truncate text-sm font-semibold">{{ conversation?.title ?? 'Choose a conversation' }}</span>
+                        </span>
+                        <ui-icon
+                            name="chevron-down"
+                            class="size-4 shrink-0 transition-transform"
+                            :class="{ 'rotate-180': conversationMenuOpen }"
+                            aria-hidden="true"
+                        />
+                    </button>
                 </div>
 
-                <nav class="secretary-conversation-list flex max-w-full gap-2 overflow-x-auto p-2 lg:block lg:max-h-[34rem] lg:space-y-1" aria-label="Secretary-samtaler">
+                <div
+                    v-if="conversations.length > 5"
+                    class="secretary-conversation-search"
+                    :class="{ 'is-open': conversationMenuOpen }"
+                >
+                    <label for="secretary-conversation-search" class="sr-only">Search conversations</label>
+                    <ui-icon name="search-magnifying-glass" class="size-4" aria-hidden="true" />
+                    <input
+                        id="secretary-conversation-search"
+                        v-model="conversationQuery"
+                        type="search"
+                        class="secretary-conversation-search-input secretary-active-input"
+                        placeholder="Search conversations"
+                        autocomplete="off"
+                    >
+                </div>
+
+                <nav
+                    id="secretary-conversation-list"
+                    class="secretary-conversation-list"
+                    :class="{ 'is-open': conversationMenuOpen }"
+                    aria-label="Secretary conversations"
+                >
                     <Link
-                        v-for="item in conversations"
+                        v-for="item in filteredConversations"
                         :key="item.id"
                         :href="item.url"
-                        class="secretary-conversation-link block min-w-64 rounded-lg px-3 py-2.5 text-sm transition lg:min-w-0"
+                        class="secretary-conversation-link"
                         :class="{ 'is-active': item.id === conversation?.id }"
+                        :aria-current="item.id === conversation?.id ? 'page' : undefined"
                     >
-                        <span class="line-clamp-2 min-w-0 font-semibold leading-5">{{ item.title }}</span>
-                        <span class="mt-1 flex items-center gap-1.5 text-[0.6875rem] text-gray-500 dark:text-gray-400">
+                        <span class="line-clamp-2 min-w-0 text-sm font-semibold leading-5">{{ item.title }}</span>
+                        <span class="secretary-conversation-meta">
                             <span>{{ channelLabel(item.channel) }}</span>
                             <span aria-hidden="true">·</span>
                             <span>{{ relativeTime(item.updated_at) }}</span>
                         </span>
                     </Link>
 
-                    <div v-if="!conversations.length" class="px-3 py-6 text-center text-sm text-gray-500">
-                        Ingen samtaler ennå.
+                    <div v-if="!filteredConversations.length" class="px-3 py-8 text-center text-sm text-gray-500">
+                        {{ conversations.length ? 'No conversations match your search.' : 'No conversations yet.' }}
                     </div>
                 </nav>
             </ui-panel>
@@ -859,9 +1042,10 @@ watch(guideSite, loadGuide);
                 <template v-if="conversation">
                     <header class="secretary-main-header">
                         <div class="min-w-0">
-                            <h2 class="truncate text-base font-bold">{{ conversation.title }}</h2>
+                            <h2 class="line-clamp-2 text-base font-bold leading-6">{{ conversation.title }}</h2>
                             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                {{ channelLabel(conversation.channel) }} · Publisert innhold endres først når du godkjenner.
+                                {{ channelLabel(conversation.channel) }} ·
+                                {{ visibleMessages.length }} {{ visibleMessages.length === 1 ? 'message' : 'messages' }}
                             </p>
                         </div>
                         <span
@@ -869,7 +1053,7 @@ watch(guideSite, loadGuide);
                             :class="processing ? 'is-processing' : 'is-ready'"
                         >
                             <span class="secretary-status-dot" aria-hidden="true" />
-                            {{ processing ? 'Secretary jobber' : 'Klar' }}
+                            {{ processing ? 'Secretary is working' : 'Ready' }}
                         </span>
                     </header>
 
@@ -880,37 +1064,42 @@ watch(guideSite, loadGuide);
                     >
                         <ui-icon name="entry" class="size-4 shrink-0" aria-hidden="true" />
                         <span class="min-w-0 flex-1">
-                            <span class="block text-[0.6875rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Denne samtalen gjelder</span>
+                            <span class="block text-[0.6875rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Working on</span>
                             <span class="block truncate text-sm font-semibold">
                                 {{ conversation.context.title }}
                                 <span v-if="conversation.context.uri" class="font-normal text-gray-500 dark:text-gray-400">· {{ conversation.context.uri }}</span>
                             </span>
                             <span v-if="conversation.context.field" class="block truncate text-xs text-gray-500 dark:text-gray-400">
-                                Aktivt felt: {{ conversation.context.field.display }}
+                                Active field: {{ conversation.context.field.display }}
                                 <template v-if="conversation.context.field.set_type"> · {{ conversation.context.field.set_type }}</template>
                             </span>
                         </span>
                         <ui-icon name="arrow-up-right" class="size-4 shrink-0 text-gray-400" aria-hidden="true" />
                     </Link>
 
-                    <ui-alert
-                        v-if="conversation.processing_error"
-                        class="m-4 mb-0"
-                        variant="error"
-                        heading="Secretary stoppet underveis"
-                        :text="conversation.processing_error"
-                    />
+                    <div v-if="conversation.processing_error" class="secretary-action-error m-4 mb-0" role="alert">
+                        <div class="font-semibold">Secretary stopped</div>
+                        <div class="mt-1">{{ conversation.processing_error }}</div>
+                        <button
+                            v-if="conversation.failed_message_body"
+                            type="button"
+                            class="secretary-error-action"
+                            @click="reuseFailedMessage"
+                        >
+                            Put the request back in the composer
+                        </button>
+                    </div>
 
-                    <div ref="feed" class="secretary-scrollbar flex-1 space-y-6 overflow-y-auto px-4 py-6 sm:px-6" role="log" aria-label="Secretary-samtale">
-                        <div v-if="!conversation.messages.length" class="mx-auto max-w-xl py-10 text-center">
+                    <div ref="feed" class="secretary-scrollbar flex-1 space-y-6 overflow-y-auto px-4 py-6 sm:px-6" role="log" aria-label="Secretary conversation">
+                        <div v-if="!visibleMessages.length" class="mx-auto max-w-xl py-10 text-center">
                             <div class="secretary-empty-icon mx-auto">
                                 <ui-icon name="ai-chat-spark" aria-hidden="true" />
                             </div>
-                            <div class="mt-4 text-base font-bold">Hva skal vi fikse?</div>
-                            <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
-                                Skriv som du ville gjort til en kollega. Secretary leser innholdsstrukturen og eksisterende innhold før den lager et utkast.
+                            <div class="mt-4 text-base font-bold">What should we change?</div>
+                            <p class="secretary-empty-lead mx-auto max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
+                                Write as you would to a colleague. Secretary reads the content model and existing content before preparing a draft.
                             </p>
-                            <div class="mx-auto mt-6 grid max-w-lg gap-2 text-left">
+                            <div class="secretary-empty-suggestions mx-auto grid max-w-lg gap-2 text-left">
                                 <button
                                     v-for="suggestion in promptSuggestions"
                                     :key="suggestion"
@@ -924,157 +1113,156 @@ watch(guideSite, loadGuide);
                             </div>
                         </div>
 
-                        <article
-                            v-for="item in conversation.messages"
-                            :key="item.id"
-                            class="secretary-message-row"
-                            :class="{ 'is-user': item.role === 'user' }"
-                        >
-                            <div v-if="item.role !== 'user'" class="secretary-assistant-mark" aria-hidden="true">
-                                <ui-icon name="ai-spark" />
+                        <details v-if="previousChanges.length" class="secretary-history">
+                            <summary>
+                                Previous changes
+                                <span>{{ previousChanges.length }}</span>
+                            </summary>
+                            <SecretaryChangeList
+                                class="mt-3"
+                                :changes="previousChanges"
+                                label="History"
+                                :can-publish="can_publish"
+                                :processing="processing"
+                                :preview-loading="previewLoading"
+                                :reviewing-target="reviewingTarget"
+                                @review="review"
+                                @preview="openPreview"
+                                @publish="requestPublish"
+                            />
+                        </details>
+
+                        <template v-for="item in visibleMessages" :key="item.id">
+                            <div
+                                v-if="item.presentation === 'system'"
+                                class="secretary-system-event"
+                                role="status"
+                            >
+                                <ui-icon name="checkmark" class="size-4 shrink-0" aria-hidden="true" />
+                                <span>{{ item.body }}</span>
                             </div>
-                            <div class="min-w-0" :class="item.role === 'user' ? 'max-w-[82%] sm:max-w-[72%]' : 'max-w-[88%] sm:max-w-[78%]'">
-                                <div v-if="item.role !== 'user'" class="mb-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                                    Secretary
-                                    <span v-if="item.channel === 'email'" class="font-normal">· via e-post</span>
+                            <article
+                                v-else
+                                class="secretary-message-row"
+                                :class="{ 'is-user': item.role === 'user' }"
+                            >
+                                <div v-if="item.role !== 'user'" class="secretary-assistant-mark" aria-hidden="true">
+                                    <ui-icon name="ai-spark" />
                                 </div>
-                                <div
-                                    class="secretary-message rounded-xl px-4 py-3 text-sm leading-6"
-                                    :class="item.role === 'user'
-                                        ? 'rounded-br-sm bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-950'
-                                        : 'rounded-bl-sm border bg-white text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100'"
-                                >
-                                    {{ item.body }}
-                                    <div v-if="item.pending" class="mt-2 flex items-center gap-2 text-xs font-semibold opacity-70">
-                                        <span class="secretary-working-dots" aria-hidden="true"><i /><i /><i /></span>
-                                        {{ item.queue_position > 1 ? `I kø · nummer ${item.queue_position}` : 'Sendt til Secretary' }}
+                                <div class="min-w-0" :class="item.role === 'user' ? 'max-w-[82%] sm:max-w-[72%]' : 'max-w-[88%] sm:max-w-[78%]'">
+                                    <div v-if="item.role !== 'user'" class="mb-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                        Secretary
+                                        <span v-if="item.channel === 'email'" class="font-normal">· via email</span>
                                     </div>
-                                    <DeveloperTrace
-                                        v-if="developer_mode && item.metadata?.developer_trace"
-                                        :trace="item.metadata.developer_trace"
-                                    />
+                                    <div
+                                        class="secretary-message rounded-xl px-4 py-3 text-sm leading-6"
+                                        :class="item.role === 'user'
+                                            ? 'rounded-br-sm bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-950'
+                                            : 'rounded-bl-sm border bg-white text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100'"
+                                    >
+                                        {{ item.body }}
+                                        <div v-if="item.pending" class="mt-2 flex items-center gap-2 text-xs font-semibold opacity-70">
+                                            <span v-if="item.queue_position > 1" class="secretary-queue-position" aria-hidden="true">
+                                                {{ item.queue_position }}
+                                            </span>
+                                            <ui-icon v-else name="checkmark" class="size-3.5" aria-hidden="true" />
+                                            {{ item.queue_position > 1 ? `Queued · #${item.queue_position}` : 'Sent' }}
+                                        </div>
+                                        <DeveloperTrace
+                                            v-if="developer_mode && item.metadata?.developer_trace"
+                                            :trace="item.metadata.developer_trace"
+                                        />
+                                    </div>
                                 </div>
-                            </div>
-                        </article>
+                            </article>
+
+                            <SecretaryChangeList
+                                v-if="item.id === latestChangeMessageId"
+                                :changes="changesForMessage(item)"
+                                label="Result"
+                                :can-publish="can_publish"
+                                :processing="processing"
+                                :preview-loading="previewLoading"
+                                :reviewing-target="reviewingTarget"
+                                @review="review"
+                                @preview="openPreview"
+                                @publish="requestPublish"
+                            />
+                        </template>
 
                         <div v-if="processing" class="secretary-processing-card" role="status">
                             <span class="secretary-working-dots" aria-hidden="true"><i /><i /><i /></span>
-                            <span>
-                                <strong>Secretary jobber.</strong>
-                                Leser innhold, kontrollerer feltene og klargjør et trygt utkast.
+                            <span class="min-w-0">
+                                <strong>{{ processingStatus }}</strong>
+                                <span v-if="pendingMessages.length > 1" class="block text-xs opacity-75">
+                                    {{ pendingMessages.length - 1 }} {{ pendingMessages.length === 2 ? 'request is' : 'requests are' }} waiting
+                                </span>
                             </span>
                         </div>
 
-                        <section v-if="conversation.changes.length" class="space-y-3 pt-2" aria-label="Secretary-endringer">
-                            <div>
-                                <h3 class="text-sm font-bold">
-                                    {{ conversation.changes.length === 1 ? 'Klargjort endring' : `${conversation.changes.length} klargjorte endringer` }}
-                                </h3>
-                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Kontroller detaljene. Publiser bare når du er fornøyd.</p>
-                            </div>
-
-                            <article
-                                v-for="change in conversation.changes"
-                                :key="change.id"
-                                class="secretary-change-card p-4 sm:p-5"
-                            >
-                                <div class="flex flex-wrap items-start justify-between gap-3">
-                                    <div class="min-w-0">
-                                        <div class="break-words font-semibold">{{ change.summary || `${change.operation} ${change.slug || change.entry_id}` }}</div>
-                                        <div class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                                            {{ resourceLabel(change.resource_type) }} · {{ change.collection }} · {{ change.site }}
-                                            <span v-if="changedFields(change).length"> · {{ changedFields(change).map(fieldLabel).join(', ') }}</span>
-                                        </div>
-                                    </div>
-                                    <ui-badge :variant="statusVariant(change.status)">{{ statusLabel(change.status) }}</ui-badge>
-                                </div>
-
-                                <p v-if="change.failure" class="mt-3 text-sm text-red-700 dark:text-red-300">{{ change.failure }}</p>
-
-                                <details v-if="changeValues(change).length" class="secretary-diff mt-4">
-                                    <summary class="cursor-pointer px-3 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2">
-                                        Se hva som ble endret
-                                    </summary>
-                                    <dl class="space-y-4 border-t p-3 dark:border-gray-700">
-                                        <div v-for="item in changeValues(change)" :key="item.field" class="min-w-0">
-                                            <dt class="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ item.field }}</dt>
-                                            <dd class="grid gap-2 md:grid-cols-2">
-                                                <div class="min-w-0 rounded-md bg-gray-100 p-3 dark:bg-gray-900">
-                                                    <div class="mb-1 text-xs font-semibold text-gray-500">Før</div>
-                                                    <pre class="secretary-value">{{ formatValue(item.before) }}</pre>
-                                                </div>
-                                                <div class="min-w-0 rounded-md bg-blue-50 p-3 dark:bg-blue-950/30">
-                                                    <div class="mb-1 text-xs font-semibold text-gray-500">Etter</div>
-                                                    <pre class="secretary-value">{{ formatValue(item.after) }}</pre>
-                                                </div>
-                                            </dd>
-                                        </div>
-                                    </dl>
-                                </details>
-
-                                <ChangeReview
-                                    :change="change"
-                                    :busy-target="reviewingTarget"
-                                    @decide="(target, decision) => review(change, target, decision)"
-                                />
-
-                                <div v-if="change.native_url || change.preview_available || (change.status === 'draft' && can_publish)" class="mt-4 flex flex-wrap items-center gap-2 border-t pt-4 dark:border-gray-700">
-                                    <ui-button
-                                        v-if="change.native_url"
-                                        :href="change.native_url"
-                                        icon="entry"
-                                        size="sm"
-                                    >
-                                        {{ change.status === 'draft' ? 'Åpne utkast' : 'Åpne i Statamic' }}
-                                    </ui-button>
-                                    <ui-button
-                                        v-if="change.preview_available"
-                                        icon="eye"
-                                        size="sm"
-                                        variant="default"
-                                        :disabled="previewLoading"
-                                        @click="openPreview(change)"
-                                    >
-                                        Sammenlign live og utkast
-                                    </ui-button>
-                                    <ui-button
-                                        v-if="change.status === 'draft' && can_publish"
-                                        variant="primary"
-                                        size="sm"
-                                        :disabled="busy || processing"
-                                        @click="requestPublish(change)"
-                                    >
-                                        Publiser
-                                    </ui-button>
-                                </div>
-                            </article>
-                        </section>
                     </div>
 
-                    <form class="secretary-composer p-4 sm:p-5" @submit.prevent="send">
-                        <label for="secretary-message" class="sr-only">Melding til Secretary</label>
+                    <form class="secretary-composer relative p-4 sm:p-5" @submit.prevent="send">
+                        <label for="secretary-message" class="sr-only">Message to Secretary</label>
                         <textarea
                             id="secretary-message"
+                            ref="composerInput"
                             v-model="message"
-                            rows="3"
-                            class="input-text secretary-composer-input w-full resize-y"
-                            placeholder="Be Secretary om en endring …"
+                            rows="1"
+                            class="secretary-composer-input secretary-active-input w-full resize-none"
+                            placeholder="Ask Secretary to make a change …"
                             :maxlength="max_input_characters"
                             :disabled="busy || !configured"
                             @keydown="onComposerKeydown"
+                            @input="resizeComposer"
                         />
-                        <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
-                            <span class="text-xs text-gray-500 dark:text-gray-400">
-                                <template v-if="message.length > max_input_characters * 0.8">{{ message.length }}/{{ max_input_characters }} · </template>
-                                ⌘/Ctrl + Enter
-                            </span>
+                        <div
+                            v-if="references.length || referenceLoading"
+                            class="secretary-reference-menu"
+                            role="listbox"
+                            aria-label="Reference content"
+                        >
+                            <div v-if="referenceLoading && !references.length" class="px-3 py-2 text-xs text-gray-500" role="status">
+                                Finding content …
+                            </div>
+                            <button
+                                v-for="reference in references"
+                                :key="reference.id"
+                                type="button"
+                                role="option"
+                                @click="insertReference(reference)"
+                            >
+                                <ui-icon name="entry" class="size-4 shrink-0" aria-hidden="true" />
+                                <span class="min-w-0 flex-1">
+                                    <strong>{{ reference.title || reference.slug }}</strong>
+                                    <small>{{ reference.uri }} · {{ reference.collection }}</small>
+                                </span>
+                            </button>
+                        </div>
+                        <div class="secretary-composer-footer">
+                            <div class="flex min-w-0 items-center gap-2">
+                                <button
+                                    type="button"
+                                    class="secretary-composer-tool"
+                                    title="Reference Statamic content"
+                                    aria-label="Reference Statamic content"
+                                    :disabled="busy || !configured"
+                                    @click="startReference"
+                                >
+                                    @
+                                </button>
+                                <span class="truncate text-xs text-gray-500 dark:text-gray-400">
+                                    <template v-if="message.length > max_input_characters * 0.8">{{ message.length }}/{{ max_input_characters }} · </template>
+                                    Draft first · Reference content · ⌘/Ctrl + Enter
+                                </span>
+                            </div>
                             <ui-button
                                 variant="primary"
                                 type="submit"
                                 :loading="busy && !publishCandidate"
                                 :disabled="busy || !configured || !message.trim()"
                             >
-                                {{ processing ? 'Sett i kø' : 'Send' }}
+                                {{ processing ? `Queue #${pendingMessages.length + 1}` : 'Send' }}
                             </ui-button>
                         </div>
                     </form>
@@ -1085,12 +1273,12 @@ watch(guideSite, loadGuide);
                         <div class="secretary-empty-icon mx-auto">
                             <ui-icon name="ai-chat-spark" aria-hidden="true" />
                         </div>
-                        <h2 class="mt-4 text-lg font-bold">Secretary er klar</h2>
+                        <h2 class="mt-4 text-lg font-bold">Secretary is ready</h2>
                         <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                            Start med en helt vanlig beskjed. Secretary undersøker nettstedets faktiske struktur før noe klargjøres.
+                            Start with a plain-language request. Secretary checks the site’s actual structure before preparing anything.
                         </p>
                         <ui-button class="mt-5" variant="primary" icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
-                            Start en samtale
+                            Start a conversation
                         </ui-button>
                     </div>
                 </div>
@@ -1100,18 +1288,18 @@ watch(guideSite, loadGuide);
 
     <ui-modal
         :open="Boolean(publishCandidate)"
-        title="Publisere denne endringen?"
+        title="Publish this change?"
         icon="checkmark"
         @update:open="value => { if (!value && !busy) publishCandidate = null }"
     >
         <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
             <strong class="text-gray-950 dark:text-white">{{ publishCandidate?.summary }}</strong>
-            blir synlig på nettstedet. Dette er den eneste handlingen her som påvirker publisert innhold.
+            will become visible on the site. This is the only action here that affects published content.
         </p>
         <template #footer>
             <div class="flex w-full justify-end gap-2">
-                <ui-button variant="ghost" :disabled="busy" @click="publishCandidate = null">Ikke ennå</ui-button>
-                <ui-button variant="primary" :loading="busy" :disabled="busy" @click="publish">Ja, publiser</ui-button>
+                <ui-button variant="ghost" :disabled="busy" @click="publishCandidate = null">Not yet</ui-button>
+                <ui-button variant="primary" :loading="busy" :disabled="busy" @click="publish">Publish</ui-button>
             </div>
         </template>
     </ui-modal>

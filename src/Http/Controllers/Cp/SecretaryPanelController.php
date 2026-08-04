@@ -93,7 +93,7 @@ final class SecretaryPanelController extends CpController
         $this->ensureOwnsConversation($conversation, $user);
 
         if (blank(config('secretary.openai.api_key'))) {
-            return response()->json(['message' => 'OpenAI er ikke konfigurert for Secretary.'], 422);
+            return response()->json(['message' => 'OpenAI is not configured for Secretary.'], 422);
         }
 
         $validated = $request->validate([
@@ -136,7 +136,7 @@ final class SecretaryPanelController extends CpController
             }
         } catch (Throwable $exception) {
             report($exception);
-            $error = PublicError::message($exception, 'Secretary kunne ikke starte behandlingen. Kontroller loggen og prøv igjen.');
+            $error = PublicError::message($exception, 'Secretary could not start processing. Check the application log and try again.');
 
             if ($message && ! $message->processed_at) {
                 $message->update([
@@ -190,7 +190,7 @@ final class SecretaryPanelController extends CpController
             return response()->json([
                 'message' => PublicError::message(
                     $exception,
-                    'Secretary kunne ikke publisere endringen. Kontroller loggen og prøv igjen.',
+                    'Secretary could not publish the change. Check the application log and try again.',
                 ),
             ], 422);
         }
@@ -215,7 +215,7 @@ final class SecretaryPanelController extends CpController
             report($exception);
 
             return response()->json([
-                'message' => PublicError::message($exception, 'Secretary kunne ikke oppdatere feltvalget.'),
+                'message' => PublicError::message($exception, 'Secretary could not update the field selection.'),
             ], 422);
         }
 
@@ -235,7 +235,7 @@ final class SecretaryPanelController extends CpController
             report($exception);
 
             return response()->json([
-                'message' => PublicError::message($exception, 'Forhåndsvisningen kunne ikke åpnes.'),
+                'message' => PublicError::message($exception, 'The preview could not be opened.'),
             ], 422);
         }
     }
@@ -280,7 +280,7 @@ final class SecretaryPanelController extends CpController
             ->get()
             ->map(fn (Conversation $conversation): array => [
                 'id' => $conversation->id,
-                'title' => data_get($conversation->context, 'title', 'Samtale'),
+                'title' => data_get($conversation->context, 'title', 'Conversation'),
                 'channel' => $conversation->channel,
                 'context_key' => $this->contextKey($this->conversationContext($conversation)),
                 'current_context' => $this->conversationRelatesToContext($conversation, $activeContext),
@@ -297,10 +297,11 @@ final class SecretaryPanelController extends CpController
         $latestInbound = $conversation->messages->where('direction', 'inbound')->last();
         $pendingPosition = 0;
         $channels = $conversation->messages->pluck('channel')->unique();
+        $messageLookup = $conversation->messages->keyBy('id');
 
         return [
             'id' => $conversation->id,
-            'title' => data_get($conversation->context, 'title', 'Samtale'),
+            'title' => data_get($conversation->context, 'title', 'Conversation'),
             'channel' => $conversation->channel,
             'has_email_messages' => $channels->contains('email'),
             'has_cp_messages' => $channels->contains('cp'),
@@ -308,21 +309,48 @@ final class SecretaryPanelController extends CpController
                 ->where('direction', 'inbound')
                 ->contains(fn ($message): bool => $message->processed_at === null),
             'processing_error' => data_get($latestInbound?->metadata, 'processing_error'),
+            'failed_message_body' => data_get($latestInbound?->metadata, 'processing_error')
+                ? $latestInbound?->body
+                : null,
             'send_url' => cp_route('secretary.panel.messages.store', $conversation),
             'context' => $this->conversationContext($conversation),
-            'messages' => $conversation->messages->map(function ($message) use ($user, &$pendingPosition): array {
+            'messages' => $conversation->messages->map(function ($message) use ($user, &$pendingPosition, $messageLookup): array {
                 $trace = config('secretary.developer.mode') && $user->can('configure secretary')
                     ? data_get($message->metadata, 'developer_trace')
                     : null;
                 $pending = $message->direction === 'inbound' && $message->processed_at === null;
+                $systemGenerated = data_get($message->metadata, 'system_generated') === true
+                    || (
+                        data_get($message->metadata, 'explicit_publish_action') === true
+                        && str_starts_with($message->body, 'Publiser endringen:')
+                    );
+                $replySource = $message->reply_to_message_id
+                    ? $messageLookup->get($message->reply_to_message_id)
+                    : null;
+                $replyToSystemAction = $replySource
+                    && (
+                        data_get($replySource->metadata, 'system_generated') === true
+                        || (
+                            data_get($replySource->metadata, 'explicit_publish_action') === true
+                            && str_starts_with($replySource->body, 'Publiser endringen:')
+                        )
+                    );
+                $systemEvent = data_get($message->metadata, 'system_event')
+                    ?: ($replyToSystemAction ? 'published' : null);
 
                 return [
                     'id' => $message->id,
                     'role' => $message->role,
+                    'presentation' => $systemGenerated ? 'hidden' : ($systemEvent ? 'system' : $message->role),
+                    'system_event' => $systemEvent,
                     'channel' => $message->channel,
                     'body' => $message->body,
                     'pending' => $pending,
                     'queue_position' => $pending ? ++$pendingPosition : null,
+                    'processing_stage' => $pending
+                        ? data_get($message->metadata, 'processing_stage', 'queued')
+                        : null,
+                    'reply_to_message_id' => $message->reply_to_message_id,
                     'developer_trace' => is_array($trace) ? $trace : null,
                     'created_at' => $message->created_at?->toIso8601String(),
                 ];
@@ -337,6 +365,7 @@ final class SecretaryPanelController extends CpController
                 'site' => $change->site,
                 'slug' => $change->slug,
                 'summary' => $change->summary ?: trim($change->operation.' '.($change->slug ?: $change->resource_id)),
+                'proposed_by_message_id' => $change->proposed_by_message_id,
                 'patch' => $change->patch ?: [],
                 'before' => $change->before ?: null,
                 'after' => $change->after ?: null,
@@ -553,8 +582,8 @@ final class SecretaryPanelController extends CpController
                 return [
                     'id' => $conversation->id,
                     'title' => is_array($context)
-                        ? (string) ($context['title'] ?? data_get($conversation->context, 'title', 'en annen side'))
-                        : (string) data_get($conversation->context, 'title', 'en annen samtale'),
+                        ? (string) ($context['title'] ?? data_get($conversation->context, 'title', 'another page'))
+                        : (string) data_get($conversation->context, 'title', 'another conversation'),
                     'context' => $context,
                 ];
             })->values();

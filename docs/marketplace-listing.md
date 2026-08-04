@@ -33,8 +33,9 @@ Secretary never receives shell access or a generic file-writing tool. It can onl
 - Explicit publication from the CP or an authenticated email command.
 - Per-resource allowlists, native permissions, optimistic locking, and full audit records.
 - Author-domain DKIM checks, spam threshold, webhook Basic Auth, idempotency, and queue retries.
+- Existing Statamic image search plus safe JPEG/PNG/WebP email attachments, imported append-only with native asset permissions.
 - Optional email-verified connection to the hosted `secretary@statamic.no` address, without a customer Postmark account.
-- No code, template, blueprint, config, shell, generic HTTP, asset, delete, or arbitrary filesystem tools.
+- No code, template, blueprint, config, shell, generic HTTP, asset replacement/deletion, or arbitrary filesystem tools.
 
 ## Requirements
 
@@ -64,6 +65,8 @@ php please secretary:doctor
 - Postmark email-thread screenshot with private information removed.
 - Optional short demo video.
 
-## Release decision still needed
+## Commercial license
 
-The repository currently uses the MIT license. Before creating the Marketplace product, decide whether the first release remains free/open source or switches to a commercial Statamic edition and license. Do not advertise paid licensing while the distributed package remains MIT.
+Statamic Secretary is paid software at **USD 49 per production site**. It may be installed and evaluated without a license during local development and testing, but production use requires a valid license purchased through the Statamic Marketplace and attached to the corresponding Statamic Site.
+
+The optional hosted `secretary@statamic.no` inbox is a separate **USD 49/year** service. OpenAI usage, customer-managed Postmark usage, and the Statamic license are not included.

@@ -3,6 +3,7 @@
 namespace AxelFerdinand\StatamicSecretary\Mail;
 
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
+use AxelFerdinand\StatamicSecretary\Email\ReplyAttachmentPresenter;
 use AxelFerdinand\StatamicSecretary\Email\ReplyChangeSetPresenter;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Models\Message;
@@ -63,6 +64,10 @@ final class SecretaryReply extends Mailable
             $this->reply->body,
             $changeSets,
         );
+        $attachments = app(ReplyAttachmentPresenter::class)->present(
+            $this->conversation,
+            $this->reply,
+        );
         $primaryUrl = $primaryChange
             ? ($primaryChange['status'] === 'draft'
                 ? $conversationUrl
@@ -85,6 +90,7 @@ final class SecretaryReply extends Mailable
                         : 'Se endringene i Secretary'),
                 'conversationUrl' => $conversationUrl,
                 'changeSets' => $changeSets,
+                'attachments' => $attachments,
                 'affectedChange' => $affectedChange,
                 'showChangeList' => count($changeSets) > 1
                     || (count($changeSets) === 1 && $affectedChange === null),

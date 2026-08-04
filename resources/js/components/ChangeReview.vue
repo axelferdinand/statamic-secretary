@@ -17,7 +17,7 @@ function label(target) {
 
     if (target.kind !== 'module') return field;
 
-    const type = (target.module_type || `modul ${target.module_index + 1}`)
+    const type = (target.module_type || `module ${target.module_index + 1}`)
         .replaceAll('_', ' ')
         .replace(/\b\p{L}/gu, letter => letter.toUpperCase());
 
@@ -25,7 +25,7 @@ function label(target) {
 }
 
 function format(value) {
-    if (value === null || value === undefined || value === '') return 'Tomt';
+    if (value === null || value === undefined || value === '') return 'Empty';
     if (typeof value === 'string') return value;
 
     try {
@@ -38,11 +38,11 @@ function format(value) {
 function summary() {
     const review = props.change.review;
 
-    if (!review) return 'Kontroller endringene';
-    if (review.rejected) return `${review.rejected} avvist · ${review.accepted} beholdt`;
-    if (review.accepted) return `${review.accepted} kontrollert`;
+    if (!review) return 'Review the changes';
+    if (review.rejected) return `${review.rejected} rejected · ${review.accepted} kept`;
+    if (review.accepted) return `${review.accepted} reviewed`;
 
-    return `${review.pending} ${review.pending === 1 ? 'endring' : 'endringer'} å kontrollere`;
+    return `${review.pending} ${review.pending === 1 ? 'change' : 'changes'} to review`;
 }
 </script>
 
@@ -50,7 +50,7 @@ function summary() {
     <details v-if="change.review?.available" class="secretary-review">
         <summary>
             <span>
-                <strong>Kontroller felt og moduler</strong>
+                <strong>Review fields and modules</strong>
                 <small>{{ summary() }}</small>
             </span>
             <ui-icon name="chevron-down" class="size-4" aria-hidden="true" />
@@ -71,13 +71,13 @@ function summary() {
                     </span>
                     <span class="min-w-0 flex-1">
                         <strong>{{ label(target) }}</strong>
-                        <small v-if="target.kind === 'module'">Modul {{ target.module_index + 1 }}</small>
+                        <small v-if="target.kind === 'module'">Module {{ target.module_index + 1 }}</small>
                     </span>
                 </header>
 
                 <div v-if="!compact" class="secretary-review-values">
                     <div>
-                        <span>Før</span>
+                        <span>Before</span>
                         <pre>{{ format(target.before) }}</pre>
                     </div>
                     <div>
@@ -86,7 +86,7 @@ function summary() {
                     </div>
                 </div>
 
-                <div class="secretary-review-actions" role="group" :aria-label="`Valg for ${label(target)}`">
+                <div class="secretary-review-actions" role="group" :aria-label="`Options for ${label(target)}`">
                     <button
                         type="button"
                         class="secretary-review-button is-accept"
@@ -96,7 +96,7 @@ function summary() {
                         @click="emit('decide', target, target.decision === 'accepted' ? 'pending' : 'accepted')"
                     >
                         <ui-icon name="checkmark" class="size-3.5" aria-hidden="true" />
-                        Behold
+                        Keep
                     </button>
                     <button
                         type="button"
@@ -107,10 +107,10 @@ function summary() {
                         @click="emit('decide', target, target.decision === 'rejected' ? 'pending' : 'rejected')"
                     >
                         <ui-icon name="x" class="size-3.5" aria-hidden="true" />
-                        Avvis
+                        Reject
                     </button>
                     <span v-if="busyTarget === target.key" class="secretary-review-saving" role="status">
-                        Lagrer …
+                        Saving …
                     </span>
                 </div>
             </article>

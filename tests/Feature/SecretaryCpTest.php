@@ -33,6 +33,21 @@ class SecretaryCpTest extends TestCase
             'status' => 'open',
             'context' => ['title' => 'Forsiden'],
         ]);
+        $completedMessage = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'cp',
+            'role' => 'user',
+            'body' => 'Oppdater forsiden.',
+            'processed_at' => now(),
+        ]);
+        $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'cp',
+            'role' => 'assistant',
+            'body' => 'Utkastet er klart.',
+            'reply_to_message_id' => $completedMessage->id,
+            'processed_at' => now(),
+        ]);
         $conversation->changeSets()->create([
             'status' => 'draft',
             'operation' => 'update',
@@ -40,6 +55,7 @@ class SecretaryCpTest extends TestCase
             'resource_id' => 'home',
             'collection' => 'pages',
             'site' => 'default',
+            'proposed_by_message_id' => $completedMessage->id,
             'patch' => ['title' => 'Etter'],
             'before' => ['data' => ['title' => 'Før']],
             'after' => ['data' => ['title' => 'Etter']],
@@ -51,8 +67,10 @@ class SecretaryCpTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('statamic-secretary::Secretary')
                 ->where('conversation.id', $conversation->id)
+                ->where('conversation.messages.1.reply_to_message_id', $completedMessage->id)
                 ->where('conversation.changes.0.before.data.title', 'Før')
                 ->where('conversation.changes.0.after.data.title', 'Etter')
+                ->where('conversation.changes.0.proposed_by_message_id', $completedMessage->id)
                 ->where('can_publish', true)
                 ->where('max_input_characters', 20000)
                 ->has('conversations', 1));
@@ -134,6 +152,63 @@ class SecretaryCpTest extends TestCase
             ->assertJsonMissing(['title' => 'Annen brukers samtale']);
     }
 
+    public function test_the_global_panel_links_a_change_to_the_assistant_reply_that_created_it(): void
+    {
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => ['title' => 'Forsiden'],
+        ]);
+        $completedMessage = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'cp',
+            'role' => 'user',
+            'body' => 'Opprett landingssiden.',
+            'processed_at' => now(),
+        ]);
+        $conversation->changeSets()->create([
+            'status' => 'published',
+            'operation' => 'create',
+            'resource_type' => 'entry',
+            'resource_id' => 'landing-page',
+            'collection' => 'pages',
+            'site' => 'default',
+            'slug' => 'landing-page',
+            'summary' => 'Opprettet og publiserte landingssiden.',
+            'proposed_by_message_id' => $completedMessage->id,
+            'patch' => ['title' => 'Landingsside'],
+            'before' => null,
+            'after' => ['data' => ['title' => 'Landingsside']],
+            'published_at' => now(),
+        ]);
+        $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'cp',
+            'role' => 'assistant',
+            'body' => 'Landingssiden er publisert.',
+            'reply_to_message_id' => $completedMessage->id,
+            'processed_at' => now(),
+        ]);
+        $pendingMessage = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'cp',
+            'role' => 'user',
+            'body' => 'Gjør heroen kortere.',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/cp/secretary/panel/data?conversation_id='.$conversation->id)
+            ->assertOk()
+            ->assertJsonPath('conversation.processing', true)
+            ->assertJsonPath('conversation.messages.1.reply_to_message_id', $completedMessage->id)
+            ->assertJsonPath('conversation.messages.2.id', $pendingMessage->id)
+            ->assertJsonPath('conversation.messages.2.pending', true)
+            ->assertJsonPath('conversation.changes.0.proposed_by_message_id', $completedMessage->id);
+    }
+
     public function test_the_global_panel_can_create_a_conversation_and_queue_a_message(): void
     {
         $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
@@ -144,6 +219,7 @@ class SecretaryCpTest extends TestCase
             ->postJson('/cp/secretary/panel/conversations')
             ->assertCreated()
             ->assertJsonPath('conversation.channel', 'cp')
+            ->assertJsonPath('conversation.title', 'New conversation')
             ->assertJsonPath('conversation.processing', false);
         $conversationId = $created->json('conversation.id');
 
@@ -152,7 +228,8 @@ class SecretaryCpTest extends TestCase
             ->assertStatus(202)
             ->assertJsonPath('conversation.id', $conversationId)
             ->assertJsonPath('conversation.processing', true)
-            ->assertJsonPath('conversation.messages.0.body', 'Oppdater forsiden.');
+            ->assertJsonPath('conversation.messages.0.body', 'Oppdater forsiden.')
+            ->assertJsonPath('conversation.messages.0.processing_stage', 'queued');
 
         $message = Conversation::findOrFail($conversationId)->messages()->where('direction', 'inbound')->firstOrFail();
         Bus::assertDispatchedAfterResponse(
@@ -488,6 +565,9 @@ class SecretaryCpTest extends TestCase
             ->postJson('/cp/secretary/panel/'.$conversation->id.'/changes/'.$changeSet->id.'/publish')
             ->assertOk()
             ->assertJsonPath('conversation.changes.0.status', 'published')
+            ->assertJsonPath('conversation.messages.0.presentation', 'hidden')
+            ->assertJsonPath('conversation.messages.1.presentation', 'system')
+            ->assertJsonPath('conversation.messages.1.system_event', 'published')
             ->assertJsonPath('conversation.messages.1.body', 'Publisert: Ny tittel');
 
         $this->assertSame('Etter', Entry::find('home')->value('title'));
@@ -555,6 +635,7 @@ class SecretaryCpTest extends TestCase
 
         $message = $conversation->messages()->where('direction', 'inbound')->firstOrFail();
         $this->assertNull($message->processed_at);
+        $this->assertSame('queued', data_get($message->metadata, 'processing_stage'));
         Bus::assertDispatchedAfterResponse(
             ProcessCpMessage::class,
             fn (ProcessCpMessage $job): bool => $job->messageId === $message->id,
@@ -622,7 +703,7 @@ class SecretaryCpTest extends TestCase
             ->with(Mockery::type(ProcessCpMessage::class))
             ->andThrow(new RuntimeException('redis://username:secret@internal.example'));
         $this->app->instance(Dispatcher::class, $bus);
-        $publicError = 'Secretary kunne ikke starte behandlingen. Kontroller loggen og prøv igjen.';
+        $publicError = 'Secretary could not start processing. Check the application log and try again.';
 
         $this->from('/cp/secretary/'.$conversation->id)
             ->actingAs($user)
@@ -778,7 +859,7 @@ class SecretaryCpTest extends TestCase
         $message->refresh();
         $this->assertNotNull($message->processed_at);
         $this->assertSame(
-            'Secretary kunne ikke behandle meldingen. Kontroller loggen og prøv igjen.',
+            'Secretary could not process the message. Check the application log and try again.',
             data_get($message->metadata, 'processing_error'),
         );
         $this->assertStringNotContainsString('secret details', json_encode($message->metadata));

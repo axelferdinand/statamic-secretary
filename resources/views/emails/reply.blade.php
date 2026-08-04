@@ -38,6 +38,18 @@
                     </ul>
                 </div>
             @endif
+            @if ($attachments)
+                <div style="margin-top:22px;border-top:1px solid #e4e4e7;padding-top:18px">
+                    <div style="margin-bottom:8px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#71717a">Vedlegg i Statamic</div>
+                    <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.7">
+                        @foreach ($attachments as $attachment)
+                            <li>
+                                <a href="{{ $attachment['native_url'] }}" style="color:#2563eb;text-decoration:underline">{{ $attachment['name'] }}</a>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
             <div style="margin-top:24px">
                 <a href="{{ $primaryUrl }}" style="display:inline-block;border-radius:8px;background:#2563eb;color:#ffffff;padding:11px 16px;font-size:14px;font-weight:700;text-decoration:none">{{ $primaryLabel }}</a>
             </div>

@@ -101,7 +101,7 @@ final class ProcessCpMessage implements ShouldQueue
                 'processed_at' => now(),
                 'metadata' => [
                     ...(array) $message->metadata,
-                    'processing_error' => 'Secretary kunne ikke behandle meldingen. Kontroller loggen og prøv igjen.',
+                    'processing_error' => 'Secretary could not process the message. Check the application log and try again.',
                 ],
             ]);
         }

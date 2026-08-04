@@ -161,6 +161,15 @@ final class InboundRouter
                 'sender_authenticated' => $message->senderAuthenticated,
                 'spam_score' => $message->spamScore,
                 'rfc_message_id' => $message->rfcMessageId,
+                'attachments' => array_map(
+                    fn ($attachment): array => [
+                        'name' => $attachment->name,
+                        'content_type' => $attachment->mimeType,
+                        'content_length' => $attachment->size,
+                        'sha256' => $attachment->sha256,
+                    ],
+                    $message->attachments,
+                ),
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         } catch (JsonException $exception) {
             throw new RelayRejected('Inbound message identity could not be encoded.', previous: $exception);

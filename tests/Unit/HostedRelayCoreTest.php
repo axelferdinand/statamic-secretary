@@ -379,6 +379,90 @@ class HostedRelayCoreTest extends TestCase
         $this->assertSame('<postmark-inbound-1@example.com>', $message->rfcMessageId);
     }
 
+    public function test_postmark_inbound_adapter_forwards_valid_images_as_version_two(): void
+    {
+        $adapter = new PostmarkInboundAdapter('secretary@statamic.no');
+        $bytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true);
+        $message = $adapter->adapt($this->postmarkPayload(Tokens::route(), [
+            'Attachments' => [[
+                'Name' => 'hero.png',
+                'ContentType' => 'image/png',
+                'Content' => base64_encode($bytes),
+                'ContentLength' => strlen($bytes),
+            ]],
+        ]));
+        $payload = $message->sitePayload(Tokens::route(), null);
+
+        $this->assertSame(2, $payload['version']);
+        $this->assertCount(1, $message->attachments);
+        $this->assertSame('hero.png', $payload['attachments'][0]['name']);
+        $this->assertSame(hash('sha256', $bytes), $payload['attachments'][0]['sha256']);
+        $this->assertSame(base64_encode($bytes), $payload['attachments'][0]['content']);
+    }
+
+    public function test_postmark_inbound_adapter_recovers_a_forwarded_reply_hash_from_to_full(): void
+    {
+        $route = Tokens::route();
+        $conversation = Tokens::conversation();
+        $hash = $route.'.'.$conversation;
+        $adapter = new PostmarkInboundAdapter('secretary@statamic.no');
+
+        $message = $adapter->adapt($this->postmarkPayload('', [
+            'ToFull' => [[
+                'Email' => 'secretary+'.$hash.'@statamic.no',
+                'Name' => '',
+                'MailboxHash' => $hash,
+            ]],
+        ]));
+
+        $this->assertSame('secretary+'.$hash.'@statamic.no', $message->recipient);
+        $this->assertSame('Bare dette svaret.', $message->body);
+    }
+
+    public function test_postmark_inbound_adapter_rejects_inconsistent_or_ambiguous_to_full_hashes(): void
+    {
+        $adapter = new PostmarkInboundAdapter('secretary@statamic.no');
+        $routeA = Tokens::route();
+        $routeB = Tokens::route();
+        $conversationA = Tokens::conversation();
+        $conversationB = Tokens::conversation();
+        $hashA = $routeA.'.'.$conversationA;
+        $hashB = $routeB.'.'.$conversationB;
+        $invalidPayloads = [
+            $this->postmarkPayload('', ['ToFull' => [[
+                'Email' => 'secretary+'.$hashA.'@statamic.no',
+                'Name' => '',
+                'MailboxHash' => $hashB,
+            ]]]),
+            $this->postmarkPayload('', ['ToFull' => [
+                [
+                    'Email' => 'secretary+'.$hashA.'@statamic.no',
+                    'Name' => '',
+                    'MailboxHash' => $hashA,
+                ],
+                [
+                    'Email' => 'secretary+'.$hashB.'@statamic.no',
+                    'Name' => '',
+                    'MailboxHash' => $hashB,
+                ],
+            ]]),
+            $this->postmarkPayload($hashA, ['ToFull' => [[
+                'Email' => 'secretary+'.$hashB.'@statamic.no',
+                'Name' => '',
+                'MailboxHash' => $hashB,
+            ]]]),
+        ];
+
+        foreach ($invalidPayloads as $payload) {
+            try {
+                $adapter->adapt($payload);
+                $this->fail('An inconsistent Postmark recipient hash was accepted.');
+            } catch (RelayRejected) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function test_postmark_inbound_adapter_rejects_unsafe_or_unsupported_messages(): void
     {
         $adapter = new PostmarkInboundAdapter('secretary@statamic.no');
@@ -425,7 +509,7 @@ class HostedRelayCoreTest extends TestCase
             $this->installationA()->id,
             'editor@example.com',
             'Re: Endre forsiden',
-            'Utkastet er klart.',
+            "Utkastet er klart.\n\nVedlegg i Statamic:\n- hero.png\n  https://site-a.example.com/cp/assets/containers/assets/assets/hero.png",
             $this->alias(Tokens::route(), Tokens::conversation()),
             '<postmark-inbound-1@example.com>',
             'https://site-a.example.com/cp/secretary/thread',
@@ -459,6 +543,14 @@ class HostedRelayCoreTest extends TestCase
         $this->assertStringContainsString($reply->changeSets[0]['native_url'], $payload['TextBody']);
         $this->assertStringContainsString('Fortsett samtalen i Secretary', $payload['TextBody']);
         $this->assertStringContainsString($reply->reviewUrl, $payload['TextBody']);
+        $this->assertStringContainsString(
+            '<a href="https://site-a.example.com/cp/assets/containers/assets/assets/hero.png" style="color:#2563eb;text-decoration:underline">hero.png</a>',
+            $payload['HtmlBody'],
+        );
+        $this->assertStringContainsString(
+            '<a href="'.$reply->reviewUrl.'"',
+            $payload['HtmlBody'],
+        );
     }
 
     /** @return array{MemoryRelayStore, MemorySiteTransport, InboundRouter} */

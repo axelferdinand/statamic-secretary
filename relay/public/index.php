@@ -58,7 +58,7 @@ $clientIdentity = is_string($_SERVER['REMOTE_ADDR'] ?? null)
 try {
     $landingPage = new LandingPage;
 
-    if ($contentLength > 1048576) {
+    if ($contentLength > 32000000) {
         $result = relay_json_result(413, 'request_too_large');
     } elseif (in_array($method, ['GET', 'HEAD'], true) && in_array($path, ['/', '/no'], true)) {
         $result = $landingPage->render($path === '/no' ? 'nb' : 'en');

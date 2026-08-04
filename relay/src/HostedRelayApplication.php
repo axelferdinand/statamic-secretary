@@ -28,10 +28,10 @@ final class HostedRelayApplication
         private readonly PairingService $pairings,
         private readonly PairingCodeTransport $pairingCodes,
         ?callable $reporter = null,
-        private readonly int $maximumRequestBytes = 262144,
+        private readonly int $maximumRequestBytes = 24_000_000,
         private readonly ?RateLimiter $rateLimiter = null,
     ) {
-        if ($maximumRequestBytes < 32768 || $maximumRequestBytes > 1048576) {
+        if ($maximumRequestBytes < 32768 || $maximumRequestBytes > 32_000_000) {
             throw new RelayRejected('Hosted relay request limit is invalid.');
         }
 

@@ -30,7 +30,7 @@ final class ConversationService
             'user_id' => $user->id(),
             'email' => $email,
             'status' => 'open',
-            'context' => ['title' => 'Ny samtale', ...$context],
+            'context' => ['title' => 'New conversation', ...$context],
         ]);
     }
 
@@ -61,11 +61,11 @@ final class ConversationService
         $maximum = max(1, (int) config('secretary.limits.max_input_characters', 20000));
 
         if ($body === '' || mb_strlen($body) > $maximum) {
-            throw new ContentOperationDenied("Meldingen må inneholde mellom 1 og {$maximum} tegn.");
+            throw new ContentOperationDenied("The message must contain between 1 and {$maximum} characters.");
         }
 
         if ((string) $conversation->user_id !== (string) $user->id()) {
-            throw new ContentOperationDenied('Denne samtalen tilhører en annen bruker.');
+            throw new ContentOperationDenied('This conversation belongs to another user.');
         }
 
         $message = $conversation->messages()->create([
@@ -74,10 +74,10 @@ final class ConversationService
             'role' => 'user',
             'body' => $body,
             'provider_message_id' => $providerMessageId,
-            'metadata' => $metadata,
+            'metadata' => ['processing_stage' => 'queued', ...$metadata],
         ]);
 
-        if (data_get($conversation->context, 'title') === 'Ny samtale') {
+        if (in_array(data_get($conversation->context, 'title'), ['New conversation', 'Ny samtale'], true)) {
             $conversation->update(['context' => [
                 ...(array) $conversation->context,
                 'title' => Str::limit(preg_replace('/\s+/', ' ', $body), 54),
@@ -126,7 +126,10 @@ final class ConversationService
                     $conversation,
                     $message,
                     'Publisert: '.($recorded->first()->summary ?: $recorded->first()->resource_id),
-                    ['change_set_ids' => [$recorded->first()->id]],
+                    [
+                        'change_set_ids' => [$recorded->first()->id],
+                        'system_event' => 'published',
+                    ],
                 );
             }
         }
@@ -167,7 +170,10 @@ final class ConversationService
             $conversation,
             $message,
             'Publisert: '.($changeSet->summary ?: $changeSet->resource_id),
-            ['change_set_ids' => [$changeSet->id]],
+            [
+                'change_set_ids' => [$changeSet->id],
+                'system_event' => 'published',
+            ],
         );
     }
 
@@ -187,7 +193,12 @@ final class ConversationService
             'channel' => $channel,
             'role' => 'user',
             'body' => 'Publiser endringen: '.($changeSet->summary ?: $changeSet->id),
-            'metadata' => ['change_set_ids' => [$changeSet->id], 'explicit_publish_action' => true],
+            'metadata' => [
+                'change_set_ids' => [$changeSet->id],
+                'explicit_publish_action' => true,
+                'system_generated' => true,
+                'processing_stage' => 'publishing',
+            ],
         ]);
 
         try {
@@ -212,7 +223,10 @@ final class ConversationService
             $conversation,
             $inbound,
             'Publisert: '.($published->summary ?: $published->resource_id),
-            ['change_set_ids' => [$published->id]],
+            [
+                'change_set_ids' => [$published->id],
+                'system_event' => 'published',
+            ],
         );
     }
 

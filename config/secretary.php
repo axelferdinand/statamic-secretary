@@ -38,6 +38,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Statamic assets
+    |--------------------------------------------------------------------------
+    |
+    | Secretary may search configured asset containers and import authenticated
+    | email image attachments. Imports are content-addressed and append-only:
+    | existing assets are never overwritten or deleted.
+    |
+    */
+    'assets' => [
+        'enabled' => (bool) env('SECRETARY_ASSETS_ENABLED', true),
+        'containers' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('SECRETARY_ASSET_CONTAINERS', ''))
+        ))),
+        'attachment_container' => env('SECRETARY_ATTACHMENT_CONTAINER'),
+        'attachment_folder' => env('SECRETARY_ATTACHMENT_FOLDER', 'secretary-inbox'),
+        'allowed_mime_types' => ['image/jpeg', 'image/png', 'image/webp'],
+        'max_attachments' => (int) env('SECRETARY_MAX_ATTACHMENTS', 4),
+        'max_attachment_bytes' => (int) env('SECRETARY_MAX_ATTACHMENT_BYTES', 8_000_000),
+        'max_total_attachment_bytes' => (int) env('SECRETARY_MAX_TOTAL_ATTACHMENT_BYTES', 16_000_000),
+        'max_visual_assets' => (int) env('SECRETARY_MAX_VISUAL_ASSETS', 4),
+        'max_search_results' => (int) env('SECRETARY_MAX_ASSET_SEARCH_RESULTS', 20),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Editorial guidance
     |--------------------------------------------------------------------------
     |
@@ -134,7 +160,7 @@ return [
         'max_tool_rounds' => (int) env('SECRETARY_MAX_TOOL_ROUNDS', 12),
         'max_navigation_nodes' => (int) env('SECRETARY_MAX_NAVIGATION_NODES', 500),
         'max_resource_characters' => (int) env('SECRETARY_MAX_RESOURCE_CHARACTERS', 250000),
-        'max_webhook_bytes' => (int) env('SECRETARY_MAX_WEBHOOK_BYTES', 2_000_000),
+        'max_webhook_bytes' => (int) env('SECRETARY_MAX_WEBHOOK_BYTES', 24_000_000),
         'job_timeout' => (int) env('SECRETARY_JOB_TIMEOUT', 1200),
     ],
 ];

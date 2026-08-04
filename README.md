@@ -4,7 +4,9 @@
 
 Statamic Secretary is a guarded content assistant for Statamic 6. Editors can request content changes in natural language from the Control Panel or by email, review the resulting draft, and publish only after an explicit command.
 
-The model never receives shell or arbitrary filesystem access. It can only call typed application tools that inspect Statamic collections and blueprints, validate field values, enforce native user policies, and write through Statamic's repositories. All prospective and existing content paths are checked against the configured `content/` boundary, including symlink resolution.
+> **Commercial addon:** Statamic Secretary costs **USD 49 per production site** through the Statamic Marketplace. You may use it without a license during local development and testing, but each production installation requires a valid Marketplace license. See [LICENSE.md](LICENSE.md).
+
+The model never receives shell, arbitrary filesystem, or generic web access. It can only call typed application tools that inspect Statamic collections, blueprints, and configured asset containers, validate field values, enforce native user policies, and write through Statamic's repositories. All prospective and existing content paths are checked against the configured `content/` boundary, including symlink resolution. Image imports use a separate, narrow Statamic asset boundary.
 
 The boundary applies to site-content targets. Secretary necessarily keeps conversations and audit records in the application database, and Statamic Pro may keep working-copy revision metadata in its configured revision store. Neither location is addressable by the model's tools.
 
@@ -18,14 +20,25 @@ The boundary applies to site-content targets. Secretary necessarily keeps conver
 - Localized global-value updates, staged outside live content until publication.
 - Complete navigation-tree updates with node, depth, entry-reference, URL, and blueprint validation.
 - Multi-turn Control Panel and Postmark inbound-email conversations.
+- Permission-filtered search and visual inspection of existing JPEG, PNG, and WebP Statamic assets.
+- Authenticated image attachments imported append-only into one configured Statamic asset container.
 - Isolated Postmark delivery that does not replace the site's normal mailer.
 - Explicit publication, native permissions, optimistic locking, audit records, optional sender allowlists, and webhook idempotency.
 
-Asset binaries and asset metadata, deletion, code, templates, blueprints, and configuration are intentionally outside the agent tools. Statamic commonly stores asset metadata beside the asset file rather than in `content/`, so changing it would violate Secretary's hard content-directory boundary.
+Asset deletion, replacement, arbitrary uploads, metadata editing, code, templates, blueprints, and configuration remain outside the agent tools. Secretary can read supported images from configured Statamic asset containers and import authenticated email attachments through Statamic's upload API. Imported paths are content-addressed; an existing path is verified and never overwritten.
 
 ## Installation
 
-The package is not on Packagist yet. For local development, add it as a path repository in a Statamic site:
+Install the public beta in a Statamic 6 site:
+
+```shell
+composer require "axelferdinand/statamic-secretary:^0.1@beta"
+php artisan migrate --force
+php please stache:refresh
+php please secretary:doctor
+```
+
+For local addon development, add the repository as a path repository in a Statamic site:
 
 ```json
 {
@@ -80,9 +93,13 @@ SECRETARY_TAXONOMIES=topics,tags
 SECRETARY_GLOBAL_SETS=company,footer
 SECRETARY_NAVIGATIONS=main,footer
 SECRETARY_CONTENT_ROOT=/absolute/path/to/site/content
+SECRETARY_ASSET_CONTAINERS=assets
+SECRETARY_ATTACHMENT_CONTAINER=assets
+SECRETARY_ATTACHMENT_FOLDER=secretary-inbox
 ```
 
 `SECRETARY_CONTENT_ROOT` defaults to the site's normal `content` directory.
+Asset values are optional. With exactly one uploadable asset container, Secretary selects it automatically. Configure `SECRETARY_ATTACHMENT_CONTAINER` when a site has more than one. Existing-asset search and attachment imports always apply the requesting Statamic user's native view/upload permissions. Email accepts up to four JPEG, PNG, or WebP attachments by default, 8 MB each and 16 MB total.
 
 Run `php please secretary:doctor` after installation and configuration. It checks the database tables, content boundary, model setup, revisions, queue, and optional email setup without printing credentials.
 
@@ -121,6 +138,8 @@ The site's normal Laravel mailer is not changed, and the required Postmark trans
 
 Inbound senders must match an existing Statamic user with `use secretary`. `SECRETARY_ALLOWED_SENDERS` remains available as an optional additional allowlist; leaving it empty relies on Statamic users and permissions. Postmark must report author-domain `DKIM_VALID_AU` by default, while a generic `SPF_PASS` is insufficient. Email publishing remains disabled unless `SECRETARY_EMAIL_ALLOW_PUBLISHING=true`, and also requires `publish with secretary` plus an authenticated sender.
 
+When an instruction needs an image, Secretary first searches the site's allowed Statamic assets. If no suitable image exists, it asks the sender to reply with a JPEG, PNG, or WebP attachment. The image is validated from its actual bytes, imported append-only through Statamic, recorded by asset ID in the conversation audit metadata, and visually supplied to the configured OpenAI project. Secretary does not fetch images from the web.
+
 Replies use the generated Postmark address with plus-addressing (`hash+<conversation-id>@inbound.postmarkapp.com`) so Postmark returns the validated conversation ID as `MailboxHash`. Webhook credentials are derived from the site's `APP_KEY`; reconnect Postmark after rotating that key.
 
 One public mailbox must not be connected directly to multiple sites. The addon includes a disabled-by-default signed receiver, reply client, and email-verified Control Panel pairing flow for the optional shared `secretary@statamic.no` service. A customer needs no mailbox or Postmark account for this mode: an existing Statamic user with `use secretary` requests a 15-minute code at their own email address, pastes it into Secretary, and receives isolated encrypted relay credentials. Requests are bound to one installation ID, route token, independent 256-bit secret, short timestamp window, exact body digest, and single-use nonce; replies remain bound to the same route and conversation. This repository also contains the separate hosted-relay service under `relay/`, deliberately excluded from the Composer addon archive. The hosted HTTPS/Postmark transport, unknown-sender rejection, plain forwarding, and exact plus-tag preservation were verified live on 2026-07-27. The remaining public-release gate is the paired two-installation X/Y/random-sender exercise documented in [docs/shared-address-relay.md](docs/shared-address-relay.md).
@@ -135,7 +154,7 @@ Use a persistent, shared cache for per-conversation locks. Keep the queue connec
 
 ## Security model
 
-- No shell, PHP execution, generic file-write, generic HTTP, delete, config, or schema tools.
+- No shell, PHP execution, generic file-write, generic HTTP, delete, asset replacement, config, or schema tools.
 - Strict OpenAI function schemas; arbitrary field data is passed as JSON text and decoded server-side; output tokens, tool rounds, resource payload size, and request rates are bounded.
 - Per-resource allowlists, real blueprint handles, editable-field checks, Statamic validation, and native content policies.
 - Canonical-path and symlink checks before any content write.
@@ -143,6 +162,7 @@ Use a persistent, shared cache for per-conversation locks. Keep the queue connec
 - Separate draft and live-baseline fingerprints prevent a draft from overwriting or publishing over newer human edits, including direct live-file changes while a working copy exists.
 - Postmark Basic Auth or installation-scoped relay HMAC, native Statamic-user authorization, optional sender allowlist, author-domain DKIM checks, spam threshold, and unique provider message IDs.
 - All returned content is treated as untrusted data to reduce prompt-injection risk.
+- Asset access is container-allowlisted, permission-filtered, image-only, size-bounded, and append-only. Visual content is explicitly treated as untrusted.
 
 See [docs/architecture.md](docs/architecture.md) for the detailed trust boundaries and release limits.
 

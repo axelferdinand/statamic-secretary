@@ -2,7 +2,7 @@
     "name": "axelferdinand/statamic-secretary-relay",
     "description": "Hosted routing service for the optional shared Statamic Secretary address.",
     "type": "project",
-    "license": "MIT",
+    "license": "proprietary",
     "require": {
         "php": "^8.3",
         "ext-curl": "*",
