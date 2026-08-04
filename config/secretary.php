@@ -3,6 +3,12 @@
 return [
     'retention_days' => (int) env('SECRETARY_RETENTION_DAYS', 90),
 
+    'install' => [
+        // Statamic runs this addon's package-scoped migrations after Composer
+        // installation. Set false in build environments without DB access.
+        'auto_migrate' => (bool) env('SECRETARY_AUTO_MIGRATE', true),
+    ],
+
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
         'project' => env('SECRETARY_OPENAI_PROJECT'),
@@ -145,7 +151,7 @@ return [
 
     'relay' => [
         'enabled' => env('SECRETARY_RELAY_ENABLED'),
-        'pairing_enabled' => (bool) env('SECRETARY_RELAY_PAIRING_ENABLED', false),
+        'pairing_enabled' => (bool) env('SECRETARY_RELAY_PAIRING_ENABLED', true),
         'installation_id' => env('SECRETARY_RELAY_INSTALLATION_ID'),
         'route_token' => env('SECRETARY_RELAY_ROUTE_TOKEN'),
         'signing_secret' => env('SECRETARY_RELAY_SIGNING_SECRET'),

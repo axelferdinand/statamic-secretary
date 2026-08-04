@@ -4,6 +4,7 @@ namespace AxelFerdinand\StatamicSecretary;
 
 use AxelFerdinand\StatamicSecretary\Commands\DoctorCommand;
 use AxelFerdinand\StatamicSecretary\Commands\DryRunCommand;
+use AxelFerdinand\StatamicSecretary\Commands\InstallCommand;
 use AxelFerdinand\StatamicSecretary\Commands\PruneCommand;
 use AxelFerdinand\StatamicSecretary\Commands\RelayRotateRouteCommand;
 use AxelFerdinand\StatamicSecretary\Commands\RelayRotateSecretCommand;
@@ -14,18 +15,21 @@ use AxelFerdinand\StatamicSecretary\Events\ChangeSetPrepared;
 use AxelFerdinand\StatamicSecretary\Events\ChangeSetPublished;
 use AxelFerdinand\StatamicSecretary\Events\MessageReceived;
 use AxelFerdinand\StatamicSecretary\Listeners\QueueSecretaryWebhook;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use AxelFerdinand\StatamicSecretary\OpenAI\ResponsesAgentClient;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
 use Illuminate\Support\Facades\Event;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
+use Statamic\Statamic;
 
 class ServiceProvider extends AddonServiceProvider
 {
     protected $commands = [
         DoctorCommand::class,
         DryRunCommand::class,
+        InstallCommand::class,
         PruneCommand::class,
         RelayRotateRouteCommand::class,
         RelayRotateSecretCommand::class,
@@ -61,6 +65,10 @@ class ServiceProvider extends AddonServiceProvider
         $this->app->bind(AgentClient::class, ResponsesAgentClient::class);
         $this->app->singleton(ToolRegistry::class);
         $this->app->scoped(
+            OpenAIConfiguration::class,
+            static fn (): OpenAIConfiguration => new OpenAIConfiguration,
+        );
+        $this->app->scoped(
             RelayConfiguration::class,
             static fn (): RelayConfiguration => new RelayConfiguration,
         );
@@ -69,6 +77,12 @@ class ServiceProvider extends AddonServiceProvider
     public function bootAddon(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        if ((bool) config('secretary.install.auto_migrate', true)) {
+            Statamic::afterInstalled(function ($command): void {
+                $command->call('secretary:install');
+            });
+        }
 
         $this->publishes([
             __DIR__.'/../config/secretary.php' => config_path('secretary.php'),

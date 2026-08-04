@@ -13,9 +13,9 @@ final class PostmarkConnector
     public function __construct(private readonly EmailConfiguration $email) {}
 
     /** @return array<string, mixed> */
-    public function connect(string $fromAddress, string $publicUrl): array
+    public function connect(string $fromAddress, string $publicUrl, ?string $apiKey = null): array
     {
-        $token = $this->email->postmarkToken();
+        $token = trim((string) $apiKey) ?: $this->email->postmarkToken();
 
         if ($token === '') {
             throw new PostmarkConnectionFailed('Postmark Server API Token is not configured.');
@@ -71,6 +71,8 @@ final class PostmarkConnector
         }
 
         $settings = [
+            ...$this->email->stored(),
+            ...($apiKey ? ['api_key' => $token] : []),
             'from_address' => mb_strtolower(trim($fromAddress)),
             'from_name' => (string) config('secretary.email.from_name', 'Secretary'),
             'inbound_address' => $inboundAddress,

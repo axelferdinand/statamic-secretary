@@ -10,6 +10,8 @@ use AxelFerdinand\StatamicSecretary\Editorial\EditorialStyleGuide;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessCpMessage;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
+use AxelFerdinand\StatamicSecretary\Models\Setting;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use AxelFerdinand\StatamicSecretary\Postmark\PostmarkConnector;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
 use AxelFerdinand\StatamicSecretary\Relay\RelayPairingClient;
@@ -73,7 +75,12 @@ final class SecretaryController extends CpController
                 ])->values(),
             'conversation' => $conversation ? $this->conversationPayload($conversation, $user) : null,
             'can_publish' => $user->can('publish with secretary'),
-            'configured' => filled(config('secretary.openai.api_key')),
+            'configured' => app(OpenAIConfiguration::class)->configured(),
+            'openai_setup' => [
+                'source' => app(OpenAIConfiguration::class)->source(),
+                'can_configure' => $user->can('configure secretary'),
+                'setup_url' => cp_route('secretary.setup.openai'),
+            ],
             'email_enabled' => $this->email->enabled() || $this->relay->enabled(),
             'email_setup' => [
                 ...$this->email->publicStatus(),
@@ -87,6 +94,10 @@ final class SecretaryController extends CpController
                 'request_code_url' => cp_route('secretary.setup.relay.request-code'),
                 'suggested_sender' => $user->email(),
                 'suggested_public_url' => $this->email->suggestedPublicUrl(),
+            ],
+            'onboarding' => [
+                'email_skipped' => filled(data_get(Setting::query()->find('onboarding')?->value, 'email_skipped_at')),
+                'skip_email_url' => cp_route('secretary.setup.skip-email'),
             ],
             'success' => session('secretary_success'),
             'style_guides' => [
@@ -126,6 +137,38 @@ final class SecretaryController extends CpController
         return back()->with('secretary_success', 'The editorial guide has been saved.');
     }
 
+    public function saveOpenAIKey(Request $request, OpenAIConfiguration $openAI): RedirectResponse
+    {
+        $user = $this->user();
+        abort_unless($user->can('configure secretary'), 403);
+        $validated = $request->validate([
+            'api_key' => ['required', 'string', 'min:20', 'max:512', 'regex:/^sk-[A-Za-z0-9_-]+$/D'],
+        ], [
+            'api_key.required' => 'Paste an OpenAI API key.',
+            'api_key.regex' => 'This does not look like an OpenAI API key.',
+        ]);
+
+        $openAI->storeApiKey($validated['api_key']);
+
+        return redirect()->to(cp_route('secretary.index'))
+            ->with('secretary_success', 'OpenAI is connected. Now choose how you want to use email.');
+    }
+
+    public function skipEmailSetup(): RedirectResponse
+    {
+        $user = $this->user();
+        abort_unless($user->can('configure secretary'), 403);
+        $settings = (array) (Setting::query()->find('onboarding')?->value ?? []);
+
+        Setting::query()->updateOrCreate(
+            ['key' => 'onboarding'],
+            ['value' => [...$settings, 'email_skipped_at' => now()->toIso8601String()]],
+        );
+
+        return redirect()->to(cp_route('secretary.index'))
+            ->with('secretary_success', 'Secretary is ready in the Control Panel. You can connect email later.');
+    }
+
     public function store(): RedirectResponse
     {
         $user = $this->user();
@@ -141,6 +184,7 @@ final class SecretaryController extends CpController
         abort_unless($user->can('configure secretary'), 403);
 
         $validated = $request->validate([
+            'api_key' => ['nullable', 'string', 'min:20', 'max:512'],
             'email' => ['required', 'email:rfc', 'max:255'],
             'public_url' => [
                 'required',
@@ -159,8 +203,16 @@ final class SecretaryController extends CpController
             'public_url.url' => 'The webhook URL must be a valid HTTPS URL.',
         ]);
 
+        $apiKey = trim((string) ($validated['api_key'] ?? ''));
+
+        if (! $this->email->tokenConfigured() && $apiKey === '') {
+            return back()->withErrors([
+                'postmark_api_key' => 'Paste the Server API Token from your Postmark server.',
+            ]);
+        }
+
         try {
-            $postmark->connect($validated['email'], $validated['public_url']);
+            $postmark->connect($validated['email'], $validated['public_url'], $apiKey ?: null);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -268,7 +320,7 @@ final class SecretaryController extends CpController
         $this->ensureCanUse($user);
         $this->ensureOwnsConversation($conversation, $user);
 
-        if (blank(config('secretary.openai.api_key'))) {
+        if (! app(OpenAIConfiguration::class)->configured()) {
             return back()->withErrors(['secretary' => 'OpenAI is not configured for Secretary.']);
         }
 

@@ -17,7 +17,11 @@ final class EmailConfiguration
 
     public function postmarkToken(): string
     {
-        return trim((string) config('secretary.email.postmark.api_key'));
+        $environment = trim((string) config('secretary.email.postmark.api_key'));
+
+        return $environment !== ''
+            ? $environment
+            : trim((string) data_get($this->stored(), 'api_key'));
     }
 
     public function connected(): bool
@@ -65,7 +69,13 @@ final class EmailConfiguration
             return $configured;
         }
 
-        return $this->connected() ? 'statamic_secretary_postmark' : (string) config('mail.default');
+        if ($this->connected()) {
+            config()->set('mail.mailers.statamic_secretary_postmark.token', $this->postmarkToken());
+
+            return 'statamic_secretary_postmark';
+        }
+
+        return (string) config('mail.default');
     }
 
     /** @return array<int, string> */
@@ -219,6 +229,9 @@ final class EmailConfiguration
     {
         return [
             'token_configured' => $this->tokenConfigured(),
+            'token_source' => filled(config('secretary.email.postmark.api_key'))
+                ? 'environment'
+                : (filled(data_get($this->stored(), 'api_key')) ? 'control_panel' : null),
             'connected' => $this->connected(),
             'enabled' => $this->enabled(),
             'from_address' => $this->fromAddress(),

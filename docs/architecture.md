@@ -107,7 +107,7 @@ Jobs from CP and email share a per-conversation cache lock and defer newer messa
 
 The OpenAI model is configurable. The initial default follows the product brief (`gpt-5.5`), while installations can select a newer compatible model after evaluation. The integration uses the Responses API with strict function schemas, disables parallel tool calls so inspect/read results precede mutations, and preserves response/tool items across turns.
 
-The API key remains in environment configuration. It is never stored in content or returned to the browser. Requests include a site-scoped HMAC safety identifier derived from the authenticated CP user or allowed sender; neither the raw identity nor the application key is sent. Stored mode continues with `previous_response_id`; stateless mode requests encrypted reasoning content and replays the complete response/tool sequence locally.
+The API key may come from environment configuration or the first-run Control Panel setup. A key entered in the Control Panel is encrypted with the Laravel application key in the Secretary settings table, is never stored in content, and is never returned to the browser. Environment configuration takes precedence for teams that manage secrets as code. Requests include a site-scoped HMAC safety identifier derived from the authenticated CP user or allowed sender; neither the raw identity nor the application key is sent. Stored mode continues with `previous_response_id`; stateless mode requests encrypted reasoning content and replays the complete response/tool sequence locally.
 
 ## Marketplace shape
 

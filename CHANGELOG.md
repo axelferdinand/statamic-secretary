@@ -2,6 +2,15 @@
 
 All notable changes will be documented in this file. Releases follow Semantic Versioning.
 
+## 0.1.0-beta.2 - 2026-08-04
+
+- Added a focused first-run wizard that connects OpenAI, then offers recommended Secretary Relay, advanced private Postmark, or Control Panel chat only.
+- Added encrypted Control Panel storage for OpenAI and Postmark API keys while retaining environment configuration as the higher-priority option.
+- Enabled relay pairing by default so new installations can choose the easy setup without developer configuration.
+- Reduced the standard installation to one Composer command by running package-scoped migrations through Statamic's official addon installation hook.
+- Clarified every email field and removed Postmark warnings and hidden requirements from the relay setup path.
+- Added installation, encryption, onboarding, and Postmark regression coverage and verified a clean Composer install against an empty database.
+
 ## 0.1.0-beta.1 - 2026-08-04
 
 - Changed the addon from MIT to a commercial Statamic Marketplace license: free to evaluate during development and USD 49 per licensed production site.

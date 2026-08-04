@@ -11,9 +11,11 @@ use AxelFerdinand\StatamicSecretary\Data\AgentResponse;
 use AxelFerdinand\StatamicSecretary\Editorial\EditorialStyleGuide;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessCpMessage;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
+use AxelFerdinand\StatamicSecretary\Models\Setting;
 use AxelFerdinand\StatamicSecretary\Tests\TestCase;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Mockery;
 use RuntimeException;
@@ -23,6 +25,53 @@ use Statamic\Facades\User;
 
 class SecretaryCpTest extends TestCase
 {
+    public function test_an_administrator_can_finish_openai_setup_without_editing_the_environment(): void
+    {
+        config()->set('secretary.openai.api_key');
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+        $apiKey = 'sk-'.str_repeat('a', 48);
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/setup/openai', ['api_key' => $apiKey])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $this->assertSame($apiKey, Setting::query()->findOrFail('openai')->value['api_key']);
+        $this->assertStringNotContainsString(
+            $apiKey,
+            (string) DB::table('secretary_settings')->where('key', 'openai')->value('value'),
+        );
+
+        $this->actingAs($user)
+            ->get('/cp/secretary')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('configured', true)
+                ->where('openai_setup.source', 'control_panel')
+                ->where('openai_setup.can_configure', true)
+                ->where('openai_setup.setup_url', 'http://localhost/cp/secretary/setup/openai')
+                ->where('onboarding.email_skipped', false)
+                ->where('onboarding.skip_email_url', 'http://localhost/cp/secretary/setup/skip-email'));
+    }
+
+    public function test_an_administrator_can_choose_control_panel_only_during_onboarding(): void
+    {
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/setup/skip-email')
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $this->actingAs($user)
+            ->get('/cp/secretary')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('onboarding.email_skipped', true));
+    }
+
     public function test_an_authorized_user_can_open_the_control_panel_assistant(): void
     {
         $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();

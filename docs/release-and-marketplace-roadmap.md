@@ -43,13 +43,12 @@ The product must not be described as production-proven until these gates pass.
 
    ```shell
    composer require axelferdinand/statamic-secretary
-   php artisan migrate --force
-   php please stache:refresh
-   php please secretary:doctor
    ```
 
-8. Verify addon discovery, published assets, CP navigation, permissions, chat, draft creation, email onboarding, and uninstall behavior.
-9. Repeat this install test using the exact command shown by the Marketplace product.
+8. Open **Content → Secretary**, add an OpenAI key, and choose the hosted relay or a private Postmark server. Do not add Secretary secrets to `.env` for this test.
+9. Confirm the package migrations ran automatically without depending on the repository's test harness. Installations that explicitly set `SECRETARY_AUTO_MIGRATE=false` may run `php please secretary:install` later.
+10. Verify addon discovery, published assets, CP navigation, permissions, chat, draft creation, email onboarding, and uninstall behavior.
+11. Repeat this install test using the exact command shown by the Marketplace product.
 
 ## Statamic Marketplace release
 

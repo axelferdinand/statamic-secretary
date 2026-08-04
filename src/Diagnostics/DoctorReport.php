@@ -4,6 +4,7 @@ namespace AxelFerdinand\StatamicSecretary\Diagnostics;
 
 use AxelFerdinand\StatamicSecretary\Developer\ToolRegistry;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
 use Illuminate\Support\Facades\Schema;
 use Statamic\Assets\AssetUploader;
@@ -23,7 +24,7 @@ final class DoctorReport
         $postmarkSetupPending = $email->tokenConfigured() && ! $email->connected() && blank(config('secretary.email.enabled'));
 
         return [
-            $this->check('openai_key', 'OpenAI API key', filled(config('secretary.openai.api_key')), true, 'Set OPENAI_API_KEY.'),
+            $this->check('openai_key', 'OpenAI API key', app(OpenAIConfiguration::class)->configured(), true, 'Add the key in Secretary or set OPENAI_API_KEY.'),
             $this->check('openai_model', 'OpenAI model', filled(config('secretary.openai.model')), true, 'Set SECRETARY_OPENAI_MODEL.'),
             $this->check('content_root', 'Content root', is_dir($root) && is_writable($root), true, 'The configured content directory must exist and be writable.'),
             $this->check(

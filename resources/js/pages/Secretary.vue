@@ -4,15 +4,18 @@ import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref
 import ChangePreviewModal from '../components/ChangePreviewModal.vue';
 import DeveloperTrace from '../components/DeveloperTrace.vue';
 import SecretaryChangeList from '../components/SecretaryChangeList.vue';
+import SecretaryOnboarding from '../components/SecretaryOnboarding.vue';
 
 const props = defineProps({
     conversations: { type: Array, required: true },
     conversation: { type: Object, default: null },
     can_publish: { type: Boolean, required: true },
     configured: { type: Boolean, required: true },
+    openai_setup: { type: Object, required: true },
     email_enabled: { type: Boolean, required: true },
     email_setup: { type: Object, required: true },
     relay_setup: { type: Object, required: true },
+    onboarding: { type: Object, required: true },
     style_guides: { type: Object, required: true },
     diagnostics: { type: Object, required: true },
     developer_mode: { type: Boolean, required: true },
@@ -32,6 +35,7 @@ const conversationQuery = ref('');
 const conversationMenuOpen = ref(false);
 const busy = ref(false);
 const setupBusy = ref(false);
+const postmarkApiKey = ref('');
 const publishCandidate = ref(null);
 const reviewingTarget = ref(null);
 const previewOpen = ref(false);
@@ -88,6 +92,12 @@ const sharedAddressPreview = computed(() => {
     return 'yourdomain.com@statamic.no';
 });
 const actionError = ref(null);
+const onboardingActive = computed(() => props.openai_setup.can_configure
+    && (!props.configured || (
+        props.conversations.length === 0
+        && !emailConnected.value
+        && !props.onboarding.email_skipped
+    )));
 const error = computed(() => props.errors?.secretary ?? actionError.value ?? null);
 const setupError = computed(() => props.errors?.relay_setup
     ?? props.errors?.pairing_code
@@ -172,9 +182,10 @@ function newConversation() {
 }
 
 function connectPostmark() {
-    if (!props.email_setup.token_configured || !emailAddress.value.trim() || !publicUrl.value.trim() || setupBusy.value) return;
+    if ((!props.email_setup.token_configured && !postmarkApiKey.value.trim()) || !emailAddress.value.trim() || !publicUrl.value.trim() || setupBusy.value) return;
 
     router.post(props.email_setup.setup_url, {
+        api_key: postmarkApiKey.value.trim() || null,
         email: emailAddress.value.trim(),
         public_url: publicUrl.value.trim(),
     }, {
@@ -494,22 +505,33 @@ watch(guideSite, loadGuide);
 
     <ui-header title="Secretary">
         <template #actions>
-            <ui-button icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
+            <ui-button v-if="!onboardingActive" icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
                 New conversation
             </ui-button>
         </template>
     </ui-header>
 
-    <p class="secretary-page-lead">
+    <p v-if="!onboardingActive" class="secretary-page-lead">
         Ask for a change. Secretary prepares the draft; you review and publish.
     </p>
 
-    <div class="space-y-4">
+    <SecretaryOnboarding
+        v-if="onboardingActive"
+        :configured="configured"
+        :openai="openai_setup"
+        :email="email_setup"
+        :relay="relay_setup"
+        :onboarding="onboarding"
+        :errors="errors"
+        :success="success"
+    />
+
+    <div v-else class="space-y-4">
         <ui-alert
             v-if="!configured"
             variant="warning"
             heading="OpenAI is not configured"
-            text="Add OPENAI_API_KEY to the environment before Secretary can process messages. The key is never displayed or stored here."
+            text="An administrator can connect OpenAI from Settings. Environment configuration is also supported."
         />
 
         <ui-alert
@@ -523,7 +545,7 @@ watch(guideSite, loadGuide);
             v-if="!emailConnected && !email_setup.token_configured && !relay_setup.pairing_available"
             variant="warning"
             heading="Email is not connected"
-            text="Add POSTMARK_API_KEY to the environment, or enable the shared Secretary address. An administrator can then finish setup here."
+            text="An administrator can connect Secretary Relay or a private Postmark server from Settings. Control Panel chat remains available."
         />
 
         <section class="secretary-page-settings">
@@ -757,16 +779,24 @@ watch(guideSite, loadGuide);
                         Secretary finds the inbound address and registers the webhook automatically in your Postmark server.
                     </p>
 
-                    <ui-alert
-                        v-if="!email_setup.token_configured"
-                        variant="warning"
-                        heading="Postmark key is missing"
-                        text="Add POSTMARK_API_KEY to the environment before connecting your own server."
-                    />
-
                     <div class="grid gap-4 md:grid-cols-2">
+                        <div v-if="!email_setup.token_configured" class="md:col-span-2">
+                            <label for="secretary-postmark-api-key" class="mb-1.5 block text-sm font-semibold">Postmark Server API Token</label>
+                            <input
+                                id="secretary-postmark-api-key"
+                                v-model="postmarkApiKey"
+                                class="secretary-settings-input w-full font-mono"
+                                type="password"
+                                autocomplete="off"
+                                placeholder="Paste the token from your Postmark server"
+                                required
+                            >
+                            <p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                                Stored encrypted in this site’s database. It is never shown again.
+                            </p>
+                        </div>
                         <div>
-                            <label for="secretary-email" class="mb-1.5 block text-sm font-semibold">Secretary address</label>
+                            <label for="secretary-email" class="mb-1.5 block text-sm font-semibold">Public email address</label>
                             <input
                                 id="secretary-email"
                                 v-model="emailAddress"
@@ -776,6 +806,9 @@ watch(guideSite, loadGuide);
                                 placeholder="secretary@example.com"
                                 required
                             >
+                            <p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                                The address people will send instructions to. You create or forward this mailbox.
+                            </p>
                         </div>
 
                         <div>
@@ -798,7 +831,7 @@ watch(guideSite, loadGuide);
                     <div class="flex flex-wrap items-center gap-3">
                         <ui-button
                             type="submit"
-                            :disabled="setupBusy || !email_setup.token_configured || !emailAddress.trim() || !publicUrl.trim()"
+                            :disabled="setupBusy || (!email_setup.token_configured && !postmarkApiKey.trim()) || !emailAddress.trim() || !publicUrl.trim()"
                         >
                             {{ setupBusy ? 'Connecting …' : 'Connect Postmark' }}
                         </ui-button>
@@ -810,7 +843,7 @@ watch(guideSite, loadGuide);
                         >
                             Cancel
                         </ui-button>
-                        <span class="text-xs text-gray-500 dark:text-gray-400">The API key is never displayed or stored here.</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">Environment variables override a key saved here.</span>
                     </div>
                 </form>
             </div>

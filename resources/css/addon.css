@@ -898,6 +898,356 @@
         opacity: 0.45;
     }
 
+    .secretary-onboarding {
+        width: min(100%, 68rem);
+        margin: -0.5rem auto 2rem;
+        overflow: hidden;
+        border: 1px solid var(--color-content-border);
+        border-radius: 1rem;
+        background: var(--color-content-bg);
+        box-shadow: var(--shadow-ui-sm);
+    }
+
+    .secretary-onboarding-intro {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: clamp(1.25rem, 3vw, 2rem);
+    }
+
+    .secretary-onboarding-icon {
+        display: grid;
+        width: 3rem;
+        height: 3rem;
+        flex: none;
+        place-items: center;
+        border: 1px solid color-mix(in oklch, var(--color-primary) 24%, transparent);
+        border-radius: 0.875rem;
+        background: color-mix(in oklch, var(--color-primary) 10%, var(--color-content-bg));
+        color: var(--color-primary);
+    }
+
+    .secretary-onboarding-icon svg {
+        width: 1.5rem;
+        height: 1.5rem;
+    }
+
+    .secretary-onboarding-kicker {
+        display: block;
+        margin-bottom: 0.3rem;
+        color: var(--color-primary);
+        font-size: 0.6875rem;
+        font-weight: 750;
+        letter-spacing: 0.065em;
+        text-transform: uppercase;
+    }
+
+    .secretary-onboarding-intro h2 {
+        color: var(--color-gray-950);
+        font-size: clamp(1.35rem, 3vw, 1.75rem);
+        font-weight: 750;
+        line-height: 1.2;
+    }
+
+    .secretary-onboarding-intro p {
+        margin-top: 0.5rem;
+        color: var(--color-gray-600);
+        font-size: 0.875rem;
+        line-height: 1.5rem;
+    }
+
+    .secretary-onboarding-progress {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        border-block: 1px solid var(--color-content-border);
+        background: var(--color-gray-50);
+        padding: 0.75rem clamp(1.25rem, 3vw, 2rem);
+    }
+
+    .secretary-onboarding-progress li {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 0.65rem;
+        color: var(--color-gray-500);
+    }
+
+    .secretary-onboarding-progress li + li {
+        border-left: 1px solid var(--color-content-border);
+        padding-left: clamp(0.75rem, 3vw, 2rem);
+    }
+
+    .secretary-onboarding-progress li > span,
+    .secretary-onboarding-step-heading > span {
+        display: grid;
+        width: 1.75rem;
+        height: 1.75rem;
+        flex: none;
+        place-items: center;
+        border: 1px solid var(--color-gray-300);
+        border-radius: 9999px;
+        background: var(--color-content-bg);
+        font-size: 0.75rem;
+        font-weight: 750;
+    }
+
+    .secretary-onboarding-progress strong,
+    .secretary-onboarding-progress small {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .secretary-onboarding-progress strong {
+        color: var(--color-gray-700);
+        font-size: 0.75rem;
+    }
+
+    .secretary-onboarding-progress small {
+        margin-top: 0.05rem;
+        font-size: 0.6875rem;
+    }
+
+    .secretary-onboarding-progress .is-current > span,
+    .secretary-onboarding-step-heading > span {
+        border-color: var(--color-primary);
+        background: var(--color-primary);
+        color: white;
+    }
+
+    .secretary-onboarding-progress .is-complete > span {
+        border-color: var(--color-green-600);
+        background: var(--color-green-100);
+        color: var(--color-green-700);
+    }
+
+    .secretary-onboarding > [role="alert"] {
+        margin: 1rem clamp(1.25rem, 3vw, 2rem) 0;
+    }
+
+    .secretary-onboarding-step {
+        padding: clamp(1.25rem, 3vw, 2rem);
+    }
+
+    .secretary-onboarding-step-heading {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .secretary-onboarding-step-heading h3 {
+        color: var(--color-gray-950);
+        font-size: 1.125rem;
+        font-weight: 750;
+        line-height: 1.4;
+    }
+
+    .secretary-onboarding-step-heading p,
+    .secretary-onboarding-explanation {
+        margin-top: 0.25rem;
+        color: var(--color-gray-600);
+        font-size: 0.8125rem;
+        line-height: 1.4rem;
+    }
+
+    .secretary-onboarding-form-row,
+    .secretary-onboarding-inner-form {
+        display: grid;
+        align-items: end;
+        gap: 1rem;
+        margin-top: 1.25rem;
+    }
+
+    .secretary-onboarding-form-row label,
+    .secretary-onboarding-inner-form label,
+    .secretary-onboarding-fields label {
+        display: block;
+        margin-bottom: 0.4rem;
+        color: var(--color-gray-900);
+        font-size: 0.8125rem;
+        font-weight: 700;
+    }
+
+    .secretary-onboarding-form-row p,
+    .secretary-onboarding-inner-form p,
+    .secretary-onboarding-fields p {
+        margin-top: 0.4rem;
+        color: var(--color-gray-500);
+        font-size: 0.6875rem;
+        line-height: 1.1rem;
+    }
+
+    .secretary-onboarding-choices {
+        display: grid;
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+
+    .secretary-onboarding-choice {
+        position: relative;
+        display: flex;
+        min-height: 14rem;
+        cursor: pointer;
+        flex-direction: column;
+        align-items: flex-start;
+        border: 1px solid var(--color-content-border);
+        border-radius: 0.875rem;
+        background: var(--color-content-bg);
+        padding: 1.25rem;
+        color: var(--color-gray-900);
+        text-align: left;
+        box-shadow: var(--shadow-ui-xs);
+        transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+    }
+
+    .secretary-onboarding-choice:hover {
+        border-color: color-mix(in oklch, var(--color-primary) 55%, var(--color-content-border));
+        box-shadow: var(--shadow-ui-md);
+        transform: translateY(-1px);
+    }
+
+    .secretary-onboarding-choice:focus-visible,
+    .secretary-onboarding-method-header button:focus-visible,
+    .secretary-onboarding-skip button:focus-visible {
+        outline: 2px solid var(--color-focus-outline);
+        outline-offset: 3px;
+    }
+
+    .secretary-onboarding-choice.is-recommended {
+        border-color: color-mix(in oklch, var(--color-primary) 42%, var(--color-content-border));
+        background: color-mix(in oklch, var(--color-primary) 4%, var(--color-content-bg));
+    }
+
+    .secretary-onboarding-choice > svg {
+        width: 1.5rem;
+        height: 1.5rem;
+        margin-bottom: 1rem;
+        color: var(--color-primary);
+    }
+
+    .secretary-onboarding-choice strong,
+    .secretary-onboarding-choice small {
+        display: block;
+    }
+
+    .secretary-onboarding-choice strong {
+        font-size: 1.05rem;
+    }
+
+    .secretary-onboarding-choice small {
+        margin-top: 0.15rem;
+        color: var(--color-gray-500);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .secretary-onboarding-choice p {
+        margin-top: 0.75rem;
+        color: var(--color-gray-600);
+        font-size: 0.8125rem;
+        line-height: 1.35rem;
+    }
+
+    .secretary-choice-badge {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        border-radius: 9999px;
+        background: var(--color-green-100);
+        padding: 0.25rem 0.5rem;
+        color: var(--color-green-700);
+        font-size: 0.625rem;
+        font-weight: 750;
+    }
+
+    .secretary-choice-action {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: auto;
+        padding-top: 1rem;
+        color: var(--color-primary);
+        font-size: 0.75rem;
+        font-weight: 750;
+    }
+
+    .secretary-choice-action svg {
+        width: 0.9rem;
+        height: 0.9rem;
+    }
+
+    .secretary-onboarding-method {
+        margin-top: 1.5rem;
+        border: 1px solid var(--color-content-border);
+        border-radius: 0.875rem;
+        background: var(--color-gray-50);
+        padding: clamp(1rem, 3vw, 1.5rem);
+    }
+
+    .secretary-onboarding-method-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .secretary-onboarding-method-header button,
+    .secretary-onboarding-skip button {
+        display: inline-flex;
+        cursor: pointer;
+        align-items: center;
+        gap: 0.35rem;
+        border-radius: 0.35rem;
+        color: var(--color-primary);
+        font-size: 0.75rem;
+        font-weight: 700;
+    }
+
+    .secretary-onboarding-method-header button:hover,
+    .secretary-onboarding-skip button:hover {
+        text-decoration: underline;
+        text-underline-offset: 0.18em;
+    }
+
+    .secretary-onboarding-method-header button svg {
+        width: 0.9rem;
+        height: 0.9rem;
+    }
+
+    .secretary-onboarding-inner-form {
+        border-top: 1px solid var(--color-content-border);
+        padding-top: 1rem;
+    }
+
+    .secretary-onboarding-inner-form.is-code {
+        align-items: start;
+    }
+
+    .secretary-onboarding-fields {
+        display: grid;
+        gap: 1rem;
+        margin-block: 1.25rem;
+    }
+
+    .secretary-onboarding-skip {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-top: 1.5rem;
+        border-top: 1px solid var(--color-content-border);
+        padding-top: 1.25rem;
+        text-align: center;
+    }
+
+    .secretary-onboarding-skip small {
+        color: var(--color-gray-500);
+        font-size: 0.6875rem;
+    }
+
     .secretary-page-lead {
         max-width: 44rem;
         margin: -1rem 0 1.5rem;
@@ -1548,6 +1898,22 @@
     }
 
     @media (min-width: 40rem) {
+        .secretary-onboarding-form-row,
+        .secretary-onboarding-inner-form:not(.is-code) {
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+        .secretary-onboarding-choices,
+        .secretary-onboarding-fields,
+        .secretary-onboarding-inner-form.is-code {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .secretary-onboarding-inner-form.is-code > :last-child {
+            grid-column: 1 / -1;
+            justify-self: start;
+        }
+
         .secretary-page-lead {
             padding-inline: 0;
         }
@@ -1570,6 +1936,18 @@
     }
 
     @media (max-width: 39.999rem) {
+        .secretary-onboarding-intro {
+            align-items: center;
+        }
+
+        .secretary-onboarding-progress li > div {
+            display: none;
+        }
+
+        .secretary-onboarding-progress li {
+            justify-content: center;
+        }
+
         .stack-container.stack-is-current > .stack-content:has(.secretary-panel-shell) {
             transform: none !important;
         }
@@ -1655,6 +2033,8 @@
     }
 
     .dark .secretary-page-settings,
+    .dark .secretary-onboarding,
+    .dark .secretary-onboarding-choice,
     .dark .secretary-settings-card,
     .dark .secretary-page-settings > details > summary,
     .dark .secretary-tools-panel > summary {
@@ -1662,6 +2042,8 @@
     }
 
     .dark .secretary-page-settings-content,
+    .dark .secretary-onboarding-progress,
+    .dark .secretary-onboarding-method,
     .dark .secretary-tools-panel-content {
         background: color-mix(in oklch, var(--color-gray-950) 82%, var(--color-gray-900));
     }
@@ -1682,6 +2064,16 @@
         background: var(--color-gray-950);
         color: var(--color-gray-100);
         box-shadow: 0 1px 2px rgb(0 0 0 / 24%);
+    }
+
+    .dark .secretary-onboarding-intro h2,
+    .dark .secretary-onboarding-step-heading h3,
+    .dark .secretary-onboarding-form-row label,
+    .dark .secretary-onboarding-inner-form label,
+    .dark .secretary-onboarding-fields label,
+    .dark .secretary-onboarding-choice,
+    .dark .secretary-email-example strong {
+        color: var(--color-gray-100);
     }
 
     .dark .secretary-settings-input:disabled,

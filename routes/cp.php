@@ -8,6 +8,8 @@ Route::prefix('secretary')->name('secretary.')->group(function (): void {
     Route::get('/', [SecretaryController::class, 'index'])->name('index');
     Route::post('/conversations', [SecretaryController::class, 'store'])->middleware('throttle:30,1')->name('store');
     Route::post('/setup/postmark', [SecretaryController::class, 'connectPostmark'])->middleware('throttle:10,1')->name('setup.postmark');
+    Route::post('/setup/openai', [SecretaryController::class, 'saveOpenAIKey'])->middleware('throttle:10,1')->name('setup.openai');
+    Route::post('/setup/skip-email', [SecretaryController::class, 'skipEmailSetup'])->middleware('throttle:10,1')->name('setup.skip-email');
     Route::post('/setup/relay/request-code', [SecretaryController::class, 'requestRelayCode'])->middleware('throttle:5,1')->name('setup.relay.request-code');
     Route::post('/setup/relay', [SecretaryController::class, 'connectRelay'])->middleware('throttle:10,1')->name('setup.relay');
     Route::post('/settings/editorial', [SecretaryController::class, 'saveEditorialGuide'])->middleware('throttle:20,1')->name('settings.editorial');

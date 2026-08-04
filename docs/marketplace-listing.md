@@ -46,15 +46,15 @@ Secretary never receives shell access or a generic file-writing tool. It can onl
 - A persistent Laravel queue for production email processing.
 - Optional Postmark server for email conversations.
 
-For a site-controlled mailbox, email setup requires only the Postmark Server API Token in the environment. The addon includes the Postmark transport, discovers the server's inbound address, registers its secured webhook, and leaves the site's normal mailer untouched. The optional hosted address instead pairs an existing permitted Statamic user by a short-lived email code; the customer does not create a mailbox or Postmark server.
+For a site-controlled mailbox, email setup requires only a Postmark Server API Token, which may be entered in the Control Panel or supplied through the environment. The addon includes the Postmark transport, discovers the server's inbound address, registers its secured webhook, and leaves the site's normal mailer untouched. The optional hosted address instead pairs an existing permitted Statamic user by a short-lived email code; the customer does not create a mailbox or Postmark server.
 
 ## Installation command
 
 ```shell
 composer require axelferdinand/statamic-secretary
-php artisan migrate --force
-php please secretary:doctor
 ```
+
+That is the complete standard installation. Open **Content → Secretary** to add the OpenAI key and choose **Easy setup** (Secretary Relay) or **Advanced setup** (your own Postmark server). Secretary runs its package migrations automatically through Statamic's addon installation hook. `secretary:doctor` remains available as an optional deployment diagnostic.
 
 ## Marketplace assets still needed
 

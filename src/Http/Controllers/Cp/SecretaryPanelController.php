@@ -8,6 +8,7 @@ use AxelFerdinand\StatamicSecretary\Content\ChangeSetReviewService;
 use AxelFerdinand\StatamicSecretary\Content\EntryCatalog;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessCpMessage;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use AxelFerdinand\StatamicSecretary\Support\PublicError;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Http\JsonResponse;
@@ -92,7 +93,7 @@ final class SecretaryPanelController extends CpController
         $this->ensureCanUse($user);
         $this->ensureOwnsConversation($conversation, $user);
 
-        if (blank(config('secretary.openai.api_key'))) {
+        if (! app(OpenAIConfiguration::class)->configured()) {
             return response()->json(['message' => 'OpenAI is not configured for Secretary.'], 422);
         }
 
@@ -246,7 +247,7 @@ final class SecretaryPanelController extends CpController
         $activeContext ??= $conversation ? $this->conversationContext($conversation) : null;
 
         return [
-            'configured' => filled(config('secretary.openai.api_key')),
+            'configured' => app(OpenAIConfiguration::class)->configured(),
             'can_publish' => $user->can('publish with secretary'),
             'max_input_characters' => max(1, (int) config('secretary.limits.max_input_characters', 20000)),
             'create_url' => cp_route('secretary.panel.store'),

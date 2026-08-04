@@ -9,6 +9,7 @@ use AxelFerdinand\StatamicSecretary\Postmark\PostmarkConnector;
 use AxelFerdinand\StatamicSecretary\Tests\TestCase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Statamic\Facades\Role;
@@ -16,6 +17,53 @@ use Statamic\Facades\User;
 
 class PostmarkSetupTest extends TestCase
 {
+    public function test_an_administrator_can_paste_the_postmark_token_in_the_control_panel(): void
+    {
+        config()->set('secretary.email.postmark.api_key');
+        $this->fakePostmarkServer();
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+        $token = 'postmark-server-token-from-onboarding';
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/setup/postmark', [
+                'api_key' => $token,
+                'email' => 'secretary@example.com',
+                'public_url' => 'https://secretary.example.com',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $settings = Setting::query()->findOrFail('email')->value;
+        $this->assertSame($token, $settings['api_key']);
+        $this->assertStringNotContainsString(
+            $token,
+            (string) DB::table('secretary_settings')->where('key', 'email')->value('value'),
+        );
+        $this->assertSame('control_panel', app(EmailConfiguration::class)->publicStatus()['token_source']);
+
+        Http::assertSent(fn (Request $request): bool => $request->hasHeader('X-Postmark-Server-Token', $token));
+    }
+
+    public function test_postmark_setup_explains_when_no_token_was_supplied(): void
+    {
+        config()->set('secretary.email.postmark.api_key');
+        Http::fake();
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+
+        $this->from('/cp/secretary')
+            ->actingAs($user)
+            ->post('/cp/secretary/setup/postmark', [
+                'email' => 'secretary@example.com',
+                'public_url' => 'https://secretary.example.com',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHasErrors('postmark_api_key');
+
+        Http::assertNothingSent();
+    }
+
     public function test_a_super_user_can_connect_postmark_with_only_the_server_token(): void
     {
         config()->set('secretary.email.postmark.api_key', 'postmark-server-token');

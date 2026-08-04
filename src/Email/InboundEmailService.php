@@ -10,6 +10,7 @@ use AxelFerdinand\StatamicSecretary\Exceptions\ContentOperationDenied;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessInboundEmail;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Models\Message;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
@@ -43,7 +44,7 @@ final class InboundEmailService
         $maximumCharacters = max(1, (int) config('secretary.limits.max_input_characters', 20000));
         abort_if(mb_strlen($body) > $maximumCharacters, 403, 'The inbound email instruction is too long.');
         abort_if(
-            blank(config('secretary.openai.api_key')) && ! $this->publicationIntent->matches($body ?: 'Vedlagt bilde'),
+            ! app(OpenAIConfiguration::class)->configured() && ! $this->publicationIntent->matches($body ?: 'Vedlagt bilde'),
             503,
             'Secretary OpenAI is not configured.',
         );
