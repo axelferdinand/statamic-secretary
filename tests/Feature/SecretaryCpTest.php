@@ -11,9 +11,11 @@ use AxelFerdinand\StatamicSecretary\Data\AgentResponse;
 use AxelFerdinand\StatamicSecretary\Editorial\EditorialStyleGuide;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessCpMessage;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
+use AxelFerdinand\StatamicSecretary\Models\Setting;
 use AxelFerdinand\StatamicSecretary\Tests\TestCase;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Mockery;
 use RuntimeException;
@@ -23,6 +25,91 @@ use Statamic\Facades\User;
 
 class SecretaryCpTest extends TestCase
 {
+    public function test_onboarding_can_enable_safe_drafts_without_terminal_access(): void
+    {
+        config()->set('statamic.revisions.enabled', false);
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(false);
+        $collection->save();
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)
+            ->get('/cp/secretary')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('onboarding.safe_drafting.ready', false)
+                ->where('onboarding.safe_drafting.pro', true)
+                ->where('onboarding.safe_drafting.setup_url', 'http://localhost/cp/secretary/setup/safe-drafts')
+                ->where('diagnostics.run_url', 'http://localhost/cp/secretary/diagnostics/run'));
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/setup/safe-drafts')
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $this->assertTrue((bool) config('statamic.revisions.enabled'));
+        $this->assertTrue((bool) data_get(Collection::find('pages')->fileData(), 'revisions'));
+        $this->assertTrue((bool) data_get(Setting::query()->findOrFail('content_safety')->value, 'managed_revisions'));
+    }
+
+    public function test_an_administrator_can_rerun_system_checks_from_the_control_panel(): void
+    {
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/diagnostics/run')
+            ->assertRedirect()
+            ->assertSessionHas('secretary_success');
+    }
+
+    public function test_an_administrator_can_finish_openai_setup_without_editing_the_environment(): void
+    {
+        config()->set('secretary.openai.api_key');
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+        $apiKey = 'sk-'.str_repeat('a', 48);
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/setup/openai', ['api_key' => $apiKey])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $this->assertSame($apiKey, Setting::query()->findOrFail('openai')->value['api_key']);
+        $this->assertStringNotContainsString(
+            $apiKey,
+            (string) DB::table('secretary_settings')->where('key', 'openai')->value('value'),
+        );
+
+        $this->actingAs($user)
+            ->get('/cp/secretary')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('configured', true)
+                ->where('openai_setup.source', 'control_panel')
+                ->where('openai_setup.can_configure', true)
+                ->where('openai_setup.setup_url', 'http://localhost/cp/secretary/setup/openai')
+                ->where('onboarding.email_skipped', false)
+                ->where('onboarding.skip_email_url', 'http://localhost/cp/secretary/setup/skip-email'));
+    }
+
+    public function test_an_administrator_can_choose_control_panel_only_during_onboarding(): void
+    {
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/setup/skip-email')
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $this->actingAs($user)
+            ->get('/cp/secretary')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('onboarding.email_skipped', true));
+    }
+
     public function test_an_authorized_user_can_open_the_control_panel_assistant(): void
     {
         $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
@@ -33,6 +120,21 @@ class SecretaryCpTest extends TestCase
             'status' => 'open',
             'context' => ['title' => 'Forsiden'],
         ]);
+        $completedMessage = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'cp',
+            'role' => 'user',
+            'body' => 'Oppdater forsiden.',
+            'processed_at' => now(),
+        ]);
+        $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'cp',
+            'role' => 'assistant',
+            'body' => 'Utkastet er klart.',
+            'reply_to_message_id' => $completedMessage->id,
+            'processed_at' => now(),
+        ]);
         $conversation->changeSets()->create([
             'status' => 'draft',
             'operation' => 'update',
@@ -40,6 +142,7 @@ class SecretaryCpTest extends TestCase
             'resource_id' => 'home',
             'collection' => 'pages',
             'site' => 'default',
+            'proposed_by_message_id' => $completedMessage->id,
             'patch' => ['title' => 'Etter'],
             'before' => ['data' => ['title' => 'Før']],
             'after' => ['data' => ['title' => 'Etter']],
@@ -51,8 +154,10 @@ class SecretaryCpTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('statamic-secretary::Secretary')
                 ->where('conversation.id', $conversation->id)
+                ->where('conversation.messages.1.reply_to_message_id', $completedMessage->id)
                 ->where('conversation.changes.0.before.data.title', 'Før')
                 ->where('conversation.changes.0.after.data.title', 'Etter')
+                ->where('conversation.changes.0.proposed_by_message_id', $completedMessage->id)
                 ->where('can_publish', true)
                 ->where('max_input_characters', 20000)
                 ->has('conversations', 1));
@@ -134,6 +239,63 @@ class SecretaryCpTest extends TestCase
             ->assertJsonMissing(['title' => 'Annen brukers samtale']);
     }
 
+    public function test_the_global_panel_links_a_change_to_the_assistant_reply_that_created_it(): void
+    {
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create([
+            'channel' => 'cp',
+            'user_id' => $user->id(),
+            'status' => 'open',
+            'context' => ['title' => 'Forsiden'],
+        ]);
+        $completedMessage = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'cp',
+            'role' => 'user',
+            'body' => 'Opprett landingssiden.',
+            'processed_at' => now(),
+        ]);
+        $conversation->changeSets()->create([
+            'status' => 'published',
+            'operation' => 'create',
+            'resource_type' => 'entry',
+            'resource_id' => 'landing-page',
+            'collection' => 'pages',
+            'site' => 'default',
+            'slug' => 'landing-page',
+            'summary' => 'Opprettet og publiserte landingssiden.',
+            'proposed_by_message_id' => $completedMessage->id,
+            'patch' => ['title' => 'Landingsside'],
+            'before' => null,
+            'after' => ['data' => ['title' => 'Landingsside']],
+            'published_at' => now(),
+        ]);
+        $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'cp',
+            'role' => 'assistant',
+            'body' => 'Landingssiden er publisert.',
+            'reply_to_message_id' => $completedMessage->id,
+            'processed_at' => now(),
+        ]);
+        $pendingMessage = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'cp',
+            'role' => 'user',
+            'body' => 'Gjør heroen kortere.',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/cp/secretary/panel/data?conversation_id='.$conversation->id)
+            ->assertOk()
+            ->assertJsonPath('conversation.processing', true)
+            ->assertJsonPath('conversation.messages.1.reply_to_message_id', $completedMessage->id)
+            ->assertJsonPath('conversation.messages.2.id', $pendingMessage->id)
+            ->assertJsonPath('conversation.messages.2.pending', true)
+            ->assertJsonPath('conversation.changes.0.proposed_by_message_id', $completedMessage->id);
+    }
+
     public function test_the_global_panel_can_create_a_conversation_and_queue_a_message(): void
     {
         $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
@@ -144,6 +306,7 @@ class SecretaryCpTest extends TestCase
             ->postJson('/cp/secretary/panel/conversations')
             ->assertCreated()
             ->assertJsonPath('conversation.channel', 'cp')
+            ->assertJsonPath('conversation.title', 'New conversation')
             ->assertJsonPath('conversation.processing', false);
         $conversationId = $created->json('conversation.id');
 
@@ -152,7 +315,8 @@ class SecretaryCpTest extends TestCase
             ->assertStatus(202)
             ->assertJsonPath('conversation.id', $conversationId)
             ->assertJsonPath('conversation.processing', true)
-            ->assertJsonPath('conversation.messages.0.body', 'Oppdater forsiden.');
+            ->assertJsonPath('conversation.messages.0.body', 'Oppdater forsiden.')
+            ->assertJsonPath('conversation.messages.0.processing_stage', 'queued');
 
         $message = Conversation::findOrFail($conversationId)->messages()->where('direction', 'inbound')->firstOrFail();
         Bus::assertDispatchedAfterResponse(
@@ -488,6 +652,9 @@ class SecretaryCpTest extends TestCase
             ->postJson('/cp/secretary/panel/'.$conversation->id.'/changes/'.$changeSet->id.'/publish')
             ->assertOk()
             ->assertJsonPath('conversation.changes.0.status', 'published')
+            ->assertJsonPath('conversation.messages.0.presentation', 'hidden')
+            ->assertJsonPath('conversation.messages.1.presentation', 'system')
+            ->assertJsonPath('conversation.messages.1.system_event', 'published')
             ->assertJsonPath('conversation.messages.1.body', 'Publisert: Ny tittel');
 
         $this->assertSame('Etter', Entry::find('home')->value('title'));
@@ -555,6 +722,7 @@ class SecretaryCpTest extends TestCase
 
         $message = $conversation->messages()->where('direction', 'inbound')->firstOrFail();
         $this->assertNull($message->processed_at);
+        $this->assertSame('queued', data_get($message->metadata, 'processing_stage'));
         Bus::assertDispatchedAfterResponse(
             ProcessCpMessage::class,
             fn (ProcessCpMessage $job): bool => $job->messageId === $message->id,
@@ -622,7 +790,7 @@ class SecretaryCpTest extends TestCase
             ->with(Mockery::type(ProcessCpMessage::class))
             ->andThrow(new RuntimeException('redis://username:secret@internal.example'));
         $this->app->instance(Dispatcher::class, $bus);
-        $publicError = 'Secretary kunne ikke starte behandlingen. Kontroller loggen og prøv igjen.';
+        $publicError = 'Secretary could not start processing. Check the application log and try again.';
 
         $this->from('/cp/secretary/'.$conversation->id)
             ->actingAs($user)
@@ -778,7 +946,7 @@ class SecretaryCpTest extends TestCase
         $message->refresh();
         $this->assertNotNull($message->processed_at);
         $this->assertSame(
-            'Secretary kunne ikke behandle meldingen. Kontroller loggen og prøv igjen.',
+            'Secretary could not process the message. Check the application log and try again.',
             data_get($message->metadata, 'processing_error'),
         );
         $this->assertStringNotContainsString('secret details', json_encode($message->metadata));

@@ -2,8 +2,9 @@
 
 namespace AxelFerdinand\StatamicSecretary\Email;
 
+use AxelFerdinand\StatamicSecretary\Database\SecretaryDatabase;
 use AxelFerdinand\StatamicSecretary\Models\Setting;
-use Illuminate\Support\Facades\Schema;
+use Statamic\Facades\Site;
 use Throwable;
 
 final class EmailConfiguration
@@ -17,7 +18,11 @@ final class EmailConfiguration
 
     public function postmarkToken(): string
     {
-        return trim((string) config('secretary.email.postmark.api_key'));
+        $environment = trim((string) config('secretary.email.postmark.api_key'));
+
+        return $environment !== ''
+            ? $environment
+            : trim((string) data_get($this->stored(), 'api_key'));
     }
 
     public function connected(): bool
@@ -65,7 +70,13 @@ final class EmailConfiguration
             return $configured;
         }
 
-        return $this->connected() ? 'statamic_secretary_postmark' : (string) config('mail.default');
+        if ($this->connected()) {
+            config()->set('mail.mailers.statamic_secretary_postmark.token', $this->postmarkToken());
+
+            return 'statamic_secretary_postmark';
+        }
+
+        return (string) config('mail.default');
     }
 
     /** @return array<int, string> */
@@ -153,9 +164,47 @@ final class EmailConfiguration
 
     public function suggestedPublicUrl(): ?string
     {
-        $url = rtrim((string) config('app.url'), '/');
+        $candidates = [];
 
-        return $this->isPublicHttpsUrl($url) ? $url : null;
+        try {
+            $candidates[] = (string) Site::selected()?->absoluteUrl();
+        } catch (Throwable) {
+            // Statamic may not have hydrated its sites yet during early boot.
+        }
+
+        $candidates[] = (string) config('app.url');
+
+        foreach ($candidates as $candidate) {
+            $url = rtrim(trim($candidate), '/');
+
+            if ($this->isPublicHttpsUrl($url)) {
+                return $url;
+            }
+        }
+
+        return null;
+    }
+
+    public function forwardingConfirmationRequired(): bool
+    {
+        $stored = $this->stored();
+
+        return $this->connected()
+            && array_key_exists('forwarding_confirmed_at', $stored)
+            && blank($stored['forwarding_confirmed_at']);
+    }
+
+    public function forwardingConfirmed(): bool
+    {
+        return $this->connected() && ! $this->forwardingConfirmationRequired();
+    }
+
+    public function confirmForwarding(): void
+    {
+        $this->store([
+            ...$this->stored(),
+            'forwarding_confirmed_at' => now()->toIso8601String(),
+        ]);
     }
 
     public function isPublicHttpsUrl(string $url): bool
@@ -204,7 +253,7 @@ final class EmailConfiguration
         }
 
         try {
-            if (! Schema::hasTable('secretary_settings')) {
+            if (! app(SecretaryDatabase::class)->schema()->hasTable('secretary_settings')) {
                 return $this->stored = [];
             }
 
@@ -219,6 +268,9 @@ final class EmailConfiguration
     {
         return [
             'token_configured' => $this->tokenConfigured(),
+            'token_source' => filled(config('secretary.email.postmark.api_key'))
+                ? 'environment'
+                : (filled(data_get($this->stored(), 'api_key')) ? 'control_panel' : null),
             'connected' => $this->connected(),
             'enabled' => $this->enabled(),
             'from_address' => $this->fromAddress(),
@@ -227,6 +279,8 @@ final class EmailConfiguration
             'delivery_type' => data_get($this->stored(), 'delivery_type'),
             'webhook_endpoint' => data_get($this->stored(), 'webhook_endpoint'),
             'connected_at' => data_get($this->stored(), 'connected_at'),
+            'forwarding_confirmation_required' => $this->forwardingConfirmationRequired(),
+            'forwarding_confirmed' => $this->forwardingConfirmed(),
             'suggested_public_url' => $this->suggestedPublicUrl(),
         ];
     }

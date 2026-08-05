@@ -89,6 +89,60 @@ class HostedRelayApplicationTest extends TestCase
         $this->assertSame([], $reports->exceptions);
     }
 
+    public function test_forwarded_email_replies_continue_one_conversation_when_top_level_hash_is_empty(): void
+    {
+        [$application, $store, $site] = $this->application();
+        $firstBody = json_encode($this->postmarkPayload(), JSON_THROW_ON_ERROR);
+        $first = $application->postmarkInbound($this->postmarkHeaders(), $firstBody);
+        $conversationToken = $store->inboundDelivery('postmark-inbound-1')?->conversationToken;
+        $this->assertIsString($conversationToken);
+        $hash = $this->installation()->routeToken.'.'.$conversationToken;
+
+        $secondBody = json_encode($this->postmarkPayload([
+            'MessageID' => 'postmark-inbound-2',
+            'MailboxHash' => '',
+            'StrippedTextReply' => 'Bruk forslag nummer én.',
+            'ToFull' => [[
+                'Email' => 'secretary+'.$hash.'@statamic.no',
+                'Name' => '',
+                'MailboxHash' => $hash,
+            ]],
+            'Headers' => [
+                ['Name' => 'X-Spam-Score', 'Value' => '-0.1'],
+                ['Name' => 'X-Spam-Tests', 'Value' => 'DKIM_VALID_AU,SPF_PASS'],
+                ['Name' => 'Message-ID', 'Value' => '<postmark-inbound-2@example.com>'],
+            ],
+        ]), JSON_THROW_ON_ERROR);
+        $second = $application->postmarkInbound($this->postmarkHeaders(), $secondBody);
+
+        $thirdBody = json_encode($this->postmarkPayload([
+            'MessageID' => 'postmark-inbound-3',
+            'MailboxHash' => '',
+            'StrippedTextReply' => 'Forsiden.',
+            'ToFull' => [[
+                'Email' => 'secretary+'.$hash.'@statamic.no',
+                'Name' => '',
+                'MailboxHash' => $hash,
+            ]],
+            'Headers' => [
+                ['Name' => 'X-Spam-Score', 'Value' => '-0.1'],
+                ['Name' => 'X-Spam-Tests', 'Value' => 'DKIM_VALID_AU,SPF_PASS'],
+                ['Name' => 'Message-ID', 'Value' => '<postmark-inbound-3@example.com>'],
+            ],
+        ]), JSON_THROW_ON_ERROR);
+        $third = $application->postmarkInbound($this->postmarkHeaders(), $thirdBody);
+
+        $this->assertSame(['accepted' => true, 'status' => 'forwarded'], $this->decoded($first->body));
+        $this->assertSame(['accepted' => true, 'status' => 'forwarded'], $this->decoded($second->body));
+        $this->assertSame(['accepted' => true, 'status' => 'forwarded'], $this->decoded($third->body));
+        $this->assertSame($conversationToken, $store->inboundDelivery('postmark-inbound-2')?->conversationToken);
+        $this->assertSame($conversationToken, $store->inboundDelivery('postmark-inbound-3')?->conversationToken);
+        $this->assertSame(
+            ['postmark-inbound-1', 'postmark-inbound-2', 'postmark-inbound-3'],
+            $site->deliveries,
+        );
+    }
+
     public function test_transient_site_failure_returns_retryable_status_and_releases_the_claim(): void
     {
         $site = new ApplicationSiteTransport;

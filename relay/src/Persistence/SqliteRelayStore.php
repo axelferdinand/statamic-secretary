@@ -578,18 +578,24 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
                 (string) $pairing['label'],
                 is_array($senders) ? array_values($senders) : [],
             );
-            $routeToken = Tokens::route();
-            $installation = new Installation(
-                Tokens::installation(),
-                $routeToken,
-                $webhookUrl,
-                Tokens::signingSecret(),
-                $definition->normalizedSenders(),
-                true,
-                $definition->label,
-                publicAlias: $this->availablePublicAlias($webhookUrl, $routeToken),
-            );
-            $this->saveInstallationRecord($installation, false);
+            $normalizedSenders = $definition->normalizedSenders();
+            $installation = $this->installationForPairing($webhookUrl, $normalizedSenders);
+            $reconnected = $installation !== null;
+
+            if (! $installation) {
+                $routeToken = Tokens::route();
+                $installation = new Installation(
+                    Tokens::installation(),
+                    $routeToken,
+                    $webhookUrl,
+                    Tokens::signingSecret(),
+                    $normalizedSenders,
+                    true,
+                    $definition->label,
+                    publicAlias: $this->availablePublicAlias($webhookUrl, $routeToken),
+                );
+                $this->saveInstallationRecord($installation, false);
+            }
             $complete = $this->pdo->prepare(
                 <<<'SQL'
                     UPDATE relay_pairing_codes
@@ -613,7 +619,7 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
                 throw new RelayRejected('Pairing code could not be claimed.');
             }
 
-            return new PairingOutcome($installation, false);
+            return new PairingOutcome($installation, $reconnected);
         });
     }
 
@@ -1383,6 +1389,35 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
         }
 
         return $candidate;
+    }
+
+    /** @param  array<int, string>  $senders */
+    private function installationForPairing(string $webhookUrl, array $senders): ?Installation
+    {
+        $statement = $this->pdo->prepare(
+            <<<'SQL'
+                SELECT *
+                FROM relay_installations
+                WHERE webhook_url = :webhook_url
+                  AND active = 1
+                ORDER BY created_at, id
+                SQL,
+        );
+        $statement->execute(['webhook_url' => $webhookUrl]);
+        $expected = array_values($senders);
+        sort($expected);
+
+        foreach ($statement->fetchAll() as $row) {
+            $installation = $this->hydrateInstallation($row);
+            $actual = $installation->senders;
+            sort($actual);
+
+            if ($actual === $expected) {
+                return $installation;
+            }
+        }
+
+        return null;
     }
 
     private function ensureCurrentRoute(Installation $installation, int $now): void

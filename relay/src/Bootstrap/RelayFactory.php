@@ -90,6 +90,9 @@ final class RelayFactory
                 $this->boolean('RELAY_REQUIRE_SENDER_AUTHENTICATION', true),
                 $this->float('RELAY_MAXIMUM_SPAM_SCORE', 5.0, -100.0, 100.0),
                 $this->integer('RELAY_MAXIMUM_MESSAGE_CHARACTERS', 20000, 1000, 20000),
+                $this->integer('RELAY_MAXIMUM_ATTACHMENTS', 4, 1, 10),
+                $this->integer('RELAY_MAXIMUM_ATTACHMENT_BYTES', 8_000_000, 100_000, 20_000_000),
+                $this->integer('RELAY_MAXIMUM_TOTAL_ATTACHMENT_BYTES', 16_000_000, 100_000, 50_000_000),
             ),
             new InboundRouter(
                 $store,
@@ -128,9 +131,9 @@ final class RelayFactory
             [SecurityEventReporter::class, 'report'],
             maximumRequestBytes: $this->integer(
                 'RELAY_MAXIMUM_REQUEST_BYTES',
-                262144,
+                24_000_000,
                 32768,
-                1048576,
+                32_000_000,
             ),
             rateLimiter: $rateLimiter,
         );

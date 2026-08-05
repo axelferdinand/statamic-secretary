@@ -41,6 +41,10 @@ RELAY_CPANEL_TOKEN=
 RELAY_POSTMARK_INBOUND_ADDRESS=
 RELAY_GA_MEASUREMENT_ID=
 RELAY_REQUIRE_SENDER_AUTHENTICATION=false
+RELAY_MAXIMUM_REQUEST_BYTES=24000000
+RELAY_MAXIMUM_ATTACHMENTS=4
+RELAY_MAXIMUM_ATTACHMENT_BYTES=8000000
+RELAY_MAXIMUM_TOTAL_ATTACHMENT_BYTES=16000000
 ```
 
 Never place the SQLite file, `.env`, backups, or logs inside `public/`.
@@ -74,12 +78,18 @@ php bin/configure-postmark.php
 
 `configure-postmark.php` updates only the inbound webhook on the configured Postmark server. It sends the server token only to Postmark's fixed HTTPS API endpoint and does not print credentials.
 
+Set the web server/PHP request-body limit to at least `RELAY_MAXIMUM_REQUEST_BYTES` and no more than the hard 32 MB application entry limit. The larger envelope accounts for base64 encoding while decoded image limits remain lower.
+
 Forward `secretary@statamic.no` to the server's Postmark inbound address. With
 friendly aliases enabled, the relay creates one exact cPanel forwarder per site,
 for example `customer.example@statamic.no` to
 `postmark-mailbox+r…@inbound.postmarkapp.com`. Before customer traffic, send one
 test through a friendly alias and confirm Postmark reports the opaque route tag as
-`MailboxHash`.
+`MailboxHash`. Also test a reply to the route-and-conversation `Reply-To` address.
+If the forwarder strips the envelope plus tag, the top-level `MailboxHash` may be
+empty; Postmark must still retain the exact tagged address and matching
+per-recipient hash in `ToFull`, which the relay validates before continuing the
+conversation.
 
 On shared hosts that drop Postmark's webhook requests before PHP, add an every-minute
 cron entry for `php bin/poll-postmark.php`. The poller is an outbound-only fallback;

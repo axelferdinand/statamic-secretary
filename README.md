@@ -4,9 +4,11 @@
 
 Statamic Secretary is a guarded content assistant for Statamic 6. Editors can request content changes in natural language from the Control Panel or by email, review the resulting draft, and publish only after an explicit command.
 
-The model never receives shell or arbitrary filesystem access. It can only call typed application tools that inspect Statamic collections and blueprints, validate field values, enforce native user policies, and write through Statamic's repositories. All prospective and existing content paths are checked against the configured `content/` boundary, including symlink resolution.
+> **Commercial addon:** Statamic Secretary costs **USD 49 per production site** through the Statamic Marketplace. You may use it without a license during local development and testing, but each production installation requires a valid Marketplace license. See [LICENSE.md](LICENSE.md).
 
-The boundary applies to site-content targets. Secretary necessarily keeps conversations and audit records in the application database, and Statamic Pro may keep working-copy revision metadata in its configured revision store. Neither location is addressable by the model's tools.
+The model never receives shell, arbitrary filesystem, or generic web access. It can only call typed application tools that inspect Statamic collections, blueprints, and configured asset containers, validate field values, enforce native user policies, and write through Statamic's repositories. All prospective and existing content paths are checked against the configured `content/` boundary, including symlink resolution. Image imports use a separate, narrow Statamic asset boundary.
+
+The boundary applies to site-content targets. Secretary keeps conversations and audit records in a private SQLite database under Laravel's `storage` directory, and Statamic Pro may keep working-copy revision metadata in its configured revision store. Neither location is addressable by the model's tools.
 
 ## Current scope
 
@@ -18,14 +20,28 @@ The boundary applies to site-content targets. Secretary necessarily keeps conver
 - Localized global-value updates, staged outside live content until publication.
 - Complete navigation-tree updates with node, depth, entry-reference, URL, and blueprint validation.
 - Multi-turn Control Panel and Postmark inbound-email conversations.
+- Permission-filtered search and visual inspection of existing JPEG, PNG, and WebP Statamic assets.
+- Authenticated image attachments imported append-only into one configured Statamic asset container.
 - Isolated Postmark delivery that does not replace the site's normal mailer.
 - Explicit publication, native permissions, optimistic locking, audit records, optional sender allowlists, and webhook idempotency.
 
-Asset binaries and asset metadata, deletion, code, templates, blueprints, and configuration are intentionally outside the agent tools. Statamic commonly stores asset metadata beside the asset file rather than in `content/`, so changing it would violate Secretary's hard content-directory boundary.
+Asset deletion, replacement, arbitrary uploads, metadata editing, code, templates, blueprints, and configuration remain outside the agent tools. Secretary can read supported images from configured Statamic asset containers and import authenticated email attachments through Statamic's upload API. Imported paths are content-addressed; an existing path is verified and never overwritten.
 
 ## Installation
 
-The package is not on Packagist yet. For local development, add it as a path repository in a Statamic site:
+Install the public beta in a Statamic 6 site:
+
+```shell
+composer require "axelferdinand/statamic-secretary:^0.1@beta"
+```
+
+That is the complete standard installation. Statamic publishes the Control Panel assets, while Secretary creates and migrates its own private SQLite store independently of the site's database configuration. Open **Content → Secretary** to add the OpenAI key and choose the easy hosted relay or the advanced self-hosted Postmark setup.
+
+Deployment systems with a read-only build stage may set `SECRETARY_AUTO_MIGRATE=false`; Secretary finishes private-storage setup automatically on its first Control Panel or inbound-email request. `storage` must be writable, as Laravel already requires. An advanced installation may opt into an existing Laravel connection with `SECRETARY_DB_CONNECTION`, but no external database is required.
+
+Secretary setup is environment-specific. A local encrypted database and its secrets should not be deployed to production. The production installation creates a clean private store and guides an administrator through connecting OpenAI and email once for that live URL.
+
+For local addon development, add the repository as a path repository in a Statamic site:
 
 ```json
 {
@@ -41,21 +57,13 @@ The package is not on Packagist yet. For local development, add it as a path rep
 
 ```shell
 composer require axelferdinand/statamic-secretary:@dev
-php artisan migrate --force
-php please stache:refresh
-php please secretary:doctor
 ```
 
-Statamic Pro and Revisions should be enabled for safe drafts of already-published entries:
-
-```dotenv
-STATAMIC_PRO_ENABLED=true
-STATAMIC_REVISIONS_ENABLED=true
-```
-
-Without Revisions, Secretary may create unpublished entries but refuses to modify a live published entry.
+Safe drafts of already-published entries require Statamic Pro. First-run onboarding explains the working-copy model and offers one **Enable safe drafts** action. That action enables Statamic revisions globally for Secretary and on every current collection; it does not change or publish entry content. If a new collection is later added without revisions, onboarding and Control Panel diagnostics surface the same action again.
 
 ## OpenAI configuration
+
+The first-run Control Panel setup accepts the OpenAI API key and stores it encrypted with the site's `APP_KEY`. Environment configuration remains available for teams that prefer secrets-as-code and takes precedence over the Control Panel value:
 
 ```dotenv
 OPENAI_API_KEY=
@@ -80,15 +88,19 @@ SECRETARY_TAXONOMIES=topics,tags
 SECRETARY_GLOBAL_SETS=company,footer
 SECRETARY_NAVIGATIONS=main,footer
 SECRETARY_CONTENT_ROOT=/absolute/path/to/site/content
+SECRETARY_ASSET_CONTAINERS=assets
+SECRETARY_ATTACHMENT_CONTAINER=assets
+SECRETARY_ATTACHMENT_FOLDER=secretary-inbox
 ```
 
 `SECRETARY_CONTENT_ROOT` defaults to the site's normal `content` directory.
+Asset values are optional. With exactly one uploadable asset container, Secretary selects it automatically. Configure `SECRETARY_ATTACHMENT_CONTAINER` when a site has more than one. Existing-asset search and attachment imports always apply the requesting Statamic user's native view/upload permissions. Email accepts up to four JPEG, PNG, or WebP attachments by default, 8 MB each and 16 MB total.
 
-Run `php please secretary:doctor` after installation and configuration. It checks the database tables, content boundary, model setup, revisions, queue, and optional email setup without printing credentials.
+The same checks as `php please secretary:doctor` are shown under **System status** in the Control Panel. The command remains available for CI and deployment checks but is not an installation step.
 
 Use `php please secretary:doctor --json` in deployment checks. `php please secretary:dry-run "…" --user=editor@example.com --entry=home --json` runs the real model and authorization/tool inspection while preventing entry writes and permanently blocking the resulting audit records from publication.
 
-Conversation and audit records are self-hosted in the site's database. Use `php please secretary:prune --days=90` for an interactive retention cleanup, or add `--force` only in a deliberate scheduled task. See [PRIVACY.md](PRIVACY.md).
+Conversation and audit records are self-hosted in Secretary's private store. Use `php please secretary:prune --days=90` for an interactive retention cleanup, or add `--force` only in a deliberate scheduled task. See [PRIVACY.md](PRIVACY.md).
 
 ## Control Panel
 
@@ -106,36 +118,39 @@ Every mutation is shown as a change card. Existing published entries are saved t
 
 Site-specific audience, voice, terminology, and “avoid” rules can be maintained in the Control Panel or in `config/secretary.php`. Configuration is the default; Control Panel values override it per site.
 
-## Postmark email
+## Email setup
 
-Email setup needs one additional environment value:
+The recommended **Easy setup** connects the hosted Secretary Relay from the first-run screen. It requires no mailbox, Postmark account, API key, webhook, or environment configuration. Enter the site's public HTTPS URL first; Secretary uses that domain to preview the real site-specific address, such as `example.com@statamic.no`. It prefers the selected Statamic site's URL, falls back to a public production `APP_URL`, and never guesses the customer domain from the administrator's email address. An existing Statamic user then verifies their prefilled account email with a one-time code.
+
+The **Advanced setup** connects a Postmark server controlled by the site owner. Paste the Server API Token in the Control Panel; it is stored encrypted with the site's `APP_KEY`. Environment configuration remains available and takes precedence:
 
 ```dotenv
-OPENAI_API_KEY=
 POSTMARK_API_KEY=
 ```
 
-Use the **Server API Token** from the Postmark server. Then open **Content → Secretary** as a super user or a user with `configure secretary`, enter the public Secretary address and connect. Secretary retrieves Postmark's generated inbound address, registers a Basic Auth-protected webhook, configures an isolated outbound mailer, and shows the single forwarding rule to add to the public mailbox.
+Use the **Server API Token** from the Postmark server. Then open **Content → Secretary** as a super user or a user with `configure secretary`, enter the public email address people will write to, and connect. Secretary retrieves Postmark's generated inbound address, registers a Basic Auth-protected webhook, configures an isolated outbound mailer, and keeps onboarding open on one final step. Add the displayed `public mailbox → Postmark inbound address` forwarding rule with the mailbox provider, then confirm it in Secretary. The rule remains visible in settings afterward.
 
 The site's normal Laravel mailer is not changed, and the required Postmark transport packages are included by this addon. A production `APP_URL` is used automatically when it is public HTTPS. Local `.test` sites instead need a temporary public HTTPS URL, such as Herd Share, during setup.
 
 Inbound senders must match an existing Statamic user with `use secretary`. `SECRETARY_ALLOWED_SENDERS` remains available as an optional additional allowlist; leaving it empty relies on Statamic users and permissions. Postmark must report author-domain `DKIM_VALID_AU` by default, while a generic `SPF_PASS` is insufficient. Email publishing remains disabled unless `SECRETARY_EMAIL_ALLOW_PUBLISHING=true`, and also requires `publish with secretary` plus an authenticated sender.
 
+When an instruction needs an image, Secretary first searches the site's allowed Statamic assets. If no suitable image exists, it asks the sender to reply with a JPEG, PNG, or WebP attachment. The image is validated from its actual bytes, imported append-only through Statamic, recorded by asset ID in the conversation audit metadata, and visually supplied to the configured OpenAI project. Secretary does not fetch images from the web.
+
 Replies use the generated Postmark address with plus-addressing (`hash+<conversation-id>@inbound.postmarkapp.com`) so Postmark returns the validated conversation ID as `MailboxHash`. Webhook credentials are derived from the site's `APP_KEY`; reconnect Postmark after rotating that key.
 
-One public mailbox must not be connected directly to multiple sites. The addon includes a disabled-by-default signed receiver, reply client, and email-verified Control Panel pairing flow for the optional shared `secretary@statamic.no` service. A customer needs no mailbox or Postmark account for this mode: an existing Statamic user with `use secretary` requests a 15-minute code at their own email address, pastes it into Secretary, and receives isolated encrypted relay credentials. Requests are bound to one installation ID, route token, independent 256-bit secret, short timestamp window, exact body digest, and single-use nonce; replies remain bound to the same route and conversation. This repository also contains the separate hosted-relay service under `relay/`, deliberately excluded from the Composer addon archive. The hosted HTTPS/Postmark transport, unknown-sender rejection, plain forwarding, and exact plus-tag preservation were verified live on 2026-07-27. The remaining public-release gate is the paired two-installation X/Y/random-sender exercise documented in [docs/shared-address-relay.md](docs/shared-address-relay.md).
+One public mailbox must not be connected directly to multiple sites. The addon includes a signed receiver, reply client, and email-verified Control Panel pairing flow for the optional shared `secretary@statamic.no` service. A customer needs no mailbox or Postmark account for this mode: an existing Statamic user with `use secretary` requests a 15-minute code at their own email address, pastes it into Secretary, and receives isolated encrypted relay credentials. Requests are bound to one installation ID, route token, independent 256-bit secret, short timestamp window, exact body digest, and single-use nonce; replies remain bound to the same route and conversation. This repository also contains the separate hosted-relay service under `relay/`, deliberately excluded from the Composer addon archive. The hosted HTTPS/Postmark transport, unknown-sender rejection, plain forwarding, and exact plus-tag preservation were verified live on 2026-07-27. The remaining public-release gate is the paired two-installation X/Y/random-sender exercise documented in [docs/shared-address-relay.md](docs/shared-address-relay.md).
 
-Control Panel and inbound-email work is sent to the `secretary` queue. With a persistent production driver, the job is written durably before the HTTP response is returned; the local `sync` fallback defers processing until after the response. A typical production worker includes both queues:
+Control Panel and inbound-email work is sent to the `secretary` queue. Laravel's default `sync` connection processes each job after the HTTP response, so a normal Secretary installation requires no queue worker. Larger sites may opt into a persistent queue for durability and throughput. When the site already uses such a driver, its worker should include both queues:
 
 ```shell
 php artisan queue:work --queue=secretary,default
 ```
 
-Use a persistent, shared cache for per-conversation locks. Keep the queue connection's `retry_after` and worker timeout longer than `SECRETARY_JOB_TIMEOUT` (1200 seconds by default); lower all three together only after measuring your model/tool workflow. Jobs have a fixed retry deadline of at least 24 hours so newer messages can wait safely behind slower work without exhausting attempts, while real processing exceptions remain bounded. Duplicate provider deliveries may enqueue duplicate jobs intentionally; reply uniqueness, the conversation lock, and provider message IDs make those jobs idempotent.
+Persistent-queue users should use a shared cache for per-conversation locks and keep the queue connection's `retry_after` and worker timeout longer than `SECRETARY_JOB_TIMEOUT` (1200 seconds by default). The built-in `sync` path needs none of this setup. Jobs have a fixed retry deadline of at least 24 hours so newer messages can wait safely behind slower work without exhausting attempts, while real processing exceptions remain bounded. Duplicate provider deliveries may enqueue duplicate jobs intentionally; reply uniqueness, the conversation lock, and provider message IDs make those jobs idempotent.
 
 ## Security model
 
-- No shell, PHP execution, generic file-write, generic HTTP, delete, config, or schema tools.
+- No shell, PHP execution, generic file-write, generic HTTP, delete, asset replacement, config, or schema tools.
 - Strict OpenAI function schemas; arbitrary field data is passed as JSON text and decoded server-side; output tokens, tool rounds, resource payload size, and request rates are bounded.
 - Per-resource allowlists, real blueprint handles, editable-field checks, Statamic validation, and native content policies.
 - Canonical-path and symlink checks before any content write.
@@ -143,6 +158,7 @@ Use a persistent, shared cache for per-conversation locks. Keep the queue connec
 - Separate draft and live-baseline fingerprints prevent a draft from overwriting or publishing over newer human edits, including direct live-file changes while a working copy exists.
 - Postmark Basic Auth or installation-scoped relay HMAC, native Statamic-user authorization, optional sender allowlist, author-domain DKIM checks, spam threshold, and unique provider message IDs.
 - All returned content is treated as untrusted data to reduce prompt-injection risk.
+- Asset access is container-allowlisted, permission-filtered, image-only, size-bounded, and append-only. Visual content is explicitly treated as untrusted.
 
 See [docs/architecture.md](docs/architecture.md) for the detailed trust boundaries and release limits.
 

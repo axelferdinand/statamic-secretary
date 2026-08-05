@@ -9,13 +9,62 @@ use AxelFerdinand\StatamicSecretary\Postmark\PostmarkConnector;
 use AxelFerdinand\StatamicSecretary\Tests\TestCase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Statamic\Facades\Role;
+use Statamic\Facades\Site;
 use Statamic\Facades\User;
 
 class PostmarkSetupTest extends TestCase
 {
+    public function test_an_administrator_can_paste_the_postmark_token_in_the_control_panel(): void
+    {
+        config()->set('secretary.email.postmark.api_key');
+        $this->fakePostmarkServer();
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+        $token = 'postmark-server-token-from-onboarding';
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/setup/postmark', [
+                'api_key' => $token,
+                'email' => 'secretary@example.com',
+                'public_url' => 'https://secretary.example.com',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $settings = Setting::query()->findOrFail('email')->value;
+        $this->assertSame($token, $settings['api_key']);
+        $this->assertStringNotContainsString(
+            $token,
+            (string) DB::table('secretary_settings')->where('key', 'email')->value('value'),
+        );
+        $this->assertSame('control_panel', app(EmailConfiguration::class)->publicStatus()['token_source']);
+
+        Http::assertSent(fn (Request $request): bool => $request->hasHeader('X-Postmark-Server-Token', $token));
+    }
+
+    public function test_postmark_setup_explains_when_no_token_was_supplied(): void
+    {
+        config()->set('secretary.email.postmark.api_key');
+        Http::fake();
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+
+        $this->from('/cp/secretary')
+            ->actingAs($user)
+            ->post('/cp/secretary/setup/postmark', [
+                'email' => 'secretary@example.com',
+                'public_url' => 'https://secretary.example.com',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHasErrors('postmark_api_key');
+
+        Http::assertNothingSent();
+    }
+
     public function test_a_super_user_can_connect_postmark_with_only_the_server_token(): void
     {
         config()->set('secretary.email.postmark.api_key', 'postmark-server-token');
@@ -37,6 +86,8 @@ class PostmarkSetupTest extends TestCase
         $this->assertSame('serverhash@inbound.postmarkapp.com', $settings['inbound_address']);
         $this->assertSame('Secretary Test', $settings['server_name']);
         $this->assertSame('https://secretary.example.com/_secretary/webhooks/postmark/inbound', $settings['webhook_endpoint']);
+        $this->assertArrayHasKey('forwarding_confirmed_at', $settings);
+        $this->assertNull($settings['forwarding_confirmed_at']);
 
         Http::assertSent(function (Request $request): bool {
             if ($request->method() !== 'PUT') {
@@ -59,7 +110,65 @@ class PostmarkSetupTest extends TestCase
         $status = app(EmailConfiguration::class)->publicStatus();
         $this->assertTrue($status['connected']);
         $this->assertTrue($status['enabled']);
+        $this->assertTrue($status['forwarding_confirmation_required']);
+        $this->assertFalse($status['forwarding_confirmed']);
         $this->assertStringNotContainsString('postmark-server-token', json_encode($status));
+    }
+
+    public function test_an_administrator_confirms_the_external_mailbox_forwarding_rule(): void
+    {
+        config()->set('secretary.email.postmark.api_key', 'postmark-server-token');
+        $this->fakePostmarkServer();
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)->post('/cp/secretary/setup/postmark', [
+            'email' => 'secretary@example.com',
+            'public_url' => 'https://secretary.example.com',
+        ]);
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/setup/postmark/confirm-forwarding')
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $settings = Setting::query()->findOrFail('email')->value;
+        $this->assertNotEmpty($settings['forwarding_confirmed_at']);
+
+        $status = app(EmailConfiguration::class)->publicStatus();
+        $this->assertFalse($status['forwarding_confirmation_required']);
+        $this->assertTrue($status['forwarding_confirmed']);
+    }
+
+    public function test_existing_postmark_connections_do_not_reopen_onboarding_for_a_new_confirmation_field(): void
+    {
+        config()->set('secretary.email.postmark.api_key', 'postmark-server-token');
+        $this->fakePostmarkServer();
+        $email = app(EmailConfiguration::class);
+        app(PostmarkConnector::class)->connect('secretary@example.com', 'https://secretary.example.com');
+        $settings = $email->stored();
+        unset($settings['forwarding_confirmed_at']);
+        $email->store($settings);
+
+        $this->assertFalse($email->forwardingConfirmationRequired());
+        $this->assertTrue($email->forwardingConfirmed());
+    }
+
+    public function test_the_selected_statamic_site_is_used_before_app_url_for_the_address_preview(): void
+    {
+        config()->set('app.url', 'http://statamic-secretary.test');
+        Site::setSites([
+            'default' => [
+                'name' => 'Example',
+                'locale' => 'en_US',
+                'url' => 'https://www.example.com',
+            ],
+        ]);
+
+        $this->assertSame(
+            'https://www.example.com',
+            app(EmailConfiguration::class)->suggestedPublicUrl(),
+        );
     }
 
     public function test_the_setup_page_exposes_a_short_forwarding_instruction_without_secrets(): void
@@ -84,6 +193,8 @@ class PostmarkSetupTest extends TestCase
                 ->where('email_setup.from_address', 'secretary@example.com')
                 ->where('email_setup.inbound_address', 'serverhash@inbound.postmarkapp.com')
                 ->where('email_setup.server_name', 'Secretary Test')
+                ->where('email_setup.forwarding_confirmation_required', true)
+                ->where('email_setup.confirm_forwarding_url', 'http://localhost/cp/secretary/setup/postmark/confirm-forwarding')
                 ->missing('email_setup.api_key'));
 
         $this->assertStringNotContainsString(

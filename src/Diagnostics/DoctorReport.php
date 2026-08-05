@@ -2,16 +2,24 @@
 
 namespace AxelFerdinand\StatamicSecretary\Diagnostics;
 
+use AxelFerdinand\StatamicSecretary\Content\SafeDrafting;
+use AxelFerdinand\StatamicSecretary\Database\SecretaryDatabase;
 use AxelFerdinand\StatamicSecretary\Developer\ToolRegistry;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
-use Illuminate\Support\Facades\Schema;
+use Statamic\Assets\AssetUploader;
+use Statamic\Facades\AssetContainer;
 use Symfony\Component\Mailer\Bridge\Postmark\Transport\PostmarkTransportFactory;
 use Throwable;
 
 final class DoctorReport
 {
-    public function __construct(private readonly ToolRegistry $tools) {}
+    public function __construct(
+        private readonly ToolRegistry $tools,
+        private readonly SafeDrafting $safeDrafting,
+        private readonly SecretaryDatabase $database,
+    ) {}
 
     /** @return array<int, array{key: string, label: string, passed: bool, required: bool, details: string, success_details: string}> */
     public function checks(EmailConfiguration $email, RelayConfiguration $relay): array
@@ -21,33 +29,19 @@ final class DoctorReport
         $postmarkSetupPending = $email->tokenConfigured() && ! $email->connected() && blank(config('secretary.email.enabled'));
 
         return [
-            $this->check('openai_key', 'OpenAI API key', filled(config('secretary.openai.api_key')), true, 'Set OPENAI_API_KEY.'),
+            $this->check('openai_key', 'OpenAI API key', app(OpenAIConfiguration::class)->configured(), true, 'Add the key in Secretary or set OPENAI_API_KEY.'),
             $this->check('openai_model', 'OpenAI model', filled(config('secretary.openai.model')), true, 'Set SECRETARY_OPENAI_MODEL.'),
             $this->check('content_root', 'Content root', is_dir($root) && is_writable($root), true, 'The configured content directory must exist and be writable.'),
             $this->check(
                 'database',
-                'Database tables',
-                collect(['secretary_conversations', 'secretary_messages', 'secretary_change_sets', 'secretary_settings'])->every(fn (string $table): bool => Schema::hasTable($table))
-                    && Schema::hasColumn('secretary_change_sets', 'live_base_fingerprint')
-                    && Schema::hasColumn('secretary_change_sets', 'review')
-                    && Schema::hasColumn('secretary_messages', 'reply_to_message_id'),
+                'Secretary storage',
+                $this->database->ready(),
                 true,
-                'Run the addon migrations.',
+                'Secretary could not initialize its private storage. Make sure Laravel\'s storage directory is writable, then run the checks again.',
+                'Private storage is ready.',
             ),
-            $this->check(
-                'revisions',
-                'Entry revisions',
-                (bool) config('statamic.revisions.enabled'),
-                false,
-                'Published entry updates are refused until Statamic revisions are enabled.',
-            ),
-            $this->check(
-                'queue',
-                'Async queue',
-                config('queue.default') !== 'sync',
-                false,
-                'Use a persistent queue worker for CP and inbound email in production.',
-            ),
+            $this->revisionCheck(),
+            $this->backgroundProcessingCheck(),
             $this->queueRetryWindowCheck(),
             $this->check(
                 'relay',
@@ -79,6 +73,7 @@ final class DoctorReport
                 $emailEnabled ? 'Ready' : ($email->tokenConfigured() ? 'Ready after Postmark setup.' : 'Not configured.'),
             ),
             $this->customToolCheck(),
+            $this->assetCheck(),
             $this->webhookCheck(),
         ];
     }
@@ -152,10 +147,41 @@ final class DoctorReport
 
         return $this->check(
             'queue_retry',
-            'Queue retry window',
+            'Job retry protection',
             $passed,
             false,
             "Set the [{$connection}] queue retry_after above Secretary's {$jobTimeout}-second job timeout.",
+        );
+    }
+
+    private function revisionCheck(): array
+    {
+        $status = $this->safeDrafting->status();
+
+        return $this->check(
+            'revisions',
+            'Safe drafts',
+            $status['ready'],
+            true,
+            $status['details'],
+            $status['success_details'],
+        );
+    }
+
+    private function backgroundProcessingCheck(): array
+    {
+        $connection = (string) config('queue.default');
+        $details = $connection === 'sync'
+            ? 'Built-in processing is active. No queue worker is required.'
+            : "Uses your site's [{$connection}] queue connection.";
+
+        return $this->check(
+            'queue',
+            'Background processing',
+            true,
+            false,
+            '',
+            $details,
         );
     }
 
@@ -190,6 +216,43 @@ final class DoctorReport
         } catch (Throwable $exception) {
             return $this->check('developer_tools', 'Developer tools', false, true, $exception->getMessage());
         }
+    }
+
+    private function assetCheck(): array
+    {
+        $enabled = (bool) config('secretary.assets.enabled', true);
+
+        if (! $enabled) {
+            return $this->check('assets', 'Asset access', true, false, '', 'Disabled.');
+        }
+
+        $configured = array_values(array_filter(array_map(
+            static fn (mixed $handle): string => trim((string) $handle),
+            (array) config('secretary.assets.containers', []),
+        )));
+        $available = AssetContainer::all()
+            ->filter(fn ($container): bool => $configured === [] || in_array($container->handle(), $configured, true))
+            ->values();
+        $attachmentContainer = trim((string) config('secretary.assets.attachment_container'));
+        $folder = trim((string) config('secretary.assets.attachment_folder', 'secretary-inbox'), " \t\n\r\0\x0B/\\");
+        $folderIsSafe = $folder === AssetUploader::getSafePath($folder) && ! str_contains($folder, '..');
+        $configuredExist = collect($configured)->every(
+            fn (string $handle): bool => AssetContainer::find($handle) !== null,
+        );
+        $attachmentContainerIsValid = $attachmentContainer !== ''
+            ? AssetContainer::find($attachmentContainer) !== null
+                && ($configured === [] || in_array($attachmentContainer, $configured, true))
+            : $available->count() === 1;
+        $passed = $folderIsSafe && $configuredExist && $attachmentContainerIsValid;
+
+        return $this->check(
+            'assets',
+            'Asset access',
+            $passed,
+            false,
+            'Configure one valid SECRETARY_ATTACHMENT_CONTAINER (and optional SECRETARY_ASSET_CONTAINERS) plus a safe relative attachment folder.',
+            'Ready for existing assets and authenticated image attachments.',
+        );
     }
 
     private function webhookCheck(): array

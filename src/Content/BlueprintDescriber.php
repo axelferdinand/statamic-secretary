@@ -35,6 +35,9 @@ final class BlueprintDescriber
             'validation' => $config['validate'] ?? null,
             'options' => $config['options'] ?? null,
             'max_items' => $config['max_items'] ?? null,
+            'max_files' => $config['max_files'] ?? null,
+            'container' => $config['container'] ?? null,
+            'folder' => $config['folder'] ?? null,
             'sets' => $config['sets'] ?? null,
         ], static fn (mixed $value): bool => $value !== null);
     }

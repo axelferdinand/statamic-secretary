@@ -7,7 +7,7 @@ The shared-address relay is a separate security boundary. It must not run inside
 - Use a dedicated TLS hostname and make `relay/public` the only document root.
 - Install with `composer install --no-dev --classmap-authoritative`.
 - Keep the SQLite database, database encryption key, Postmark token, and webhook credentials outside the repository and document root.
-- Restrict request bodies to 256 KiB at the reverse proxy, disable request-body and `Authorization` logging, and do not follow redirects upstream.
+- Restrict request bodies to 32 MB at the reverse proxy (the application defaults to 24 MB), disable request-body and `Authorization` logging, and do not follow redirects upstream.
 - Apply an IP rate limit at the public reverse proxy. The application also enforces atomic endpoint limits from `REMOTE_ADDR`; it intentionally ignores spoofable forwarding headers. If a trusted proxy is the direct peer, its bucket is a service-wide safety cap rather than a per-customer limit.
 - Run more than one PHP worker only on a local filesystem that correctly supports SQLite WAL and locks. Do not place SQLite on NFS.
 - Run `php bin/migrate.php` before serving traffic.
@@ -47,11 +47,15 @@ Relay security/error records contain an event name, exception class, stable cate
   `customer.example@statamic.no`; never use a domain catch-all. The relay provisions
   that cPanel forwarder to Postmark with the opaque installation route appended.
   Verify a real friendly-alias message produces that route in Postmark's
-  `MailboxHash` before enabling customer traffic.
+  `MailboxHash` before enabling customer traffic. Verify a real reply as well:
+  either the top-level `MailboxHash` must retain route and conversation, or
+  `ToFull` must contain exactly one matching shared-domain address and
+  per-recipient hash. Mismatch or ambiguity must be rejected.
 - Scope the cPanel API token to the required email-forwarder operations, rotate it
   separately from the Postmark token, and rerun
   `php bin/provision-public-aliases.php` after restoration or credential rotation.
 - Keep the message stream explicit and monitor bounces and suppressions.
+- Accept only the relay's JPEG/PNG/WebP attachment policy: four images, 8 MB each, 16 MB decoded total by default. Do not enable request-body logging; Postmark carries attachments as base64 inside the webhook JSON.
 
 The relay code sends the server token only to `https://api.postmarkapp.com/email`. Site webhook requests use fresh HMAC nonces and a DNS-pinned public HTTPS connection.
 

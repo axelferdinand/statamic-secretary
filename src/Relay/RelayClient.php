@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretary\Relay;
 
+use AxelFerdinand\StatamicSecretary\Email\ReplyAttachmentPresenter;
 use AxelFerdinand\StatamicSecretary\Email\ReplyChangeSetPresenter;
 use AxelFerdinand\StatamicSecretary\Exceptions\RelayDeliveryFailed;
 use AxelFerdinand\StatamicSecretary\Models\Message;
@@ -17,6 +18,7 @@ final class RelayClient
         private readonly RelayConfiguration $configuration,
         private readonly RelaySignature $signature,
         private readonly ReplyChangeSetPresenter $changeSets,
+        private readonly ReplyAttachmentPresenter $attachments,
     ) {}
 
     public function sendReply(Message $inbound, Message $reply): void
@@ -40,13 +42,17 @@ final class RelayClient
 
         try {
             $changeSets = $this->changeSets->present($conversation, $reply);
+            $attachments = $this->attachments->presentInbound($conversation, $inbound);
             $body = json_encode([
                 'version' => 1,
                 'idempotency_key' => 'secretary-reply-'.$reply->id,
                 'inbound_provider_message_id' => (string) $inbound->provider_message_id,
                 'recipient' => (string) $conversation->email,
                 'subject' => $this->subject($conversation->messages()->where('channel', 'email')->oldest()->first()?->metadata),
-                'body' => $this->changeSets->emailBody($reply->body, $changeSets),
+                'body' => $this->attachments->appendToText(
+                    $this->changeSets->emailBody($reply->body, $changeSets),
+                    $attachments,
+                ),
                 'review_url' => $this->changeSets->conversationUrl($conversation, $changeSets),
                 'change_sets' => $changeSets,
                 'route_token' => $routeToken,

@@ -4,8 +4,34 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+- Reuse the original relay installation and domain address when the same public site and exact sender set complete onboarding again, while retaining collision-safe aliases for genuinely different installations.
+- Align the onboarding card with the Control Panel page heading and give success and error messages a dedicated, spaced notice area.
+
+## 0.1.0-beta.3 - 2026-08-05
+
+- Added a dedicated, automatically created SQLite store under `storage/statamic-secretary` so Secretary no longer depends on the host site's database credentials or migrations.
+- Added safe first-request database recovery and a friendly Control Panel error when the private store cannot be prepared.
+- Refined onboarding around the public site URL, the generated relay address, email-first activation, revision readiness, and in-panel system checks.
+- Improved the contextual Control Panel conversation experience, queued follow-ups, change review, publication refresh, and responsive preview controls.
+- Improved email continuity and attachment handling, including subject-aware context and direct links to imported Statamic assets.
+
+## 0.1.0-beta.2 - 2026-08-04
+
+- Added a focused first-run wizard that connects OpenAI, then offers recommended Secretary Relay, advanced private Postmark, or Control Panel chat only.
+- Added encrypted Control Panel storage for OpenAI and Postmark API keys while retaining environment configuration as the higher-priority option.
+- Enabled relay pairing by default so new installations can choose the easy setup without developer configuration.
+- Reduced the standard installation to one Composer command by running package-scoped migrations through Statamic's official addon installation hook.
+- Clarified every email field and removed Postmark warnings and hidden requirements from the relay setup path.
+- Added installation, encryption, onboarding, and Postmark regression coverage and verified a clean Composer install against an empty database.
+
+## 0.1.0-beta.1 - 2026-08-04
+
+- Changed the addon from MIT to a commercial Statamic Marketplace license: free to evaluate during development and USD 49 per licensed production site.
 - Added public source, issue, security, and support metadata to the Composer package.
 - Added guarded GPT-5.5 Responses API orchestration for entries, terms, globals, and navigation.
+- Added permission-filtered existing-image search and visual inspection, plus authenticated JPEG/PNG/WebP email attachments imported append-only through Statamic assets.
+- Added a signed relay payload version 2 for checksummed image attachments while retaining version 1 for ordinary email compatibility.
+- Verified the hosted relay image path live: signed forwarding, one Statamic asset, multimodal model recognition, no unintended change set, outbound reply, and duplicate-provider idempotency.
 - Added CP chat, multi-turn Postmark email through an isolated mailer, and explicit publication.
 - Added one-screen Postmark onboarding that discovers the inbound address and registers a secured webhook from the Server API Token.
 - Added the disabled addon-side protocol for a future shared `secretary@statamic.no` relay: installation/route/conversation-bound HMAC delivery, replay protection, strict normalized payloads, and signed idempotent replies without exposing a shared Postmark token.
@@ -30,4 +56,7 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 - Verified a clean non-symlink Composer artifact installation with Statamic addon discovery, route registration, and asset publication.
 - Added archive CI guards that exclude the hosted relay service while requiring the addon's signed relay receiver and reply client.
 - Fixed zero-argument function schemas so strict OpenAI tools serialize `properties` as `{}` instead of the invalid `[]`.
+- Fixed hosted email replies losing their conversation when a forwarding server strips Postmark's top-level `MailboxHash`; the relay now recovers only an exact, validated per-recipient hash from `ToFull` and rejects mismatched or ambiguous recipient data.
+- Included the normalized email subject in stored and stateless agent context so a subject such as “Forsiden” can identify the target page while the message body describes the requested field change.
+- Fixed entry updates containing nested Bard fields with `save_html` enabled by validating their editor representation and restoring the exact storage representation of every unchanged module and grid row.
 - Contained failures from sync after-response jobs so local CP and Postmark requests do not attempt to modify already-sent HTTP headers, while persistent queues still retry normally.

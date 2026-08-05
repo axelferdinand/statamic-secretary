@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretary\Http\Controllers\Web;
 
+use AxelFerdinand\StatamicSecretary\Data\InboundAttachment;
 use AxelFerdinand\StatamicSecretary\Data\InboundEmail;
 use AxelFerdinand\StatamicSecretary\Email\InboundEmailService;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
@@ -10,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Validator;
+use InvalidArgumentException;
 
 final class RelayInboundController extends Controller
 {
@@ -22,7 +24,8 @@ final class RelayInboundController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         abort_unless($this->configuration->enabled(), 403, 'Secretary shared-address relay is disabled.');
-        $maximumBytes = max(1024, (int) config('secretary.limits.max_webhook_bytes', 2_000_000));
+        $maximumBytes = max(1024, (int) config('secretary.limits.max_webhook_bytes', 24_000_000));
+        $maximumAttachments = max(1, min((int) config('secretary.assets.max_attachments', 4), 10));
         abort_if(strlen($request->getContent()) > $maximumBytes, 403, 'The relay payload is too large.');
         $this->signature->verify($request);
         $allowedKeys = [
@@ -36,10 +39,11 @@ final class RelayInboundController extends Controller
             'route_token',
             'conversation_token',
             'rfc_message_id',
+            'attachments',
         ];
         abort_if(array_diff(array_keys($request->all()), $allowedKeys) !== [], 403, 'The relay payload contains unsupported fields.');
         $validator = Validator::make($request->all(), [
-            'version' => ['required', 'integer', 'in:1'],
+            'version' => ['required', 'integer', 'in:1,2'],
             'provider_message_id' => ['required', 'string', 'max:255'],
             'sender' => ['required', 'email:rfc', 'max:255'],
             'subject' => ['nullable', 'string', 'max:998'],
@@ -49,9 +53,20 @@ final class RelayInboundController extends Controller
             'route_token' => ['required', 'string', 'regex:/^r[a-z0-9]{25}$/D'],
             'conversation_token' => ['nullable', 'string', 'regex:/^c[a-z0-9]{25}$/D'],
             'rfc_message_id' => ['nullable', 'regex:/^<[^<>\s@]+@[^<>\s@]+>$/D', 'max:998'],
+            'attachments' => ['nullable', 'array', "max:{$maximumAttachments}"],
+            'attachments.*.name' => ['required_with:attachments', 'string', 'max:255'],
+            'attachments.*.content_type' => ['required_with:attachments', 'string', 'max:100'],
+            'attachments.*.content' => ['required_with:attachments', 'string'],
+            'attachments.*.content_length' => ['required_with:attachments', 'integer', 'min:1'],
+            'attachments.*.sha256' => ['required_with:attachments', 'string', 'size:64'],
         ]);
         abort_if($validator->fails(), 403, 'Invalid Secretary relay payload.');
         $payload = $validator->validated();
+        abort_if(
+            (int) $payload['version'] === 1 && ($payload['attachments'] ?? []) !== [],
+            403,
+            'Relay payload version 1 cannot contain attachments.',
+        );
         $routeToken = (string) $payload['route_token'];
         abort_unless(
             $this->configuration->acceptsRouteToken(
@@ -68,6 +83,16 @@ final class RelayInboundController extends Controller
             403,
             'The inbound sender did not pass author-domain DKIM authentication.',
         );
+
+        try {
+            $attachments = array_map(
+                fn (array $attachment): InboundAttachment => InboundAttachment::fromRelay($attachment),
+                (array) ($payload['attachments'] ?? []),
+            );
+        } catch (InvalidArgumentException $exception) {
+            abort(403, $exception->getMessage());
+        }
+
         $result = $this->inbound->accept(new InboundEmail(
             providerMessageId: (string) $payload['provider_message_id'],
             sender: (string) $payload['sender'],
@@ -79,6 +104,7 @@ final class RelayInboundController extends Controller
             delivery: 'relay',
             threadToken: $payload['conversation_token'] ?? null,
             routeToken: $routeToken,
+            attachments: $attachments,
         ));
 
         return response()->json([

@@ -33,27 +33,28 @@ Secretary never receives shell access or a generic file-writing tool. It can onl
 - Explicit publication from the CP or an authenticated email command.
 - Per-resource allowlists, native permissions, optimistic locking, and full audit records.
 - Author-domain DKIM checks, spam threshold, webhook Basic Auth, idempotency, and queue retries.
+- Existing Statamic image search plus safe JPEG/PNG/WebP email attachments, imported append-only with native asset permissions.
 - Optional email-verified connection to the hosted `secretary@statamic.no` address, without a customer Postmark account.
-- No code, template, blueprint, config, shell, generic HTTP, asset, delete, or arbitrary filesystem tools.
+- No code, template, blueprint, config, shell, generic HTTP, asset replacement/deletion, or arbitrary filesystem tools.
 
 ## Requirements
 
 - Statamic 6 Pro for safe working-copy revisions of published entries.
 - PHP 8.3 or newer.
-- A database supported by Laravel.
+- A writable Laravel `storage` directory. Secretary creates its own private SQLite store automatically.
 - An OpenAI API project with access to the configured model.
 - A persistent Laravel queue for production email processing.
 - Optional Postmark server for email conversations.
 
-For a site-controlled mailbox, email setup requires only the Postmark Server API Token in the environment. The addon includes the Postmark transport, discovers the server's inbound address, registers its secured webhook, and leaves the site's normal mailer untouched. The optional hosted address instead pairs an existing permitted Statamic user by a short-lived email code; the customer does not create a mailbox or Postmark server.
+For a site-controlled mailbox, email setup requires only a Postmark Server API Token, which may be entered in the Control Panel or supplied through the environment. The addon includes the Postmark transport, discovers the server's inbound address, registers its secured webhook, and leaves the site's normal mailer untouched. The optional hosted address instead pairs an existing permitted Statamic user by a short-lived email code; the customer does not create a mailbox or Postmark server.
 
 ## Installation command
 
 ```shell
 composer require axelferdinand/statamic-secretary
-php artisan migrate --force
-php please secretary:doctor
 ```
+
+That is the complete standard installation. Open **Content → Secretary** to add the OpenAI key and choose **Easy setup** (Secretary Relay) or **Advanced setup** (your own Postmark server). Secretary creates and migrates its private store automatically; the site's database does not need to be configured. `secretary:doctor` remains available as an optional deployment diagnostic.
 
 ## Marketplace assets still needed
 
@@ -64,6 +65,8 @@ php please secretary:doctor
 - Postmark email-thread screenshot with private information removed.
 - Optional short demo video.
 
-## Release decision still needed
+## Commercial license
 
-The repository currently uses the MIT license. Before creating the Marketplace product, decide whether the first release remains free/open source or switches to a commercial Statamic edition and license. Do not advertise paid licensing while the distributed package remains MIT.
+Statamic Secretary is paid software at **USD 49 per production site**. It may be installed and evaluated without a license during local development and testing, but production use requires a valid license purchased through the Statamic Marketplace and attached to the corresponding Statamic Site.
+
+The optional hosted `secretary@statamic.no` inbox is a separate **USD 49/year** service. OpenAI usage, customer-managed Postmark usage, and the Statamic license are not included.

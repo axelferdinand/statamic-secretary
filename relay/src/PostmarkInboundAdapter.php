@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay;
 
+use AxelFerdinand\StatamicSecretaryRelay\Data\InboundAttachment;
 use AxelFerdinand\StatamicSecretaryRelay\Data\InboundMessage;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
 
@@ -12,8 +13,18 @@ final class PostmarkInboundAdapter
         private readonly bool $requireSenderAuthentication = true,
         private readonly float $maximumSpamScore = 5.0,
         private readonly int $maximumCharacters = 20000,
+        private readonly int $maximumAttachments = 4,
+        private readonly int $maximumAttachmentBytes = 8_000_000,
+        private readonly int $maximumTotalAttachmentBytes = 16_000_000,
     ) {
         new RelayAddress($sharedAddress);
+
+        if ($maximumAttachments < 1
+            || $maximumAttachments > 10
+            || $maximumAttachmentBytes < 1
+            || $maximumTotalAttachmentBytes < $maximumAttachmentBytes) {
+            throw new RelayRejected('Postmark attachment limits are invalid.');
+        }
     }
 
     /** @param  array<string, mixed>  $payload */
@@ -21,6 +32,7 @@ final class PostmarkInboundAdapter
     {
         $providerMessageId = $payload['MessageID'] ?? null;
         $mailboxHash = $payload['MailboxHash'] ?? '';
+        $toFull = $payload['ToFull'] ?? [];
         $sender = $payload['FromFull']['Email'] ?? null;
         $subject = $payload['Subject'] ?? null;
         $headers = $payload['Headers'] ?? [];
@@ -31,14 +43,30 @@ final class PostmarkInboundAdapter
             || mb_strlen($providerMessageId) > 255
             || ! is_string($mailboxHash)
             || mb_strlen($mailboxHash) > 53
+            || ! is_array($toFull)
+            || count($toFull) > 200
             || ! is_string($sender)
             || filter_var(mb_strtolower(trim($sender)), FILTER_VALIDATE_EMAIL) === false
             || ($subject !== null && (! is_string($subject) || mb_strlen($subject) > 998))
             || ! is_array($headers)
             || count($headers) > 200
             || ! is_array($attachments)
-            || $attachments !== []) {
+            || count($attachments) > $this->maximumAttachments) {
             throw new RelayRejected('Postmark inbound payload failed validation.');
+        }
+
+        $attachments = array_map(
+            fn (mixed $attachment): InboundAttachment => is_array($attachment)
+                ? InboundAttachment::fromPostmark($attachment, $this->maximumAttachmentBytes)
+                : throw new RelayRejected('Postmark image attachment failed validation.'),
+            $attachments,
+        );
+
+        if (array_sum(array_map(
+            fn (InboundAttachment $attachment): int => $attachment->size,
+            $attachments,
+        )) > $this->maximumTotalAttachmentBytes) {
+            throw new RelayRejected('Postmark image attachments exceed the total size limit.');
         }
 
         $body = trim(is_string($payload['StrippedTextReply'] ?? null) ? $payload['StrippedTextReply'] : '');
@@ -47,10 +75,18 @@ final class PostmarkInboundAdapter
             $body = trim(is_string($payload['TextBody'] ?? null) ? $payload['TextBody'] : '');
         }
 
+        if ($body === '' && $attachments !== []) {
+            $body = 'Attached image: '.implode(', ', array_map(
+                fn (InboundAttachment $attachment): string => $attachment->name,
+                $attachments,
+            ));
+        }
+
         if ($body === '' || mb_strlen($body) > max(1, $this->maximumCharacters)) {
             throw new RelayRejected('Postmark inbound message has no acceptable plain-text body.');
         }
 
+        $mailboxHash = $this->mailboxHash($mailboxHash, $toFull);
         [$local, $domain] = explode('@', mb_strtolower($this->sharedAddress), 2);
         $recipient = $local.(trim($mailboxHash) !== '' ? '+'.mb_strtolower(trim($mailboxHash)) : '').'@'.$domain;
         (new RelayAddress($this->sharedAddress))->parse($recipient);
@@ -65,7 +101,63 @@ final class PostmarkInboundAdapter
             $authentication['authenticated'],
             $authentication['spam_score'],
             $this->rfcMessageId($headers),
+            $attachments,
         );
+    }
+
+    /**
+     * cPanel forwards secretary+tag@domain to Postmark's bare inbound address,
+     * which leaves the top-level MailboxHash empty. Postmark still preserves
+     * the original tagged recipient in ToFull, including its MailboxHash.
+     *
+     * @param  array<int, mixed>  $recipients
+     */
+    private function mailboxHash(string $primary, array $recipients): string
+    {
+        $primary = mb_strtolower(trim($primary));
+        [$sharedLocal, $sharedDomain] = explode('@', mb_strtolower($this->sharedAddress), 2);
+        $prefix = $sharedLocal.'+';
+        $candidates = [];
+
+        foreach ($recipients as $recipient) {
+            if (! is_array($recipient)
+                || ! is_string($recipient['Email'] ?? null)
+                || mb_strlen($recipient['Email']) > 255
+                || ! is_string($recipient['MailboxHash'] ?? null)
+                || mb_strlen($recipient['MailboxHash']) > 53) {
+                throw new RelayRejected('Postmark inbound recipients failed validation.');
+            }
+
+            $email = mb_strtolower(trim($recipient['Email']));
+            $mailboxHash = mb_strtolower(trim($recipient['MailboxHash']));
+
+            if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                throw new RelayRejected('Postmark inbound recipients failed validation.');
+            }
+
+            [$local, $domain] = explode('@', $email, 2);
+
+            if (! hash_equals($sharedDomain, $domain) || ! str_starts_with($local, $prefix)) {
+                continue;
+            }
+
+            $tag = substr($local, strlen($prefix));
+
+            if ($mailboxHash === '' || ! hash_equals($tag, $mailboxHash)) {
+                throw new RelayRejected('Postmark inbound recipient hash is inconsistent.');
+            }
+
+            (new RelayAddress($this->sharedAddress))->parse($email);
+            $candidates[$mailboxHash] = true;
+        }
+
+        $hashes = array_keys($candidates);
+
+        if (count($hashes) > 1 || ($primary !== '' && $hashes !== [] && ! isset($candidates[$primary]))) {
+            throw new RelayRejected('Postmark inbound recipient hashes are ambiguous.');
+        }
+
+        return $primary !== '' ? $primary : ($hashes[0] ?? '');
     }
 
     /**

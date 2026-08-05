@@ -1,0 +1,12 @@
+.env
+error_log
+.DS_Store
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+/backups/
+/logs/
+/public/.well-known/
+/public/cgi-bin/
+/public/php.ini

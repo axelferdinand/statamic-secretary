@@ -15,13 +15,17 @@ class ControlPanelAssetsTest extends TestCase
         $this->assertIsString($component);
         $this->assertStringContainsString('<Teleport to="body">', $component);
         $this->assertStringContainsString('class="secretary-panel-launcher"', $component);
-        $this->assertStringContainsString('aria-label="Åpne Secretary-chat"', $component);
+        $this->assertStringContainsString('aria-label="Open Secretary"', $component);
 
         $this->assertIsString($stylesheet);
         $this->assertStringContainsString('position: fixed !important', $stylesheet);
         $this->assertStringContainsString('right: max(1rem, env(safe-area-inset-right)) !important', $stylesheet);
         $this->assertStringContainsString('bottom: max(1rem, env(safe-area-inset-bottom)) !important', $stylesheet);
         $this->assertStringContainsString('@media (max-width: 39.999rem)', $stylesheet);
+        $this->assertStringContainsString(
+            '.stack-container.stack-is-current > .stack-content:has(.secretary-panel-shell)',
+            $stylesheet,
+        );
         $this->assertStringContainsString('@media (prefers-reduced-motion: reduce)', $stylesheet);
     }
 
@@ -39,9 +43,9 @@ class ControlPanelAssetsTest extends TestCase
         $this->assertStringContainsString('const conversationId = linkedConversationId(nextUrl)', $component);
         $this->assertStringContainsString('allowAutoOpen: true', $component);
         $this->assertStringContainsString('payload.auto_open === true', $component);
-        $this->assertStringContainsString('Secretary åpnet e-posttråden', $component);
-        $this->assertStringContainsString('Fortsett e-posttråden her', $component);
-        $this->assertStringContainsString('Samme samtale, nå i Statamic', $component);
+        $this->assertStringContainsString('Secretary opened the email thread linked to this draft.', $component);
+        $this->assertStringContainsString('has_email_messages', $component);
+        $this->assertStringNotContainsString('secretary-channel-handoff', $component);
     }
 
     public function test_the_panel_follows_inertia_navigation_and_keeps_page_scoped_drafts(): void
@@ -56,7 +60,13 @@ class ControlPanelAssetsTest extends TestCase
         $this->assertStringContainsString('active_context_key', $component);
         $this->assertStringContainsString('window.localStorage.setItem', $component);
         $this->assertStringContainsString('backgroundJobs', $component);
-        $this->assertStringContainsString("conversation.processing ? 'Sett i kø' : 'Send'", $component);
+        $this->assertStringContainsString(
+            'conversation.processing ? `Queue #${pendingMessages.length + 1}` : \'Send\'',
+            $component,
+        );
+        $this->assertStringContainsString("item.presentation === 'system'", $component);
+        $this->assertStringContainsString('item.presentation !== \'hidden\'', $component);
+        $this->assertStringContainsString('processingStatus', $component);
         $this->assertStringNotContainsString(
             ':disabled="busy || conversation.processing || !configured"',
             $component,
@@ -70,8 +80,13 @@ class ControlPanelAssetsTest extends TestCase
         );
 
         $this->assertIsString($component);
-        $this->assertStringContainsString("processing ? 'Sett i kø' : 'Send'", $component);
+        $this->assertStringContainsString(
+            'processing ? `Queue #${pendingMessages.length + 1}` : \'Send\'',
+            $component,
+        );
         $this->assertStringContainsString('item.queue_position', $component);
+        $this->assertStringContainsString('startReference', $component);
+        $this->assertStringContainsString('resizeComposer', $component);
         $this->assertStringNotContainsString(
             ':disabled="busy || processing || !configured"',
             $component,
@@ -101,12 +116,14 @@ class ControlPanelAssetsTest extends TestCase
             '<div v-if="contextConversations.length" class="secretary-panel-toolbar">',
             $component,
         );
-        $this->assertStringNotContainsString('Ingen samtaler om denne siden', $component);
-        $this->assertStringContainsString('Fortsett en tidligere samtale …', $component);
+        $this->assertStringNotContainsString('No conversations about this page', $component);
+        $this->assertStringContainsString('Continue a conversation …', $component);
         $this->assertStringContainsString('v-if="conversation"'.PHP_EOL.'                        icon="plus"', $component);
         $this->assertStringContainsString('class="secretary-panel-empty"', $component);
-        $this->assertStringContainsString('Hva vil du endre?', $component);
-        $this->assertStringContainsString('Start om denne siden', $component);
+        $this->assertStringContainsString('What would you like to change?', $component);
+        $this->assertStringContainsString('Start about this page', $component);
+        $this->assertStringNotContainsString('class="secretary-conversation-header"', $component);
+        $this->assertStringContainsString('secretary-panel-context', $component);
 
         $this->assertIsString($stylesheet);
         $this->assertStringContainsString('.secretary-panel-empty {', $stylesheet);
@@ -135,5 +152,24 @@ class ControlPanelAssetsTest extends TestCase
             'secretary-panel-launcher',
             (string) file_get_contents($scriptFile),
         );
+    }
+
+    public function test_control_panel_static_copy_is_english(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $files = [
+            ...glob($root.'/resources/js/components/*.vue'),
+            ...glob($root.'/resources/js/pages/*.vue'),
+        ];
+
+        foreach ($files as $file) {
+            $source = (string) file_get_contents($file);
+
+            $this->assertDoesNotMatchRegularExpression(
+                '/[æøå]|\b(?:samtale|kontrollpanel|e-post|utkast|publiser|innstillinger)\b/iu',
+                $source,
+                basename($file).' contains Norwegian Control Panel copy.',
+            );
+        }
     }
 }

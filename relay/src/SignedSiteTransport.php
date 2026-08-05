@@ -36,7 +36,7 @@ final class SignedSiteTransport implements SiteTransport
         $response = $this->http->post($installation->webhookUrl, $body, $headers);
 
         if (! $response->successful()) {
-            if (in_array($response->status, [408, 425, 429], true) || $response->status >= 500) {
+            if (in_array($response->status, [408, 419, 425, 429], true) || $response->status >= 500) {
                 throw new RelayTransientFailure('Site delivery is temporarily unavailable.');
             }
 

@@ -71,7 +71,7 @@ class HostedRelayPublicAliasTest extends TestCase
             new PublicHttpsUrl(static fn (): array => ['8.8.8.8']),
         );
         $first = $service->issue('Produksjon', ['owner@example.com']);
-        $second = $service->issue('Ny installasjon', ['owner@example.com']);
+        $second = $service->issue('Ny installasjon', ['editor@example.com']);
         $webhook = 'https://site.example.com/_secretary/webhooks/relay/inbound';
 
         $firstOutcome = $service->claim($this->claimBody($first->code, 'a', $webhook));
@@ -86,6 +86,61 @@ class HostedRelayPublicAliasTest extends TestCase
             $firstOutcome->installation->publicAlias,
             $secondOutcome->installation->publicAlias,
         );
+    }
+
+    public function test_repairing_the_same_site_for_the_same_sender_reuses_the_original_alias(): void
+    {
+        $store = $this->store();
+        $provisioner = new MemoryPublicAliasProvisioner;
+        $service = new PairingService(
+            $store,
+            new RelayAddress('secretary@statamic.no'),
+            new PublicHttpsUrl(static fn (): array => ['8.8.8.8']),
+            $provisioner,
+        );
+        $first = $service->issue('First setup', ['OWNER@example.com']);
+        $second = $service->issue('Reinstalled site', ['owner@example.com']);
+        $webhook = 'https://site.example.com/_secretary/webhooks/relay/inbound';
+
+        $firstOutcome = $service->claim($this->claimBody($first->code, 'a', $webhook));
+        $secondOutcome = $service->claim($this->claimBody($second->code, 'b', $webhook));
+
+        $this->assertSame($firstOutcome->installation->id, $secondOutcome->installation->id);
+        $this->assertSame($firstOutcome->installation->routeToken, $secondOutcome->installation->routeToken);
+        $this->assertSame('site.example.com', $secondOutcome->installation->publicAlias);
+        $this->assertTrue($secondOutcome->duplicate);
+        $this->assertCount(2, $provisioner->installations);
+    }
+
+    public function test_legacy_pairing_schema_is_migrated_to_allow_reconnecting_an_installation(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'statamic-secretary-legacy-pairing-');
+        $this->assertIsString($path);
+        $this->databasePath = $path;
+        $pdo = new PDO('sqlite:'.$path);
+        $pdo->exec(
+            <<<'SQL'
+                CREATE TABLE relay_pairing_codes (
+                    code_digest TEXT PRIMARY KEY,
+                    status TEXT NOT NULL CHECK (status IN ('issued', 'complete')),
+                    label TEXT NOT NULL,
+                    senders_json TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    claim_fingerprint TEXT NULL,
+                    installation_id TEXT NULL UNIQUE,
+                    created_at INTEGER NOT NULL,
+                    claimed_at INTEGER NULL
+                )
+                SQL,
+        );
+
+        SqliteSchema::migrate($pdo);
+        $uniqueIndexes = array_filter(
+            $pdo->query('PRAGMA index_list(relay_pairing_codes)')->fetchAll(PDO::FETCH_ASSOC),
+            static fn (array $index): bool => ($index['origin'] ?? null) === 'u',
+        );
+
+        $this->assertSame([], array_values($uniqueIndexes));
     }
 
     public function test_long_hosts_are_shortened_to_a_valid_email_local_part(): void

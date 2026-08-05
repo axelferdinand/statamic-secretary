@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretary\Http\Controllers\Web;
 
+use AxelFerdinand\StatamicSecretary\Data\InboundAttachment;
 use AxelFerdinand\StatamicSecretary\Data\InboundEmail;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
 use AxelFerdinand\StatamicSecretary\Email\InboundEmailService;
@@ -9,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Validator;
+use InvalidArgumentException;
 
 final class PostmarkInboundController extends Controller
 {
@@ -22,7 +24,8 @@ final class PostmarkInboundController extends Controller
         abort_unless($this->email->enabled(), 403, 'Secretary inbound email is disabled.');
         abort_unless($this->email->emailAddressesAreUsable(), 503, 'Secretary email addresses are not configured for threaded replies.');
         $this->verifyBasicAuthentication($request);
-        $maximumBytes = max(1024, (int) config('secretary.limits.max_webhook_bytes', 2_000_000));
+        $maximumBytes = max(1024, (int) config('secretary.limits.max_webhook_bytes', 24_000_000));
+        $maximumAttachments = max(1, min((int) config('secretary.assets.max_attachments', 4), 10));
         abort_if(strlen($request->getContent()) > $maximumBytes, 403, 'The Postmark inbound payload is too large.');
         $validator = Validator::make($request->all(), [
             'MessageID' => ['required', 'string', 'max:255'],
@@ -35,6 +38,11 @@ final class PostmarkInboundController extends Controller
             'Headers' => ['nullable', 'array', 'max:200'],
             'Headers.*.Name' => ['required_with:Headers', 'string', 'max:255'],
             'Headers.*.Value' => ['nullable', 'string', 'max:10000'],
+            'Attachments' => ['nullable', 'array', "max:{$maximumAttachments}"],
+            'Attachments.*.Name' => ['required_with:Attachments', 'string', 'max:255'],
+            'Attachments.*.ContentType' => ['required_with:Attachments', 'string', 'max:100'],
+            'Attachments.*.Content' => ['required_with:Attachments', 'string'],
+            'Attachments.*.ContentLength' => ['required_with:Attachments', 'integer', 'min:1'],
         ]);
         abort_if($validator->fails(), 403, 'Invalid Postmark inbound payload.');
         $payload = $validator->validated();
@@ -65,6 +73,15 @@ final class PostmarkInboundController extends Controller
             $body = trim(strip_tags((string) ($payload['HtmlBody'] ?? '')));
         }
 
+        try {
+            $attachments = array_map(
+                fn (array $attachment): InboundAttachment => InboundAttachment::fromPostmark($attachment),
+                (array) ($payload['Attachments'] ?? []),
+            );
+        } catch (InvalidArgumentException $exception) {
+            abort(403, $exception->getMessage());
+        }
+
         $result = $this->inbound->accept(new InboundEmail(
             providerMessageId: (string) $payload['MessageID'],
             sender: $sender,
@@ -74,6 +91,7 @@ final class PostmarkInboundController extends Controller
             spamScore: $authentication['spam_score'],
             rfcMessageId: $this->rfcMessageId((array) ($payload['Headers'] ?? [])),
             threadToken: $payload['MailboxHash'] ?? null,
+            attachments: $attachments,
         ));
 
         return response()->json(['accepted' => true, ...($result['duplicate'] ? ['duplicate' => true] : [])]);

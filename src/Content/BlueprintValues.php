@@ -3,6 +3,7 @@
 namespace AxelFerdinand\StatamicSecretary\Content;
 
 use AxelFerdinand\StatamicSecretary\Exceptions\ContentOperationDenied;
+use Illuminate\Support\Arr;
 use Statamic\Fields\Blueprint;
 
 final class BlueprintValues
@@ -35,14 +36,100 @@ final class BlueprintValues
         }
 
         $merged = array_replace($existing, $patch);
-        $fields = $blueprint->fields()->addValues($merged);
-        $fields->validate($extraRules);
-        $processed = $fields->process()->values()->all();
+        $definitions = $blueprint->fields();
+        $present = $definitions->all()->keys()->intersect(array_keys($merged))->values()->all();
+        $presentDefinitions = $definitions->only(...$present);
+        $preProcessed = $presentDefinitions
+            ->addValues(Arr::only($merged, $present))
+            ->preProcess()
+            ->values()
+            ->all();
+        $validatable = array_replace($merged, $preProcessed);
+
+        $definitions->addValues($validatable)->validate($extraRules);
+
+        $processed = $presentDefinitions
+            ->addValues(Arr::only($validatable, $present))
+            ->process()
+            ->values()
+            ->all();
 
         if ($storageExisting !== null) {
-            return array_replace($storageExisting, array_intersect_key($processed, $patch));
+            $updates = [];
+
+            foreach (array_keys($patch) as $handle) {
+                $updates[$handle] = $this->preserveUnchangedStorage(
+                    $existing[$handle] ?? null,
+                    $merged[$handle] ?? null,
+                    $processed[$handle] ?? null,
+                );
+            }
+
+            return array_replace($storageExisting, $updates);
         }
 
         return array_replace($merged, $processed);
+    }
+
+    private function preserveUnchangedStorage(mixed $before, mixed $input, mixed $processed): mixed
+    {
+        if ($input === $before) {
+            return $before;
+        }
+
+        if (! is_array($before) || ! is_array($input) || ! is_array($processed)) {
+            return $processed;
+        }
+
+        if (array_is_list($before) && array_is_list($input) && array_is_list($processed)) {
+            $restored = $processed;
+            $matchedBefore = [];
+
+            foreach ($input as $index => $inputItem) {
+                if (! array_key_exists($index, $processed)) {
+                    continue;
+                }
+
+                $matchingIndex = null;
+
+                foreach ($before as $beforeIndex => $beforeItem) {
+                    if (! isset($matchedBefore[$beforeIndex]) && $inputItem === $beforeItem) {
+                        $matchingIndex = $beforeIndex;
+                        break;
+                    }
+                }
+
+                if ($matchingIndex !== null) {
+                    $matchedBefore[$matchingIndex] = true;
+                    $restored[$index] = $before[$matchingIndex];
+
+                    continue;
+                }
+
+                if (array_key_exists($index, $before)) {
+                    $restored[$index] = $this->preserveUnchangedStorage(
+                        $before[$index],
+                        $inputItem,
+                        $processed[$index],
+                    );
+                }
+            }
+
+            return $restored;
+        }
+
+        $restored = $processed;
+
+        foreach ($processed as $key => $processedValue) {
+            if (array_key_exists($key, $before) && array_key_exists($key, $input)) {
+                $restored[$key] = $this->preserveUnchangedStorage(
+                    $before[$key],
+                    $input[$key],
+                    $processedValue,
+                );
+            }
+        }
+
+        return $restored;
     }
 }

@@ -14,17 +14,19 @@ flowchart LR
     C["Authenticated CP user"] --> A["Secretary conversation service"]
     P --> A
     A --> O["OpenAI Responses API"]
-    O --> T["Allowlisted content tools"]
+    O --> T["Allowlisted content and asset tools"]
     T --> V["Blueprint and policy validation"]
     V --> S["Statamic repositories"]
-    S --> F["content/ only"]
+    S --> F["content/"]
+    T --> I["Permission-filtered image inspection"]
+    I --> X["Configured Statamic asset containers"]
     A --> M["Isolated Postmark mailer"]
     M --> E
 ```
 
-Only the `Statamic repositories -> content/` edge may change site content. Conversation history, webhook idempotency, audit metadata, and proposed change sets live in the application's database and are never exposed as writable tools to the model.
+Only the `Statamic repositories -> content/` edge may change authored site content. A separate asset pipeline may create a new image in configured Statamic asset containers after authenticated email intake; it cannot replace, rename, edit, or delete assets. Conversation history, webhook idempotency, audit metadata, and proposed change sets live in the application's database and are never exposed as writable tools to the model.
 
-This is a content-target boundary, not a claim that the addon performs no operational persistence. The database stores Secretary state, and Statamic Pro may store working-copy revision metadata in its configured revision repository. The model cannot address either store; only the application-side workflow can use them.
+This is a content-target boundary, not a claim that the addon performs no operational persistence. A private site-local SQLite database under Laravel's `storage` directory stores Secretary state, and Statamic Pro may store working-copy revision metadata in its configured revision repository. The model cannot address either store; only the application-side workflow can use them. Existing beta installations with Secretary tables in the site's configured database remain on that connection; new installations do not depend on it.
 
 ## Content tool surface
 
@@ -49,6 +51,14 @@ Other content resources use another six typed tools:
 Publication is deliberately not an OpenAI tool. A separate application path accepts only a CP publish-button action or a narrowly matched immediate command, then independently verifies Secretary permission, the native resource policy, change-set state, and the unchanged content fingerprint.
 
 There is deliberately no `write_file`, `delete_file`, `run_command`, `edit_blueprint`, `edit_config`, or generic HTTP tool.
+
+Asset work uses three narrow read tools:
+
+1. `list_asset_containers` — only configured containers the requesting user may view.
+2. `search_assets` — bounded metadata search over supported image assets.
+3. `inspect_assets` — low-detail visual input for exact IDs returned by search or imported from the current email.
+
+The model cannot upload an arbitrary file. The application independently validates authenticated email attachments as JPEG, PNG, or WebP, verifies declared length, actual image type, dimensions, count, total bytes, and relay checksum, then imports through Statamic's upload API. Paths include the full SHA-256 digest, so retries reuse identical bytes and never overwrite a different file.
 
 ## Draft and publication model
 
@@ -97,7 +107,7 @@ Jobs from CP and email share a per-conversation cache lock and defer newer messa
 
 The OpenAI model is configurable. The initial default follows the product brief (`gpt-5.5`), while installations can select a newer compatible model after evaluation. The integration uses the Responses API with strict function schemas, disables parallel tool calls so inspect/read results precede mutations, and preserves response/tool items across turns.
 
-The API key remains in environment configuration. It is never stored in content or returned to the browser. Requests include a site-scoped HMAC safety identifier derived from the authenticated CP user or allowed sender; neither the raw identity nor the application key is sent. Stored mode continues with `previous_response_id`; stateless mode requests encrypted reasoning content and replays the complete response/tool sequence locally.
+The API key may come from environment configuration or the first-run Control Panel setup. A key entered in the Control Panel is encrypted with the Laravel application key in the Secretary settings table, is never stored in content, and is never returned to the browser. Environment configuration takes precedence for teams that manage secrets as code. Requests include a site-scoped HMAC safety identifier derived from the authenticated CP user or allowed sender; neither the raw identity nor the application key is sent. Stored mode continues with `previous_response_id`; stateless mode requests encrypted reasoning content and replays the complete response/tool sequence locally.
 
 ## Marketplace shape
 

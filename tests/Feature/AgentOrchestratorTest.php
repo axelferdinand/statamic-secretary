@@ -12,6 +12,7 @@ use AxelFerdinand\StatamicSecretary\Data\AgentRequest;
 use AxelFerdinand\StatamicSecretary\Data\AgentResponse;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Tests\TestCase;
+use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
@@ -19,6 +20,117 @@ use Statamic\Facades\User;
 
 class AgentOrchestratorTest extends TestCase
 {
+    public function test_an_imported_email_image_is_sent_to_openai_with_its_exact_statamic_asset_id(): void
+    {
+        $assetId = $this->createImageAsset('email/hero.png');
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create(['channel' => 'email', 'user_id' => $user->id()]);
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Bruk vedlagte bilde i hero.',
+            'metadata' => [
+                'subject' => 'Forsiden',
+                'attachments' => [['id' => $assetId, 'name' => 'hero.png']],
+            ],
+        ]);
+        $client = new class implements AgentClient
+        {
+            public ?AgentRequest $request = null;
+
+            public function respond(AgentRequest $request): AgentResponse
+            {
+                $this->request = $request;
+
+                return new AgentResponse('resp_image', 'completed', [[
+                    'type' => 'message',
+                    'content' => [['type' => 'output_text', 'text' => 'Jeg ser bildet.']],
+                ]], 'Jeg ser bildet.');
+            }
+        };
+
+        app()->makeWith(AgentOrchestrator::class, ['client' => $client])
+            ->respond($conversation, $inbound, $user);
+
+        $content = $client->request?->input[0]['content'];
+        $this->assertIsArray($content);
+        $this->assertStringContainsString($assetId, $content[0]['text']);
+        $image = collect($content)->firstWhere('type', 'input_image');
+        $this->assertStringStartsWith('data:image/png;base64,', $image['image_url']);
+        $this->assertSame('low', $image['detail']);
+        $this->assertStringContainsString(
+            'Email image attachments are imported append-only',
+            (string) $client->request?->instructions,
+        );
+    }
+
+    public function test_asset_search_must_precede_visual_inspection_and_visual_input_is_not_put_in_tool_json(): void
+    {
+        $assetId = $this->createImageAsset('library/hero.png');
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create(['channel' => 'cp', 'user_id' => $user->id()]);
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'cp',
+            'role' => 'user',
+            'body' => 'Finn et hero-bilde.',
+        ]);
+        $client = new class($assetId) implements AgentClient
+        {
+            /** @var array<int, AgentRequest> */
+            public array $requests = [];
+
+            public function __construct(private readonly string $assetId) {}
+
+            public function respond(AgentRequest $request): AgentResponse
+            {
+                $this->requests[] = $request;
+                $round = count($this->requests);
+
+                if ($round === 1) {
+                    return new AgentResponse('resp_search', 'completed', [[
+                        'type' => 'function_call',
+                        'call_id' => 'call_search',
+                        'name' => 'search_assets',
+                        'arguments' => '{"query":"hero","container":"assets"}',
+                    ]], '');
+                }
+
+                if ($round === 2) {
+                    return new AgentResponse('resp_inspect', 'completed', [[
+                        'type' => 'function_call',
+                        'call_id' => 'call_inspect',
+                        'name' => 'inspect_assets',
+                        'arguments' => json_encode(['asset_ids' => [$this->assetId]], JSON_THROW_ON_ERROR),
+                    ]], '');
+                }
+
+                return new AgentResponse('resp_final', 'completed', [[
+                    'type' => 'message',
+                    'content' => [['type' => 'output_text', 'text' => 'Bildet passer.']],
+                ]], 'Bildet passer.');
+            }
+        };
+
+        app()->makeWith(AgentOrchestrator::class, ['client' => $client])
+            ->respond($conversation, $inbound, $user);
+
+        $searchOutput = json_decode($client->requests[1]->input[0]['output'], true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($assetId, $searchOutput['assets'][0]['id']);
+        $this->assertArrayNotHasKey('_vision_content', $searchOutput);
+        $this->assertSame('function_call_output', $client->requests[2]->input[0]['type']);
+        $this->assertArrayNotHasKey('_vision_content', json_decode(
+            $client->requests[2]->input[0]['output'],
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        ));
+        $this->assertSame('user', $client->requests[2]->input[1]['role']);
+        $this->assertNotNull(collect($client->requests[2]->input[1]['content'])->firstWhere('type', 'input_image'));
+    }
+
     public function test_zero_argument_tool_properties_encode_as_a_json_object(): void
     {
         $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
@@ -61,6 +173,145 @@ class AgentOrchestratorTest extends TestCase
             '"properties":{}',
             json_encode($tool, JSON_THROW_ON_ERROR),
         );
+        $this->assertSame('Hvilke samlinger finnes?', $client->request?->input[0]['content']);
+    }
+
+    private function createImageAsset(string $path): string
+    {
+        config()->set('filesystems.disks.secretary_test_agent_assets', [
+            'driver' => 'local',
+            'root' => __DIR__.'/../__fixtures__/content/agent-assets',
+            'url' => 'https://example.test/assets',
+            'throw' => false,
+        ]);
+        $container = AssetContainer::make('assets')
+            ->title('Assets')
+            ->disk('secretary_test_agent_assets');
+        $container->save();
+        config()->set('secretary.assets.containers', ['assets']);
+        config()->set('secretary.assets.attachment_container', 'assets');
+        $bytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true);
+        $container->disk()->put($path, $bytes);
+        $asset = $container->makeAsset($path);
+        $asset->set('alt', 'Hero image');
+        $asset->save();
+
+        return $asset->id();
+    }
+
+    public function test_an_email_subject_is_normalized_and_included_as_agent_context(): void
+    {
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create(['channel' => 'email', 'user_id' => $user->id()]);
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'I tittelen i hero, legg til «Ja, det kan den!» på slutten.',
+            'metadata' => ['subject' => " Re: Fwd:  Forsiden \n"],
+        ]);
+        $client = new class implements AgentClient
+        {
+            public ?AgentRequest $request = null;
+
+            public function respond(AgentRequest $request): AgentResponse
+            {
+                $this->request = $request;
+
+                return new AgentResponse('resp_final', 'completed', [[
+                    'type' => 'message',
+                    'content' => [['type' => 'output_text', 'text' => 'Klart.']],
+                ]], 'Klart.');
+            }
+        };
+        $orchestrator = new AgentOrchestrator(
+            $client,
+            app(EntryCatalog::class),
+            app(EntryChangeService::class),
+            app(ContentResourceCatalog::class),
+            app(StagedContentChangeService::class),
+        );
+
+        $orchestrator->respond($conversation, $inbound, $user);
+
+        $this->assertSame(
+            "Email subject:\nForsiden\n\nEmail message:\nI tittelen i hero, legg til «Ja, det kan den!» på slutten.",
+            $client->request?->input[0]['content'],
+        );
+        $this->assertStringContainsString(
+            'A subject naming a page or resource, such as “Forsiden”, is sufficient target context',
+            (string) $client->request?->instructions,
+        );
+    }
+
+    public function test_stateless_email_history_keeps_normalized_subject_context_on_each_user_message(): void
+    {
+        config()->set('secretary.openai.store', false);
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create(['channel' => 'email', 'user_id' => $user->id()]);
+        $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Kom med tre forslag.',
+            'metadata' => ['subject' => 'Forsiden'],
+            'processed_at' => now(),
+        ]);
+        $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'email',
+            'role' => 'assistant',
+            'body' => 'Her er tre forslag.',
+            'processed_at' => now(),
+        ]);
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Bruk nummer to.',
+            'metadata' => ['subject' => 'RE: Forsiden'],
+        ]);
+        $client = new class implements AgentClient
+        {
+            public ?AgentRequest $request = null;
+
+            public function respond(AgentRequest $request): AgentResponse
+            {
+                $this->request = $request;
+
+                return new AgentResponse('resp_final', 'completed', [[
+                    'type' => 'message',
+                    'content' => [['type' => 'output_text', 'text' => 'Klart.']],
+                ]], 'Klart.');
+            }
+        };
+        $orchestrator = new AgentOrchestrator(
+            $client,
+            app(EntryCatalog::class),
+            app(EntryChangeService::class),
+            app(ContentResourceCatalog::class),
+            app(StagedContentChangeService::class),
+        );
+
+        $orchestrator->respond($conversation, $inbound, $user);
+
+        $this->assertSame([
+            [
+                'role' => 'user',
+                'content' => "Email subject:\nForsiden\n\nEmail message:\nKom med tre forslag.",
+            ],
+            [
+                'role' => 'assistant',
+                'content' => 'Her er tre forslag.',
+            ],
+            [
+                'role' => 'user',
+                'content' => "Email subject:\nForsiden\n\nEmail message:\nBruk nummer to.",
+            ],
+        ], $client->request?->input);
+        $this->assertNull($client->request?->previousResponseId);
     }
 
     public function test_a_control_panel_entry_context_is_passed_as_guarded_reference_data(): void

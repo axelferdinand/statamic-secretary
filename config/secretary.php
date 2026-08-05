@@ -3,6 +3,20 @@
 return [
     'retention_days' => (int) env('SECRETARY_RETENTION_DAYS', 90),
 
+    'install' => [
+        // Statamic prepares the addon's private store after Composer install.
+        // Set false only in read-only build stages; runtime setup still occurs
+        // automatically on the first Secretary request.
+        'auto_migrate' => (bool) env('SECRETARY_AUTO_MIGRATE', true),
+    ],
+
+    'database' => [
+        // Null uses Secretary's private SQLite database. Existing beta sites
+        // with Secretary tables in the site's database are detected and kept.
+        'connection' => env('SECRETARY_DB_CONNECTION'),
+        'path' => env('SECRETARY_DB_PATH', storage_path('statamic-secretary/database.sqlite')),
+    ],
+
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
         'project' => env('SECRETARY_OPENAI_PROJECT'),
@@ -34,6 +48,32 @@ return [
         ))),
         'max_search_results' => (int) env('SECRETARY_MAX_SEARCH_RESULTS', 20),
         'require_revisions_for_published_entries' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Statamic assets
+    |--------------------------------------------------------------------------
+    |
+    | Secretary may search configured asset containers and import authenticated
+    | email image attachments. Imports are content-addressed and append-only:
+    | existing assets are never overwritten or deleted.
+    |
+    */
+    'assets' => [
+        'enabled' => (bool) env('SECRETARY_ASSETS_ENABLED', true),
+        'containers' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('SECRETARY_ASSET_CONTAINERS', ''))
+        ))),
+        'attachment_container' => env('SECRETARY_ATTACHMENT_CONTAINER'),
+        'attachment_folder' => env('SECRETARY_ATTACHMENT_FOLDER', 'secretary-inbox'),
+        'allowed_mime_types' => ['image/jpeg', 'image/png', 'image/webp'],
+        'max_attachments' => (int) env('SECRETARY_MAX_ATTACHMENTS', 4),
+        'max_attachment_bytes' => (int) env('SECRETARY_MAX_ATTACHMENT_BYTES', 8_000_000),
+        'max_total_attachment_bytes' => (int) env('SECRETARY_MAX_TOTAL_ATTACHMENT_BYTES', 16_000_000),
+        'max_visual_assets' => (int) env('SECRETARY_MAX_VISUAL_ASSETS', 4),
+        'max_search_results' => (int) env('SECRETARY_MAX_ASSET_SEARCH_RESULTS', 20),
     ],
 
     /*
@@ -119,7 +159,7 @@ return [
 
     'relay' => [
         'enabled' => env('SECRETARY_RELAY_ENABLED'),
-        'pairing_enabled' => (bool) env('SECRETARY_RELAY_PAIRING_ENABLED', false),
+        'pairing_enabled' => (bool) env('SECRETARY_RELAY_PAIRING_ENABLED', true),
         'installation_id' => env('SECRETARY_RELAY_INSTALLATION_ID'),
         'route_token' => env('SECRETARY_RELAY_ROUTE_TOKEN'),
         'signing_secret' => env('SECRETARY_RELAY_SIGNING_SECRET'),
@@ -134,7 +174,7 @@ return [
         'max_tool_rounds' => (int) env('SECRETARY_MAX_TOOL_ROUNDS', 12),
         'max_navigation_nodes' => (int) env('SECRETARY_MAX_NAVIGATION_NODES', 500),
         'max_resource_characters' => (int) env('SECRETARY_MAX_RESOURCE_CHARACTERS', 250000),
-        'max_webhook_bytes' => (int) env('SECRETARY_MAX_WEBHOOK_BYTES', 2_000_000),
+        'max_webhook_bytes' => (int) env('SECRETARY_MAX_WEBHOOK_BYTES', 24_000_000),
         'job_timeout' => (int) env('SECRETARY_JOB_TIMEOUT', 1200),
     ],
 ];

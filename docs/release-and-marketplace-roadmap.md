@@ -4,10 +4,11 @@ This document preserves the remaining work required to turn Statamic Secretary f
 
 ## Product proof still required
 
-- Run `php please secretary:doctor` with the same persistent queue, OpenAI, and mail configuration customers will use in production.
+- Complete onboarding and run the Control Panel system check with the zero-configuration `sync` path customers receive by default.
+- Separately verify persistent-queue failure and recovery as an optional high-volume configuration; it is not a customer setup requirement.
 - Complete a real inspect → draft → publish flow and verify the resulting public URL.
 - Complete a real Postmark conversation from a new email thread through follow-up, draft, explicit publication, and the final reply.
-- Stop and restart the queue worker during a mail failure, then verify that retries remain idempotent.
+- For the optional persistent-queue configuration, stop and restart the worker during a mail failure and verify that retries remain idempotent.
 - Verify that a normal non-super editor can access only the collections, sites, and actions granted by native Statamic permissions.
 - Verify that a direct human edit prevents Secretary from publishing a stale proposal.
 - Complete the remaining Control Panel QA: dark mode, keyboard and focus cycle, loading, empty, error, pending, and published states.
@@ -23,12 +24,12 @@ The product must not be described as production-proven until these gates pass.
 
 ## Distribution cleanup
 
-- Add `/relay export-ignore` to `.gitattributes` before the first public tag. Composer's `archive.exclude` removes the hosted service from locally built archives, but GitHub-generated source archives currently include it.
+- Keep `/relay` and local deployment helpers excluded through `.gitattributes`, and verify both Composer-built and GitHub/Packagist-style archives in CI.
 - Run the complete PHP and asset CI matrix and resolve every warning as well as every failure.
 - Build and inspect a clean release archive.
 - Install that archive as a non-symlink Composer artifact in a fresh Statamic 6 project.
 - Confirm that no `.env` files, API keys, deployment helpers, databases, logs, test fixtures, or hosted-relay runtime files are present.
-- Decide and document the commercial license before selling. The package currently declares MIT, which conflicts with advertising it as a paid Marketplace license.
+- Keep the commercial license, Composer metadata, Marketplace price, and production-site licensing language aligned before every release.
 - Prepare a changelog, version support policy, privacy page, security policy, and support contact.
 
 ## Packagist and Composer release
@@ -43,13 +44,12 @@ The product must not be described as production-proven until these gates pass.
 
    ```shell
    composer require axelferdinand/statamic-secretary
-   php artisan migrate --force
-   php please stache:refresh
-   php please secretary:doctor
    ```
 
-8. Verify addon discovery, published assets, CP navigation, permissions, chat, draft creation, email onboarding, and uninstall behavior.
-9. Repeat this install test using the exact command shown by the Marketplace product.
+8. Open **Content → Secretary**, add an OpenAI key, and choose the hosted relay or a private Postmark server. Do not add Secretary secrets to `.env` for this test.
+9. Confirm the private SQLite store is created and migrated automatically without depending on the site's default database. Installations that explicitly set `SECRETARY_AUTO_MIGRATE=false` must initialize it on the first Secretary request without terminal access.
+10. Verify addon discovery, published assets, CP navigation, permissions, chat, draft creation, email onboarding, and uninstall behavior.
+11. Repeat this install test using the exact command shown by the Marketplace product.
 
 ## Statamic Marketplace release
 

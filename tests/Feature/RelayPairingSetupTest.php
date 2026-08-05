@@ -103,12 +103,14 @@ class RelayPairingSetupTest extends TestCase
         $this->actingAs($owner)
             ->post('/cp/secretary/setup/relay/request-code', [
                 'email' => 'OWNER@example.com',
+                'public_url' => 'https://site.example.com',
             ])
             ->assertRedirect('/cp/secretary')
             ->assertSessionHas('secretary_success');
 
         $settings = Setting::query()->findOrFail('relay')->value;
         $this->assertSame('owner@example.com', $settings['pending_sender']);
+        $this->assertSame('https://site.example.com', $settings['pending_public_url']);
         $this->assertNotEmpty($settings['verification_requested_at']);
 
         Http::assertSent(function (Request $request): bool {
@@ -127,6 +129,7 @@ class RelayPairingSetupTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('relay_setup.pending_sender', 'owner@example.com')
+                ->where('relay_setup.pending_public_url', 'https://site.example.com')
                 ->where('relay_setup.suggested_sender', 'owner@example.com')
                 ->where('relay_setup.request_code_url', 'http://localhost/cp/secretary/setup/relay/request-code'));
 
@@ -157,6 +160,7 @@ class RelayPairingSetupTest extends TestCase
             ->actingAs($owner)
             ->post('/cp/secretary/setup/relay/request-code', [
                 'email' => 'unknown@example.com',
+                'public_url' => 'https://site.example.com',
             ])
             ->assertRedirect('/cp/secretary')
             ->assertSessionHasErrors('relay_email');
@@ -165,11 +169,30 @@ class RelayPairingSetupTest extends TestCase
             ->actingAs($owner)
             ->post('/cp/secretary/setup/relay/request-code', [
                 'email' => 'blocked@example.com',
+                'public_url' => 'https://site.example.com',
             ])
             ->assertRedirect('/cp/secretary')
             ->assertSessionHasErrors('relay_email');
 
         Http::assertNothingSent();
+    }
+
+    public function test_the_public_site_url_is_required_before_requesting_a_pairing_code(): void
+    {
+        Http::fake();
+        $owner = $this->owner();
+
+        $this->from('/cp/secretary')
+            ->actingAs($owner)
+            ->post('/cp/secretary/setup/relay/request-code', [
+                'email' => 'owner@example.com',
+                'public_url' => 'http://statamic-secretary.test',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHasErrors('public_url');
+
+        Http::assertNothingSent();
+        $this->assertDatabaseMissing('secretary_settings', ['key' => 'relay']);
     }
 
     public function test_a_retry_uses_the_same_claim_id_without_storing_the_pairing_code(): void

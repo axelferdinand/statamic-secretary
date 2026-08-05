@@ -4,10 +4,13 @@ namespace AxelFerdinand\StatamicSecretary\Email;
 
 use AxelFerdinand\StatamicSecretary\Agent\ConversationService;
 use AxelFerdinand\StatamicSecretary\Agent\PublicationIntentDetector;
+use AxelFerdinand\StatamicSecretary\Assets\AttachmentImporter;
 use AxelFerdinand\StatamicSecretary\Data\InboundEmail;
+use AxelFerdinand\StatamicSecretary\Exceptions\ContentOperationDenied;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessInboundEmail;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Models\Message;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
@@ -20,6 +23,7 @@ final class InboundEmailService
         private readonly PublicationIntentDetector $publicationIntent,
         private readonly Dispatcher $bus,
         private readonly EmailConfiguration $email,
+        private readonly AttachmentImporter $attachments,
     ) {}
 
     /** @return array{duplicate: bool, message: Message} */
@@ -36,14 +40,25 @@ final class InboundEmailService
         $user = User::findByEmail($sender);
         abort_unless($user && $user->can('use secretary'), 403, 'No authorized Statamic user matches the sender.');
         $body = trim($inbound->body);
-        abort_if($body === '', 403, 'The inbound email has no readable body.');
+        abort_if($body === '' && $inbound->attachments === [], 403, 'The inbound email has no readable body or supported image attachment.');
         $maximumCharacters = max(1, (int) config('secretary.limits.max_input_characters', 20000));
         abort_if(mb_strlen($body) > $maximumCharacters, 403, 'The inbound email instruction is too long.');
         abort_if(
-            blank(config('secretary.openai.api_key')) && ! $this->publicationIntent->matches($body),
+            ! app(OpenAIConfiguration::class)->configured() && ! $this->publicationIntent->matches($body ?: 'Vedlagt bilde'),
             503,
             'Secretary OpenAI is not configured.',
         );
+
+        try {
+            $importedAttachments = $this->attachments->import($inbound->attachments, $user);
+        } catch (ContentOperationDenied $exception) {
+            abort(403, $exception->getMessage());
+        }
+
+        if ($body === '') {
+            $body = 'Vedlagt bilde: '.implode(', ', array_column($importedAttachments, 'name'));
+        }
+
         $conversation = $this->resolveConversation($inbound, $sender, $user);
 
         try {
@@ -59,6 +74,7 @@ final class InboundEmailService
                     'rfc_message_id' => $inbound->rfcMessageId,
                     'email_delivery' => $inbound->delivery,
                     'relay_route_token' => $inbound->routeToken,
+                    'attachments' => $importedAttachments,
                 ],
                 $inbound->providerMessageId,
             );

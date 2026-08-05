@@ -2,7 +2,7 @@
     "name": "axelferdinand/statamic-secretary",
     "description": "A guarded content assistant for Statamic, available through the Control Panel and email.",
     "type": "statamic-addon",
-    "license": "MIT",
+    "license": "proprietary",
     "homepage": "https://github.com/axelferdinand/statamic-secretary",
     "keywords": [
         "statamic",
@@ -70,12 +70,14 @@
     },
     "archive": {
         "exclude": [
+            "/.secretary-deploy",
             "/.github",
             "/.gitattributes",
             "/.gitignore",
             "/.phpunit.cache",
             "/.phpunit.result.cache",
             "/composer.lock",
+            "/docs/deployment.md",
             "/docs/assets/statamic-secretary-icon-source.png",
             "/node_modules",
             "/package-lock.json",
@@ -83,6 +85,7 @@
             "/phpunit.xml.dist",
             "/relay",
             "/sandbox",
+            "/scripts",
             "/tests",
             "/vendor",
             "/vite.config.js"

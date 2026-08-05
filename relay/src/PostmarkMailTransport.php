@@ -47,6 +47,7 @@ final class PostmarkMailTransport implements MailTransport
                 'ReplyTo' => $reply->replyTo,
                 'Subject' => $reply->subject,
                 'TextBody' => $this->textBody($reply),
+                'HtmlBody' => $this->htmlBody($reply),
                 'Headers' => $headers,
                 'MessageStream' => $this->messageStream,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -125,6 +126,42 @@ final class PostmarkMailTransport implements MailTransport
         return $body."\n\nSvar på denne e-posten for å fortsette samme samtale.";
     }
 
+    private function htmlBody(OutboundReply $reply): string
+    {
+        $lines = preg_split('/\R/u', $this->textBody($reply)) ?: [];
+        $html = [];
+
+        for ($index = 0, $count = count($lines); $index < $count; $index++) {
+            $line = trim($lines[$index]);
+            $next = $index + 1 < $count ? trim($lines[$index + 1]) : '';
+
+            if (str_starts_with($line, '- ')
+                && $this->isSafeLink($next)) {
+                $html[] = '<a href="'.$this->escape($next).'" style="color:#2563eb;text-decoration:underline">'
+                    .$this->escape(mb_substr($line, 2)).'</a>';
+                $index++;
+
+                continue;
+            }
+
+            if ($this->isSafeLink($line)) {
+                $html[] = '<a href="'.$this->escape($line).'" style="color:#2563eb;text-decoration:underline">'
+                    .$this->escape($line).'</a>';
+
+                continue;
+            }
+
+            $html[] = $this->escape($line);
+        }
+
+        return '<!doctype html><html lang="no"><head><meta charset="utf-8"></head>'
+            .'<body style="margin:0;background:#f4f4f5;color:#18181b;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif">'
+            .'<div style="max-width:640px;margin:0 auto;padding:32px 20px">'
+            .'<div style="border:1px solid #e4e4e7;border-radius:12px;background:#ffffff;padding:28px;font-size:16px;line-height:1.65">'
+            .implode('<br>', $html)
+            .'</div></div></body></html>';
+    }
+
     /** @param  array<string, mixed>|null  $affectedChange */
     private function withAffectedPage(string $body, ?array $affectedChange): string
     {
@@ -143,6 +180,22 @@ final class PostmarkMailTransport implements MailTransport
         $after = ltrim(substr($body, $offset));
 
         return $before."\n\n".$line."\n\n".$after;
+    }
+
+    private function isSafeLink(string $url): bool
+    {
+        $parts = parse_url($url);
+
+        return is_array($parts)
+            && in_array(mb_strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true)
+            && isset($parts['host'])
+            && ! isset($parts['user'])
+            && ! isset($parts['pass']);
+    }
+
+    private function escape(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
     private static function validEndpoint(string $url): bool

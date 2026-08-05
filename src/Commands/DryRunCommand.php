@@ -4,6 +4,7 @@ namespace AxelFerdinand\StatamicSecretary\Commands;
 
 use AxelFerdinand\StatamicSecretary\Agent\AgentOrchestrator;
 use AxelFerdinand\StatamicSecretary\Agent\ConversationService;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use Illuminate\Console\Command;
 use Statamic\Facades\Entry;
 use Statamic\Facades\User;
@@ -21,8 +22,8 @@ final class DryRunCommand extends Command
 
     public function handle(ConversationService $conversations, AgentOrchestrator $agent): int
     {
-        if (blank(config('secretary.openai.api_key'))) {
-            return $this->failCommand('OPENAI_API_KEY is not configured.');
+        if (! app(OpenAIConfiguration::class)->configured()) {
+            return $this->failCommand('OpenAI is not configured.');
         }
 
         $identity = trim((string) $this->option('user'));

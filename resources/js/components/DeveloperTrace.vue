@@ -4,22 +4,22 @@ defineProps({
 });
 
 function tokens(usage) {
-    const input = Number(usage?.input_tokens ?? 0).toLocaleString('nb-NO');
-    const output = Number(usage?.output_tokens ?? 0).toLocaleString('nb-NO');
+    const input = Number(usage?.input_tokens ?? 0).toLocaleString('en-US');
+    const output = Number(usage?.output_tokens ?? 0).toLocaleString('en-US');
 
-    return `${input} inn · ${output} ut`;
+    return `${input} in · ${output} out`;
 }
 </script>
 
 <template>
     <details class="secretary-developer-trace">
         <summary>
-            <span>Utviklerdetaljer</span>
-            <span>{{ trace.duration_ms }} ms · {{ trace.rounds }} runder</span>
+            <span>Developer details</span>
+            <span>{{ trace.duration_ms }} ms · {{ trace.rounds }} rounds</span>
         </summary>
         <dl>
             <div>
-                <dt>Modell</dt>
+                <dt>Model</dt>
                 <dd>{{ trace.model }}</dd>
             </div>
             <div>
@@ -27,12 +27,12 @@ function tokens(usage) {
                 <dd>{{ tokens(trace.usage) }}</dd>
             </div>
             <div v-if="trace.estimated_cost_usd !== null">
-                <dt>Estimert kostnad</dt>
+                <dt>Estimated cost</dt>
                 <dd>USD {{ trace.estimated_cost_usd }}</dd>
             </div>
             <div>
-                <dt>Modus</dt>
-                <dd>{{ trace.dry_run ? 'Dry-run' : 'Vanlig' }}</dd>
+                <dt>Mode</dt>
+                <dd>{{ trace.dry_run ? 'Dry run' : 'Standard' }}</dd>
             </div>
         </dl>
         <ol v-if="trace.tools?.length">
@@ -45,6 +45,6 @@ function tokens(usage) {
                 <code>{{ JSON.stringify(tool.arguments) }}</code>
             </li>
         </ol>
-        <p v-else>Ingen verktøykall i denne runden.</p>
+        <p v-else>No tool calls in this round.</p>
     </details>
 </template>

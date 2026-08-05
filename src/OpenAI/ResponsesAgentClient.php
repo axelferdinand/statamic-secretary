@@ -14,7 +14,7 @@ final class ResponsesAgentClient implements AgentClient
 
     public function respond(AgentRequest $request): AgentResponse
     {
-        $apiKey = (string) config('secretary.openai.api_key');
+        $apiKey = app(OpenAIConfiguration::class)->apiKey();
 
         if ($apiKey === '') {
             throw new RuntimeException('Secretary requires an OpenAI API key.');

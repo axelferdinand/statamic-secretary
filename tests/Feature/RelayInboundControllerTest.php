@@ -17,11 +17,14 @@ use AxelFerdinand\StatamicSecretary\Tests\TestCase;
 use AxelFerdinand\StatamicSecretaryRelay\Data\Installation as HostedRelayInstallation;
 use AxelFerdinand\StatamicSecretaryRelay\Security\Signature as HostedRelaySignature;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
+use Statamic\Facades\Asset;
+use Statamic\Facades\AssetContainer;
 use Statamic\Facades\User;
 
 class RelayInboundControllerTest extends TestCase
@@ -39,6 +42,7 @@ class RelayInboundControllerTest extends TestCase
 
         $this->assertNotNull($route);
         $this->assertContains(PreventRequestForgery::class, $route->excludedMiddleware());
+        $this->assertContains(VerifyCsrfToken::class, $route->excludedMiddleware());
     }
 
     public function test_a_signed_relay_message_is_bound_to_this_installation_and_route(): void
@@ -62,6 +66,83 @@ class RelayInboundControllerTest extends TestCase
             ProcessInboundEmail::class,
             fn (ProcessInboundEmail $job): bool => $job->messageId === $message->id,
         );
+    }
+
+    public function test_a_signed_version_two_relay_message_imports_its_checksummed_image(): void
+    {
+        $this->configureRelay();
+        $this->configureAssets();
+        $this->authorizedUser();
+        Bus::fake();
+        $bytes = $this->pngBytes();
+        $payload = $this->payload('relay-image-1', [
+            'version' => 2,
+            'attachments' => [[
+                'name' => 'relay-hero.png',
+                'content_type' => 'image/png',
+                'content' => base64_encode($bytes),
+                'content_length' => strlen($bytes),
+                'sha256' => hash('sha256', $bytes),
+            ]],
+        ]);
+
+        $this->postSigned($payload)->assertOk()->assertJson(['accepted' => true]);
+
+        $message = Message::where('provider_message_id', 'relay-image-1')->firstOrFail();
+        $id = data_get($message->metadata, 'attachments.0.id');
+        $this->assertStringStartsWith('assets::secretary-inbox/', $id);
+        $this->assertNotNull(Asset::find($id));
+
+        $payload['attachments'][0]['sha256'] = str_repeat('0', 64);
+        $payload['provider_message_id'] = 'relay-image-bad-hash';
+        $this->postSigned($payload)->assertForbidden();
+        $this->assertDatabaseMissing('secretary_messages', ['provider_message_id' => 'relay-image-bad-hash']);
+    }
+
+    public function test_a_relay_reply_includes_a_direct_statamic_link_for_an_imported_attachment(): void
+    {
+        $this->configureRelay();
+        config()->set('secretary.relay.base_url', 'https://statamic.no/_secretary-relay');
+        $this->configureAssets();
+        $this->authorizedUser();
+        Bus::fake();
+        $bytes = $this->pngBytes();
+        $payload = $this->payload('relay-clickable-image', [
+            'version' => 2,
+            'attachments' => [[
+                'name' => 'relay-clickable.png',
+                'content_type' => 'image/png',
+                'content' => base64_encode($bytes),
+                'content_length' => strlen($bytes),
+                'sha256' => hash('sha256', $bytes),
+            ]],
+        ]);
+        $this->postSigned($payload)->assertOk();
+        $inbound = Message::where('provider_message_id', 'relay-clickable-image')->firstOrFail();
+        $reply = $inbound->conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'email',
+            'role' => 'assistant',
+            'body' => 'Jeg har mottatt bildet.',
+            'reply_to_message_id' => $inbound->id,
+            'metadata' => ['reply_to_message_id' => $inbound->id],
+            'processed_at' => now(),
+        ]);
+        $asset = Asset::find((string) data_get($inbound->metadata, 'attachments.0.id'));
+        $this->assertNotNull($asset);
+        Http::fake([
+            'https://statamic.no/_secretary-relay/v1/replies' => Http::response(['accepted' => true], 202),
+        ]);
+
+        app(RelayClient::class)->sendReply($inbound, $reply);
+
+        Http::assertSent(function ($request) use ($asset): bool {
+            $body = (string) $request->data()['body'];
+
+            return str_contains($body, 'Vedlegg i Statamic:')
+                && str_contains($body, 'relay-clickable.png')
+                && str_contains($body, $asset->editUrl());
+        });
     }
 
     public function test_the_hosted_relay_signature_contract_is_accepted_by_the_addon(): void
@@ -225,10 +306,18 @@ class RelayInboundControllerTest extends TestCase
         Http::fake([
             'https://statamic.no/_secretary-relay/v1/replies' => Http::response(['accepted' => true], 202),
         ]);
-        $this->app->bind(AgentClient::class, fn () => new class implements AgentClient
+        $captured = new class
         {
+            public ?AgentRequest $request = null;
+        };
+        $this->app->bind(AgentClient::class, fn () => new class($captured) implements AgentClient
+        {
+            public function __construct(private readonly object $captured) {}
+
             public function respond(AgentRequest $request): AgentResponse
             {
+                $this->captured->request = $request;
+
                 return new AgentResponse('relay-response', 'completed', [[
                     'type' => 'message',
                     'content' => [['type' => 'output_text', 'text' => 'Utkastet er klart.']],
@@ -244,6 +333,10 @@ class RelayInboundControllerTest extends TestCase
 
         $reply = $message->conversation->messages()->where('direction', 'outbound')->firstOrFail();
         $this->assertNotNull(data_get($reply->metadata, 'email_sent_at'));
+        $this->assertSame(
+            "Email subject:\nEndre forsiden\n\nEmail message:\nOppdater forsiden.",
+            $captured->request?->input[0]['content'],
+        );
         Http::assertSentCount(1);
         Http::assertSent(function ($request) use ($message, $reply): bool {
             $payload = $request->data();
@@ -357,6 +450,26 @@ class RelayInboundControllerTest extends TestCase
     private function authorizedUser(): void
     {
         User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper()->save();
+    }
+
+    private function configureAssets(): void
+    {
+        config()->set('filesystems.disks.secretary_test_relay_assets', [
+            'driver' => 'local',
+            'root' => __DIR__.'/../__fixtures__/content/relay-uploads',
+            'throw' => false,
+        ]);
+        AssetContainer::make('assets')
+            ->title('Assets')
+            ->disk('secretary_test_relay_assets')
+            ->save();
+        config()->set('secretary.assets.attachment_container', 'assets');
+        config()->set('secretary.assets.containers', ['assets']);
+    }
+
+    private function pngBytes(): string
+    {
+        return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true);
     }
 
     /** @param  array<string, mixed>  $overrides

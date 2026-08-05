@@ -4,6 +4,9 @@ namespace AxelFerdinand\StatamicSecretary\Data;
 
 final readonly class InboundEmail
 {
+    /**
+     * @param  array<int, InboundAttachment>  $attachments
+     */
     public function __construct(
         public string $providerMessageId,
         public string $sender,
@@ -15,5 +18,6 @@ final readonly class InboundEmail
         public string $delivery = 'postmark',
         public ?string $threadToken = null,
         public ?string $routeToken = null,
+        public array $attachments = [],
     ) {}
 }
