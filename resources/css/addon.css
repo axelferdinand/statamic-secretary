@@ -900,7 +900,7 @@
 
     .secretary-onboarding {
         width: min(100%, 68rem);
-        margin: -0.5rem auto 2rem;
+        margin: -0.5rem 0 2rem;
         overflow: hidden;
         border: 1px solid var(--color-content-border);
         border-radius: 1rem;
@@ -1036,8 +1036,10 @@
         color: var(--color-green-700);
     }
 
-    .secretary-onboarding > [role="alert"] {
-        margin: 1rem clamp(1.25rem, 3vw, 2rem) 0;
+    .secretary-onboarding-notices {
+        display: grid;
+        gap: 0.75rem;
+        padding: clamp(1.25rem, 3vw, 2rem) clamp(1.25rem, 3vw, 2rem) 0;
     }
 
     .secretary-onboarding-step {

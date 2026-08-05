@@ -2,6 +2,11 @@
 
 All notable changes will be documented in this file. Releases follow Semantic Versioning.
 
+## Unreleased
+
+- Reuse the original relay installation and domain address when the same public site and exact sender set complete onboarding again, while retaining collision-safe aliases for genuinely different installations.
+- Align the onboarding card with the Control Panel page heading and give success and error messages a dedicated, spaced notice area.
+
 ## 0.1.0-beta.3 - 2026-08-05
 
 - Added a dedicated, automatically created SQLite store under `storage/statamic-secretary` so Secretary no longer depends on the host site's database credentials or migrations.

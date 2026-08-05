@@ -17,6 +17,7 @@ final class SqliteSchema
             $pdo->exec($statement);
         }
 
+        self::allowRepeatedInstallationPairings($pdo);
         self::addInstallationRotationColumns($pdo);
         self::addInstallationAliasColumn($pdo);
         self::backfillInstallationAliases($pdo);
@@ -164,7 +165,7 @@ final class SqliteSchema
                     senders_json TEXT NOT NULL,
                     expires_at INTEGER NOT NULL,
                     claim_fingerprint TEXT NULL,
-                    installation_id TEXT NULL UNIQUE,
+                    installation_id TEXT NULL,
                     created_at INTEGER NOT NULL,
                     claimed_at INTEGER NULL,
                     FOREIGN KEY (installation_id) REFERENCES relay_installations(id) ON DELETE RESTRICT
@@ -222,6 +223,68 @@ final class SqliteSchema
                 $pdo->exec("ALTER TABLE relay_installations ADD COLUMN {$name} {$definition}");
             }
         }
+    }
+
+    private static function allowRepeatedInstallationPairings(PDO $pdo): void
+    {
+        $indexes = $pdo->query('PRAGMA index_list(relay_pairing_codes)')->fetchAll(PDO::FETCH_ASSOC);
+        $hasLegacyInstallationConstraint = false;
+
+        foreach ($indexes as $index) {
+            if (($index['origin'] ?? null) !== 'u' || ! is_string($index['name'] ?? null)) {
+                continue;
+            }
+
+            $columns = $pdo->query(
+                'PRAGMA index_info('.$pdo->quote($index['name']).')',
+            )->fetchAll(PDO::FETCH_ASSOC);
+
+            if (count($columns) === 1 && ($columns[0]['name'] ?? null) === 'installation_id') {
+                $hasLegacyInstallationConstraint = true;
+
+                break;
+            }
+        }
+
+        if (! $hasLegacyInstallationConstraint) {
+            return;
+        }
+
+        $pdo->exec(
+            <<<'SQL'
+                CREATE TABLE relay_pairing_codes_without_unique_installation (
+                    code_digest TEXT PRIMARY KEY,
+                    status TEXT NOT NULL CHECK (status IN ('issued', 'complete')),
+                    label TEXT NOT NULL,
+                    senders_json TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    claim_fingerprint TEXT NULL,
+                    installation_id TEXT NULL,
+                    created_at INTEGER NOT NULL,
+                    claimed_at INTEGER NULL,
+                    FOREIGN KEY (installation_id) REFERENCES relay_installations(id) ON DELETE RESTRICT
+                )
+                SQL,
+        );
+        $pdo->exec(
+            <<<'SQL'
+                INSERT INTO relay_pairing_codes_without_unique_installation (
+                    code_digest, status, label, senders_json, expires_at,
+                    claim_fingerprint, installation_id, created_at, claimed_at
+                )
+                SELECT code_digest, status, label, senders_json, expires_at,
+                       claim_fingerprint, installation_id, created_at, claimed_at
+                FROM relay_pairing_codes
+                SQL,
+        );
+        $pdo->exec('DROP TABLE relay_pairing_codes');
+        $pdo->exec(
+            'ALTER TABLE relay_pairing_codes_without_unique_installation RENAME TO relay_pairing_codes',
+        );
+        $pdo->exec(
+            'CREATE INDEX IF NOT EXISTS relay_pairing_expiry
+             ON relay_pairing_codes(status, expires_at)',
+        );
     }
 
     private static function addInstallationAliasColumn(PDO $pdo): void

@@ -156,8 +156,10 @@ function skipEmail() {
             </li>
         </ol>
 
-        <ui-alert v-if="success" variant="success" heading="Done" :text="success" />
-        <ui-alert v-if="setupError" variant="error" heading="Setup could not be completed" :text="setupError" />
+        <div v-if="success || setupError" class="secretary-onboarding-notices" aria-live="polite">
+            <ui-alert v-if="success" variant="success" heading="Done" :text="success" />
+            <ui-alert v-if="setupError" variant="error" heading="Setup could not be completed" :text="setupError" />
+        </div>
 
         <form v-if="!configured" class="secretary-onboarding-step" @submit.prevent="saveOpenAI">
             <div class="secretary-onboarding-step-heading">
