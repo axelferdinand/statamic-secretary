@@ -4,9 +4,17 @@ return [
     'retention_days' => (int) env('SECRETARY_RETENTION_DAYS', 90),
 
     'install' => [
-        // Statamic runs this addon's package-scoped migrations after Composer
-        // installation. Set false in build environments without DB access.
+        // Statamic prepares the addon's private store after Composer install.
+        // Set false only in read-only build stages; runtime setup still occurs
+        // automatically on the first Secretary request.
         'auto_migrate' => (bool) env('SECRETARY_AUTO_MIGRATE', true),
+    ],
+
+    'database' => [
+        // Null uses Secretary's private SQLite database. Existing beta sites
+        // with Secretary tables in the site's database are detected and kept.
+        'connection' => env('SECRETARY_DB_CONNECTION'),
+        'path' => env('SECRETARY_DB_PATH', storage_path('statamic-secretary/database.sqlite')),
     ],
 
     'openai' => [

@@ -8,16 +8,21 @@ use AxelFerdinand\StatamicSecretary\Commands\InstallCommand;
 use AxelFerdinand\StatamicSecretary\Commands\PruneCommand;
 use AxelFerdinand\StatamicSecretary\Commands\RelayRotateRouteCommand;
 use AxelFerdinand\StatamicSecretary\Commands\RelayRotateSecretCommand;
+use AxelFerdinand\StatamicSecretary\Content\SafeDrafting;
 use AxelFerdinand\StatamicSecretary\Contracts\AgentClient;
+use AxelFerdinand\StatamicSecretary\Database\SecretaryDatabase;
 use AxelFerdinand\StatamicSecretary\Developer\ToolRegistry;
 use AxelFerdinand\StatamicSecretary\Events\AgentCompleted;
 use AxelFerdinand\StatamicSecretary\Events\ChangeSetPrepared;
 use AxelFerdinand\StatamicSecretary\Events\ChangeSetPublished;
 use AxelFerdinand\StatamicSecretary\Events\MessageReceived;
+use AxelFerdinand\StatamicSecretary\Http\Middleware\EnsureSecretaryDatabase;
 use AxelFerdinand\StatamicSecretary\Listeners\QueueSecretaryWebhook;
 use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use AxelFerdinand\StatamicSecretary\OpenAI\ResponsesAgentClient;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
+use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Event;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
@@ -56,6 +61,9 @@ class ServiceProvider extends AddonServiceProvider
 
         $this->mergeConfigFrom(__DIR__.'/../config/secretary.php', 'secretary');
 
+        $this->app->singleton(SecretaryDatabase::class);
+        $this->app->make(SecretaryDatabase::class)->registerManagedConnection();
+
         $this->app['config']->set('mail.mailers.statamic_secretary_postmark', [
             'transport' => 'postmark',
             'token' => (string) $this->app['config']->get('secretary.email.postmark.api_key'),
@@ -72,11 +80,17 @@ class ServiceProvider extends AddonServiceProvider
             RelayConfiguration::class,
             static fn (): RelayConfiguration => new RelayConfiguration,
         );
+        $this->app->singleton(SafeDrafting::class);
     }
 
     public function bootAddon(): void
     {
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        $this->app->make(Kernel::class)
+            ->addToMiddlewarePriorityBefore(SubstituteBindings::class, EnsureSecretaryDatabase::class);
+
+        $this->app->booted(function (): void {
+            $this->app->make(SafeDrafting::class)->applyManagedConfiguration();
+        });
 
         if ((bool) config('secretary.install.auto_migrate', true)) {
             Statamic::afterInstalled(function ($command): void {

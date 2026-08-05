@@ -2,6 +2,14 @@
 
 All notable changes will be documented in this file. Releases follow Semantic Versioning.
 
+## 0.1.0-beta.3 - 2026-08-05
+
+- Added a dedicated, automatically created SQLite store under `storage/statamic-secretary` so Secretary no longer depends on the host site's database credentials or migrations.
+- Added safe first-request database recovery and a friendly Control Panel error when the private store cannot be prepared.
+- Refined onboarding around the public site URL, the generated relay address, email-first activation, revision readiness, and in-panel system checks.
+- Improved the contextual Control Panel conversation experience, queued follow-ups, change review, publication refresh, and responsive preview controls.
+- Improved email continuity and attachment handling, including subject-aware context and direct links to imported Statamic assets.
+
 ## 0.1.0-beta.2 - 2026-08-04
 
 - Added a focused first-run wizard that connects OpenAI, then offers recommended Secretary Relay, advanced private Postmark, or Control Panel chat only.

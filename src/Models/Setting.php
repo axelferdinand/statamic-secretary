@@ -2,9 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretary\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-final class Setting extends Model
+final class Setting extends SecretaryModel
 {
     protected $table = 'secretary_settings';
 

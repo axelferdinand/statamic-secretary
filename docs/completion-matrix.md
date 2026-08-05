@@ -16,13 +16,13 @@ This matrix maps the product brief to evidence in the repository. “Automated�
 | Follow real Statamic structure | Collection/source discovery, exact blueprint description, editable-field validation, normalized slugs, structured parents/max depth, complete navigation validation | Entry, term, global, navigation, long/missing/unknown field and structure tests | Automated |
 | Preserve human edits | Read-before-write fingerprints, separate live baseline, native working copies, staged non-revision changes, exact crash recovery | Stale proposal, live edit, draft edit, duplicate call and already-applied retry tests | Automated |
 | Native user authorization | Secretary permissions plus Statamic view/edit/create/publish policies per resource | Non-super read, term editor/creator, navigation reference and CP ownership tests | Automated |
-| Production queue behavior | Durable dispatch for persistent drivers; unique replies; retry-safe duplicate jobs; per-conversation overlap lock and FIFO deferral; bounded failure replies | Queue dispatch, duplicate delivery, cross-channel lock, ordering and exhausted-retry tests | Automated; production worker pending |
+| Background processing | Zero-configuration after-response processing on Laravel's default `sync` connection; optional durable dispatch for sites that already use persistent queues; unique replies; retry-safe duplicate jobs; per-conversation overlap lock and FIFO deferral; bounded failure replies | Sync/no-worker diagnostic, queue dispatch, duplicate delivery, cross-channel lock, ordering and exhausted-retry tests | Default path automated; optional persistent-worker recovery proof pending |
 | Marketplace package | Clean runtime archive, commercial/support/privacy/security docs, listing copy, release checklist, square icon, compiled assets, PHP/Laravel CI matrix | Archive hygiene/runtime manifest checks; clean artifact install; Laravel 12.64 and Laravel 13.22 test suites | Development-ready; public release pending |
 
 ## Required live gates
 
 - Complete the publication half of the real GPT-5.5 inspect → draft → publish flow; the rotated-key inspect → unpublished draft half passed on 2026-07-21.
-- Obtain a clean `secretary:doctor` result with a persistent queue configuration after completing Postmark onboarding.
+- Obtain a clean Control Panel system check after onboarding; separately exercise the optional persistent-queue path as an advanced production hardening test.
 - Complete the remaining dark-theme, full keyboard/focus-cycle, error, empty, pending and published-state browser QA. The global panel's desktop, 390px mobile, long Norwegian text, Escape close, and cross-page launcher checks passed on 2026-07-27.
 - Complete a real Postmark new-thread → reply → draft → authenticated publication flow and a mail-transport failure/restart exercise.
 - Pair two public Statamic installations and complete the X/Y/random-sender live isolation exercise before offering `secretary@statamic.no` broadly.

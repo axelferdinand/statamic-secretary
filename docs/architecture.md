@@ -26,7 +26,7 @@ flowchart LR
 
 Only the `Statamic repositories -> content/` edge may change authored site content. A separate asset pipeline may create a new image in configured Statamic asset containers after authenticated email intake; it cannot replace, rename, edit, or delete assets. Conversation history, webhook idempotency, audit metadata, and proposed change sets live in the application's database and are never exposed as writable tools to the model.
 
-This is a content-target boundary, not a claim that the addon performs no operational persistence. The database stores Secretary state, and Statamic Pro may store working-copy revision metadata in its configured revision repository. The model cannot address either store; only the application-side workflow can use them.
+This is a content-target boundary, not a claim that the addon performs no operational persistence. A private site-local SQLite database under Laravel's `storage` directory stores Secretary state, and Statamic Pro may store working-copy revision metadata in its configured revision repository. The model cannot address either store; only the application-side workflow can use them. Existing beta installations with Secretary tables in the site's configured database remain on that connection; new installations do not depend on it.
 
 ## Content tool surface
 

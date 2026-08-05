@@ -2,7 +2,9 @@
 
 namespace AxelFerdinand\StatamicSecretary\Commands;
 
+use AxelFerdinand\StatamicSecretary\Database\SecretaryDatabase;
 use Illuminate\Console\Command;
+use Throwable;
 
 final class InstallCommand extends Command
 {
@@ -10,15 +12,16 @@ final class InstallCommand extends Command
 
     protected $description = 'Prepare Statamic Secretary after Composer installation';
 
-    public function handle(): int
+    public function handle(SecretaryDatabase $database): int
     {
-        $result = $this->call('migrate', [
-            '--path' => realpath(__DIR__.'/../../database/migrations'),
-            '--realpath' => true,
-            '--force' => true,
-        ]);
+        try {
+            $database->ensureReady(
+                fn (array $arguments): int => $this->call('migrate', $arguments),
+            );
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->components->error($exception->getMessage());
 
-        if ($result !== self::SUCCESS) {
             return self::FAILURE;
         }
 

@@ -25,6 +25,44 @@ use Statamic\Facades\User;
 
 class SecretaryCpTest extends TestCase
 {
+    public function test_onboarding_can_enable_safe_drafts_without_terminal_access(): void
+    {
+        config()->set('statamic.revisions.enabled', false);
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(false);
+        $collection->save();
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)
+            ->get('/cp/secretary')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('onboarding.safe_drafting.ready', false)
+                ->where('onboarding.safe_drafting.pro', true)
+                ->where('onboarding.safe_drafting.setup_url', 'http://localhost/cp/secretary/setup/safe-drafts')
+                ->where('diagnostics.run_url', 'http://localhost/cp/secretary/diagnostics/run'));
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/setup/safe-drafts')
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $this->assertTrue((bool) config('statamic.revisions.enabled'));
+        $this->assertTrue((bool) data_get(Collection::find('pages')->fileData(), 'revisions'));
+        $this->assertTrue((bool) data_get(Setting::query()->findOrFail('content_safety')->value, 'managed_revisions'));
+    }
+
+    public function test_an_administrator_can_rerun_system_checks_from_the_control_panel(): void
+    {
+        $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
+        $user->save();
+
+        $this->actingAs($user)
+            ->post('/cp/secretary/diagnostics/run')
+            ->assertRedirect()
+            ->assertSessionHas('secretary_success');
+    }
+
     public function test_an_administrator_can_finish_openai_setup_without_editing_the_environment(): void
     {
         config()->set('secretary.openai.api_key');

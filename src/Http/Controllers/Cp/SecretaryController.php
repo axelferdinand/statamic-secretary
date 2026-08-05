@@ -5,6 +5,7 @@ namespace AxelFerdinand\StatamicSecretary\Http\Controllers\Cp;
 use AxelFerdinand\StatamicSecretary\Agent\ConversationService;
 use AxelFerdinand\StatamicSecretary\Content\ChangePreviewService;
 use AxelFerdinand\StatamicSecretary\Content\ChangeSetReviewService;
+use AxelFerdinand\StatamicSecretary\Content\SafeDrafting;
 use AxelFerdinand\StatamicSecretary\Diagnostics\DoctorReport;
 use AxelFerdinand\StatamicSecretary\Editorial\EditorialStyleGuide;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
@@ -41,6 +42,7 @@ final class SecretaryController extends CpController
         private readonly ChangePreviewService $previews,
         private readonly EditorialStyleGuide $styleGuide,
         private readonly DoctorReport $doctor,
+        private readonly SafeDrafting $safeDrafting,
     ) {}
 
     public function index(?Conversation $conversation = null): Response
@@ -58,6 +60,8 @@ final class SecretaryController extends CpController
             ->latest('updated_at')
             ->orderByRaw('COALESCE(messages_max_id, secretary_conversations.id) DESC')
             ->first();
+
+        $safeDrafting = $this->safeDrafting->status();
 
         return Inertia::render('statamic-secretary::Secretary', [
             'conversations' => Conversation::query()
@@ -86,6 +90,7 @@ final class SecretaryController extends CpController
                 ...$this->email->publicStatus(),
                 'can_configure' => $user->can('configure secretary'),
                 'setup_url' => cp_route('secretary.setup.postmark'),
+                'confirm_forwarding_url' => cp_route('secretary.setup.postmark.confirm-forwarding'),
             ],
             'relay_setup' => [
                 ...$this->relay->publicStatus(),
@@ -98,6 +103,10 @@ final class SecretaryController extends CpController
             'onboarding' => [
                 'email_skipped' => filled(data_get(Setting::query()->find('onboarding')?->value, 'email_skipped_at')),
                 'skip_email_url' => cp_route('secretary.setup.skip-email'),
+                'safe_drafting' => [
+                    ...$safeDrafting,
+                    'setup_url' => cp_route('secretary.setup.safe-drafts'),
+                ],
             ],
             'success' => session('secretary_success'),
             'style_guides' => [
@@ -108,6 +117,7 @@ final class SecretaryController extends CpController
             'diagnostics' => [
                 'checks' => $this->doctor->checks($this->email, $this->relay),
                 'can_configure' => $user->can('configure secretary'),
+                'run_url' => cp_route('secretary.diagnostics.run'),
             ],
             'developer_mode' => (bool) config('secretary.developer.mode')
                 && $user->can('configure secretary'),
@@ -118,6 +128,48 @@ final class SecretaryController extends CpController
                 'references' => cp_route('secretary.panel.references'),
             ],
         ]);
+    }
+
+    public function enableSafeDrafting(): RedirectResponse
+    {
+        $user = $this->user();
+        abort_unless($user->can('configure secretary'), 403);
+
+        try {
+            $status = $this->safeDrafting->enable();
+
+            if (! $status['pro']) {
+                return back()->withErrors([
+                    'safe_drafting' => 'Safe drafts require Statamic Pro. Activate a Statamic Pro license, then run this step again.',
+                ]);
+            }
+
+            if (! $status['ready']) {
+                return back()->withErrors(['safe_drafting' => $status['details']]);
+            }
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors([
+                'safe_drafting' => 'Secretary could not enable safe drafts. Make sure the content directory is writable and try again.',
+            ]);
+        }
+
+        return redirect()->to(cp_route('secretary.index'))
+            ->with('secretary_success', 'Safe drafts are on. Live content now stays unchanged until you publish.');
+    }
+
+    public function runDiagnostics(): RedirectResponse
+    {
+        $user = $this->user();
+        abort_unless($user->can('configure secretary'), 403);
+
+        $checks = $this->doctor->checks($this->email, $this->relay);
+        $problems = collect($checks)->filter(fn (array $check): bool => ! $check['passed'])->count();
+
+        return back()->with('secretary_success', $problems === 0
+            ? 'All Secretary checks passed.'
+            : "Checks completed. {$problems} ".($problems === 1 ? 'item needs' : 'items need').' attention.');
     }
 
     public function saveEditorialGuide(Request $request): RedirectResponse
@@ -151,7 +203,7 @@ final class SecretaryController extends CpController
         $openAI->storeApiKey($validated['api_key']);
 
         return redirect()->to(cp_route('secretary.index'))
-            ->with('secretary_success', 'OpenAI is connected. Now choose how you want to use email.');
+            ->with('secretary_success', 'OpenAI is connected. Next, protect live content with safe drafts.');
     }
 
     public function skipEmailSetup(): RedirectResponse
@@ -228,6 +280,18 @@ final class SecretaryController extends CpController
             ->with('secretary_success', 'Postmark is connected. Set up the forwarding address shown below.');
     }
 
+    public function confirmPostmarkForwarding(): RedirectResponse
+    {
+        $user = $this->user();
+        abort_unless($user->can('configure secretary'), 403);
+        abort_unless($this->email->connected(), 409);
+
+        $this->email->confirmForwarding();
+
+        return redirect()->to(cp_route('secretary.index'))
+            ->with('secretary_success', 'Email forwarding is confirmed. Secretary is ready.');
+    }
+
     public function connectRelay(Request $request, RelayPairingClient $pairing): RedirectResponse
     {
         $user = $this->user();
@@ -278,9 +342,21 @@ final class SecretaryController extends CpController
 
         $validated = $request->validate([
             'email' => ['required', 'email:rfc', 'max:255'],
+            'public_url' => [
+                'required',
+                'url:https',
+                'max:2048',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! is_string($value) || ! $this->email->isPublicHttpsUrl($value)) {
+                        $fail('The site URL must be a public HTTPS URL.');
+                    }
+                },
+            ],
         ], [
             'email.required' => 'Enter the email address that will use Secretary.',
             'email.email' => 'The sender must be a valid email address.',
+            'public_url.required' => 'Enter this site’s public HTTPS URL first.',
+            'public_url.url' => 'The site URL must be a valid HTTPS URL.',
         ]);
         $email = mb_strtolower(trim($validated['email']));
         $sender = User::findByEmail($email);
@@ -298,7 +374,7 @@ final class SecretaryController extends CpController
         }
 
         try {
-            $pairing->requestCode($email, mb_substr($label, 0, 120));
+            $pairing->requestCode($email, mb_substr($label, 0, 120), $validated['public_url']);
         } catch (Throwable $exception) {
             report($exception);
 

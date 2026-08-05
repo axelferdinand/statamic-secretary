@@ -2,8 +2,8 @@
 
 namespace AxelFerdinand\StatamicSecretary\Relay;
 
+use AxelFerdinand\StatamicSecretary\Database\SecretaryDatabase;
 use AxelFerdinand\StatamicSecretary\Models\Setting;
-use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 final class RelayConfiguration
@@ -218,7 +218,7 @@ final class RelayConfiguration
         }
 
         try {
-            if (! Schema::hasTable('secretary_settings')) {
+            if (! app(SecretaryDatabase::class)->schema()->hasTable('secretary_settings')) {
                 return $this->stored = [];
             }
 
@@ -239,6 +239,7 @@ final class RelayConfiguration
             'route_address' => data_get($this->stored(), 'route_address'),
             'sender' => data_get($this->stored(), 'sender'),
             'pending_sender' => data_get($this->stored(), 'pending_sender'),
+            'pending_public_url' => data_get($this->stored(), 'pending_public_url'),
             'verification_requested_at' => data_get(
                 $this->stored(),
                 'verification_requested_at',

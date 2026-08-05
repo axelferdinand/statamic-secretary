@@ -12,17 +12,22 @@ const props = defineProps({
     success: { type: String, default: null },
 });
 
-const selectedMode = ref(props.relay.pending_sender ? 'relay' : null);
+const selectedMode = ref(props.email.forwarding_confirmation_required
+    ? 'postmark'
+    : (props.relay.pending_sender ? 'relay' : null));
 const busy = ref(false);
+const copied = ref(false);
 const openaiKey = ref('');
 const postmarkKey = ref('');
 const emailAddress = ref(props.email.from_address ?? '');
 const publicUrl = ref(props.email.suggested_public_url ?? '');
 const relayEmail = ref(props.relay.pending_sender ?? props.relay.suggested_sender ?? '');
-const relayPublicUrl = ref(props.relay.suggested_public_url ?? '');
+const relayPublicUrl = ref(props.relay.pending_public_url ?? props.relay.suggested_public_url ?? '');
 const pairingCode = ref('');
+const emailReady = computed(() => props.email.connected || props.relay.connected);
 const setupError = computed(() => props.errors?.openai_api_key
     ?? props.errors?.api_key
+    ?? props.errors?.safe_drafting
     ?? props.errors?.relay_setup
     ?? props.errors?.pairing_code
     ?? props.errors?.relay_email
@@ -37,10 +42,10 @@ const relayAddress = computed(() => {
 
         if (hostname && !hostname.endsWith('.test')) return `${hostname}@statamic.no`;
     } catch {
-        // The example remains visible until a public URL is available.
+        // The address is shown only after a valid site URL is available.
     }
 
-    return 'yourdomain.com@statamic.no';
+    return null;
 });
 
 function submit(url, payload, options = {}) {
@@ -59,9 +64,16 @@ function saveOpenAI() {
     submit(props.openai.setup_url, { api_key: openaiKey.value.trim() });
 }
 
+function enableSafeDrafting() {
+    submit(props.onboarding.safe_drafting.setup_url, {});
+}
+
 function requestRelayCode() {
-    if (!relayEmail.value.trim()) return;
-    submit(props.relay.request_code_url, { email: relayEmail.value.trim() }, {
+    if (!relayPublicUrl.value.trim() || !relayEmail.value.trim()) return;
+    submit(props.relay.request_code_url, {
+        public_url: relayPublicUrl.value.trim(),
+        email: relayEmail.value.trim(),
+    }, {
         onSuccess: () => nextTick(() => document.getElementById('secretary-onboarding-code')?.focus()),
     });
 }
@@ -86,6 +98,21 @@ function connectPostmark() {
     });
 }
 
+function confirmPostmarkForwarding() {
+    submit(props.email.confirm_forwarding_url, {});
+}
+
+async function copyInboundAddress() {
+    if (!props.email.inbound_address) return;
+
+    try {
+        await navigator.clipboard.writeText(props.email.inbound_address);
+        copied.value = true;
+    } catch {
+        copied.value = false;
+    }
+}
+
 function skipEmail() {
     submit(props.onboarding.skip_email_url, {});
 }
@@ -99,19 +126,33 @@ function skipEmail() {
             </div>
             <div>
                 <span class="secretary-onboarding-kicker">Welcome to Secretary</span>
-                <h2 id="secretary-onboarding-title">Two choices, then you’re ready.</h2>
-                <p>No terminal knowledge required. You can change everything later.</p>
+                <h2 v-if="!configured" id="secretary-onboarding-title">Let’s get Secretary ready.</h2>
+                <h2 v-else-if="!onboarding.safe_drafting.ready" id="secretary-onboarding-title">Protect the live site first.</h2>
+                <h2 v-else-if="email.forwarding_confirmation_required" id="secretary-onboarding-title">One final email step.</h2>
+                <h2 v-else id="secretary-onboarding-title">Now connect the best part: email.</h2>
+                <p v-if="!configured">Connect AI, turn on safe drafts, then choose your Secretary email address.</p>
+                <p v-else-if="!onboarding.safe_drafting.ready">Secretary needs a private working copy so live content never changes before you approve it.</p>
+                <p v-else-if="email.forwarding_confirmation_required">Connect your public mailbox to the Postmark address below.</p>
+                <p v-else>Send a normal email, receive a Statamic draft, review it, and publish when you are happy.</p>
             </div>
         </div>
 
-        <ol class="secretary-onboarding-progress" aria-label="Setup progress">
+        <ol class="secretary-onboarding-progress has-three" :class="{ 'has-four': email.forwarding_confirmation_required }" aria-label="Setup progress">
             <li :class="{ 'is-current': !configured, 'is-complete': configured }">
                 <span>{{ configured ? '✓' : '1' }}</span>
                 <div><strong>Connect OpenAI</strong><small>{{ configured ? 'Connected' : 'Required' }}</small></div>
             </li>
-            <li :class="{ 'is-current': configured }">
-                <span>2</span>
-                <div><strong>Choose email setup</strong><small>Optional</small></div>
+            <li :class="{ 'is-current': configured && !onboarding.safe_drafting.ready, 'is-complete': onboarding.safe_drafting.ready }">
+                <span>{{ onboarding.safe_drafting.ready ? '✓' : '2' }}</span>
+                <div><strong>Protect live content</strong><small>{{ onboarding.safe_drafting.ready ? 'Protected' : 'Required' }}</small></div>
+            </li>
+            <li :class="{ 'is-current': configured && onboarding.safe_drafting.ready && !emailReady, 'is-complete': emailReady }">
+                <span>{{ emailReady ? '✓' : '3' }}</span>
+                <div><strong>Connect email</strong><small>{{ emailReady ? 'Connected' : 'Recommended' }}</small></div>
+            </li>
+            <li v-if="email.forwarding_confirmation_required" class="is-current">
+                <span>4</span>
+                <div><strong>Forward email</strong><small>Required</small></div>
             </li>
         </ol>
 
@@ -146,12 +187,79 @@ function skipEmail() {
             </div>
         </form>
 
-        <div v-else class="secretary-onboarding-step">
+        <div v-else-if="!onboarding.safe_drafting.ready" class="secretary-onboarding-step">
             <div class="secretary-onboarding-step-heading">
                 <span>2</span>
                 <div>
+                    <h3>Turn on safe drafts</h3>
+                    <p>Secretary uses Statamic revisions to keep every proposed change separate from the published page.</p>
+                </div>
+            </div>
+
+            <div class="secretary-safe-drafting-flow" aria-label="How Secretary protects published content">
+                <span><ui-icon name="mail" aria-hidden="true" /><strong>1. Send an instruction</strong><small>Use email or Control Panel chat.</small></span>
+                <ui-icon name="arrow-right" aria-hidden="true" />
+                <span><ui-icon name="edit" aria-hidden="true" /><strong>2. Secretary makes a draft</strong><small>The live page stays unchanged.</small></span>
+                <ui-icon name="arrow-right" aria-hidden="true" />
+                <span><ui-icon name="checkmark" aria-hidden="true" /><strong>3. You decide</strong><small>Review, refine, then publish.</small></span>
+            </div>
+
+            <ui-alert
+                v-if="!onboarding.safe_drafting.pro"
+                variant="error"
+                heading="Statamic Pro is required"
+                text="Revisions are a Statamic Pro feature. Activate the site’s Pro license, then return here."
+            />
+            <div v-else class="secretary-onboarding-confirm">
+                <ui-button type="button" variant="primary" :loading="busy" :disabled="busy" @click="enableSafeDrafting">
+                    Enable safe drafts
+                </ui-button>
+                <small>This enables revisions for current collections. It does not change or publish any entry content.</small>
+            </div>
+        </div>
+
+        <div v-else-if="email.forwarding_confirmation_required" class="secretary-onboarding-step">
+            <div class="secretary-onboarding-step-heading">
+                <span>4</span>
+                <div>
+                    <h3>Forward your public mailbox</h3>
+                    <p>Postmark and the Secretary webhook are connected. Your mailbox now needs one forwarding rule.</p>
+                </div>
+            </div>
+
+            <div class="secretary-forwarding-step">
+                <span>
+                    <small>People send instructions to</small>
+                    <strong>{{ email.from_address }}</strong>
+                </span>
+                <ui-icon name="arrow-right" aria-hidden="true" />
+                <span>
+                    <small>Forward every message to</small>
+                    <strong>{{ email.inbound_address }}</strong>
+                </span>
+                <button type="button" class="secretary-copy-address" @click="copyInboundAddress">
+                    {{ copied ? 'Copied' : 'Copy address' }}
+                </button>
+            </div>
+
+            <p class="secretary-onboarding-explanation">
+                Create this forwarding rule with the email provider that hosts <strong>{{ email.from_address }}</strong>. Do not forward Secretary replies back into this mailbox.
+            </p>
+
+            <div class="secretary-onboarding-confirm">
+                <ui-button type="button" variant="primary" :loading="busy" :disabled="busy" @click="confirmPostmarkForwarding">
+                    I’ve set up forwarding
+                </ui-button>
+                <small>This confirms the external mailbox rule; Secretary cannot inspect your email provider.</small>
+            </div>
+        </div>
+
+        <div v-else class="secretary-onboarding-step">
+            <div class="secretary-onboarding-step-heading">
+                <span>3</span>
+                <div>
                     <h3>How should email work?</h3>
-                    <p>Choose the easy hosted setup or connect infrastructure you already control.</p>
+                    <p>This is Secretary’s core workflow: editors email instructions and receive a link to a safe Statamic draft.</p>
                 </div>
             </div>
 
@@ -178,15 +286,32 @@ function skipEmail() {
                     <button type="button" @click="selectedMode = null"><ui-icon name="arrow-left" aria-hidden="true" /> Back</button>
                     <ui-badge variant="success">Easy setup</ui-badge>
                 </div>
-                <div class="secretary-email-example">
-                    <span><small>Your email address</small><strong>{{ relayAddress }}</strong></span>
-                    <span class="text-xs text-gray-500">Included during beta</span>
-                </div>
                 <p class="secretary-onboarding-explanation">
-                    Verify an existing Statamic user. We send a one-time code, then connect this site automatically.
+                    Start with the live site address. Secretary uses its domain to create your unique <code>@statamic.no</code> address.
                 </p>
 
                 <form class="secretary-onboarding-inner-form" @submit.prevent="requestRelayCode">
+                    <div class="secretary-onboarding-url-first">
+                        <label for="secretary-onboarding-relay-url">This site’s public URL</label>
+                        <input
+                            id="secretary-onboarding-relay-url"
+                            v-model="relayPublicUrl"
+                            class="secretary-settings-input w-full"
+                            type="url"
+                            inputmode="url"
+                            placeholder="https://example.com"
+                            required
+                        >
+                        <p v-if="!relay.suggested_public_url">Use the live HTTPS address. A local <code>.test</code> address cannot receive relay email.</p>
+                    </div>
+                    <div class="secretary-email-example">
+                        <span>
+                            <small>Your Secretary address</small>
+                            <strong v-if="relayAddress">{{ relayAddress }}</strong>
+                            <em v-else>Enter the public URL above</em>
+                        </span>
+                        <span class="text-xs text-gray-500">Included during beta</span>
+                    </div>
                     <div>
                         <label for="secretary-onboarding-relay-email">Who will send instructions?</label>
                         <input
@@ -198,9 +323,9 @@ function skipEmail() {
                             placeholder="editor@example.com"
                             required
                         >
-                        <p>This must be an existing Statamic user with access to Secretary.</p>
+                        <p>Prefilled from your signed-in Statamic user. You can choose another authorized user.</p>
                     </div>
-                    <ui-button type="submit" :loading="busy" :disabled="busy || !relayEmail.trim()">
+                    <ui-button type="submit" :loading="busy" :disabled="busy || !relayPublicUrl.trim() || !relayEmail.trim()">
                         Send verification code
                     </ui-button>
                 </form>
@@ -220,19 +345,6 @@ function skipEmail() {
                             required
                         >
                         <p>Sent to {{ relay.pending_sender }}. Valid for 15 minutes.</p>
-                    </div>
-                    <div>
-                        <label for="secretary-onboarding-relay-url">This site’s public URL</label>
-                        <input
-                            id="secretary-onboarding-relay-url"
-                            v-model="relayPublicUrl"
-                            class="secretary-settings-input w-full"
-                            type="url"
-                            inputmode="url"
-                            placeholder="https://example.com"
-                            required
-                        >
-                        <p v-if="!relay.suggested_public_url">The relay needs a public HTTPS URL; a local <code>.test</code> address cannot receive email.</p>
                     </div>
                     <ui-button type="submit" variant="primary" :loading="busy" :disabled="busy || !pairingCode.trim() || !relayPublicUrl.trim()">
                         Connect email

@@ -2,6 +2,9 @@
 
 namespace AxelFerdinand\StatamicSecretary\Tests\Feature;
 
+use AxelFerdinand\StatamicSecretary\Diagnostics\DoctorReport;
+use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
+use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
 use AxelFerdinand\StatamicSecretary\Tests\TestCase;
 
 class DoctorCommandTest extends TestCase
@@ -15,6 +18,30 @@ class DoctorCommandTest extends TestCase
             ->expectsOutputToContain('Not configured.')
             ->doesntExpectOutputToContain('never-print-this-secret')
             ->assertSuccessful();
+    }
+
+    public function test_the_default_sync_queue_needs_no_worker(): void
+    {
+        config()->set('queue.default', 'sync');
+
+        $check = collect(app(DoctorReport::class)->checks(
+            app(EmailConfiguration::class),
+            app(RelayConfiguration::class),
+        ))->firstWhere('key', 'queue');
+
+        $this->assertTrue($check['passed']);
+        $this->assertSame('Background processing', $check['label']);
+        $this->assertSame('Built-in processing is active. No queue worker is required.', $check['success_details']);
+    }
+
+    public function test_missing_safe_drafts_are_a_blocking_problem(): void
+    {
+        config()->set('statamic.revisions.enabled', false);
+
+        $this->artisan('secretary:doctor')
+            ->expectsOutputToContain('Safe drafts')
+            ->expectsOutputToContain('blocking configuration problems')
+            ->assertFailed();
     }
 
     public function test_it_fails_when_required_configuration_is_missing(): void

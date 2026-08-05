@@ -4,10 +4,11 @@ This document preserves the remaining work required to turn Statamic Secretary f
 
 ## Product proof still required
 
-- Run `php please secretary:doctor` with the same persistent queue, OpenAI, and mail configuration customers will use in production.
+- Complete onboarding and run the Control Panel system check with the zero-configuration `sync` path customers receive by default.
+- Separately verify persistent-queue failure and recovery as an optional high-volume configuration; it is not a customer setup requirement.
 - Complete a real inspect → draft → publish flow and verify the resulting public URL.
 - Complete a real Postmark conversation from a new email thread through follow-up, draft, explicit publication, and the final reply.
-- Stop and restart the queue worker during a mail failure, then verify that retries remain idempotent.
+- For the optional persistent-queue configuration, stop and restart the worker during a mail failure and verify that retries remain idempotent.
 - Verify that a normal non-super editor can access only the collections, sites, and actions granted by native Statamic permissions.
 - Verify that a direct human edit prevents Secretary from publishing a stale proposal.
 - Complete the remaining Control Panel QA: dark mode, keyboard and focus cycle, loading, empty, error, pending, and published states.
@@ -46,7 +47,7 @@ The product must not be described as production-proven until these gates pass.
    ```
 
 8. Open **Content → Secretary**, add an OpenAI key, and choose the hosted relay or a private Postmark server. Do not add Secretary secrets to `.env` for this test.
-9. Confirm the package migrations ran automatically without depending on the repository's test harness. Installations that explicitly set `SECRETARY_AUTO_MIGRATE=false` may run `php please secretary:install` later.
+9. Confirm the private SQLite store is created and migrated automatically without depending on the site's default database. Installations that explicitly set `SECRETARY_AUTO_MIGRATE=false` must initialize it on the first Secretary request without terminal access.
 10. Verify addon discovery, published assets, CP navigation, permissions, chat, draft creation, email onboarding, and uninstall behavior.
 11. Repeat this install test using the exact command shown by the Marketplace product.
 

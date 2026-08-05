@@ -2,11 +2,12 @@
 
 namespace AxelFerdinand\StatamicSecretary\Diagnostics;
 
+use AxelFerdinand\StatamicSecretary\Content\SafeDrafting;
+use AxelFerdinand\StatamicSecretary\Database\SecretaryDatabase;
 use AxelFerdinand\StatamicSecretary\Developer\ToolRegistry;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
 use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
-use Illuminate\Support\Facades\Schema;
 use Statamic\Assets\AssetUploader;
 use Statamic\Facades\AssetContainer;
 use Symfony\Component\Mailer\Bridge\Postmark\Transport\PostmarkTransportFactory;
@@ -14,7 +15,11 @@ use Throwable;
 
 final class DoctorReport
 {
-    public function __construct(private readonly ToolRegistry $tools) {}
+    public function __construct(
+        private readonly ToolRegistry $tools,
+        private readonly SafeDrafting $safeDrafting,
+        private readonly SecretaryDatabase $database,
+    ) {}
 
     /** @return array<int, array{key: string, label: string, passed: bool, required: bool, details: string, success_details: string}> */
     public function checks(EmailConfiguration $email, RelayConfiguration $relay): array
@@ -29,28 +34,14 @@ final class DoctorReport
             $this->check('content_root', 'Content root', is_dir($root) && is_writable($root), true, 'The configured content directory must exist and be writable.'),
             $this->check(
                 'database',
-                'Database tables',
-                collect(['secretary_conversations', 'secretary_messages', 'secretary_change_sets', 'secretary_settings'])->every(fn (string $table): bool => Schema::hasTable($table))
-                    && Schema::hasColumn('secretary_change_sets', 'live_base_fingerprint')
-                    && Schema::hasColumn('secretary_change_sets', 'review')
-                    && Schema::hasColumn('secretary_messages', 'reply_to_message_id'),
+                'Secretary storage',
+                $this->database->ready(),
                 true,
-                'Run the addon migrations.',
+                'Secretary could not initialize its private storage. Make sure Laravel\'s storage directory is writable, then run the checks again.',
+                'Private storage is ready.',
             ),
-            $this->check(
-                'revisions',
-                'Entry revisions',
-                (bool) config('statamic.revisions.enabled'),
-                false,
-                'Published entry updates are refused until Statamic revisions are enabled.',
-            ),
-            $this->check(
-                'queue',
-                'Async queue',
-                config('queue.default') !== 'sync',
-                false,
-                'Use a persistent queue worker for CP and inbound email in production.',
-            ),
+            $this->revisionCheck(),
+            $this->backgroundProcessingCheck(),
             $this->queueRetryWindowCheck(),
             $this->check(
                 'relay',
@@ -156,10 +147,41 @@ final class DoctorReport
 
         return $this->check(
             'queue_retry',
-            'Queue retry window',
+            'Job retry protection',
             $passed,
             false,
             "Set the [{$connection}] queue retry_after above Secretary's {$jobTimeout}-second job timeout.",
+        );
+    }
+
+    private function revisionCheck(): array
+    {
+        $status = $this->safeDrafting->status();
+
+        return $this->check(
+            'revisions',
+            'Safe drafts',
+            $status['ready'],
+            true,
+            $status['details'],
+            $status['success_details'],
+        );
+    }
+
+    private function backgroundProcessingCheck(): array
+    {
+        $connection = (string) config('queue.default');
+        $details = $connection === 'sync'
+            ? 'Built-in processing is active. No queue worker is required.'
+            : "Uses your site's [{$connection}] queue connection.";
+
+        return $this->check(
+            'queue',
+            'Background processing',
+            true,
+            false,
+            '',
+            $details,
         );
     }
 

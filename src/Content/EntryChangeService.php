@@ -23,7 +23,12 @@ final class EntryChangeService
         private readonly ContentPathGuard $pathGuard,
         private readonly EntrySnapshotter $snapshotter,
         private readonly BlueprintValues $blueprintValues,
-    ) {}
+        SafeDrafting $safeDrafting,
+    ) {
+        // Long-running queue workers may have started before onboarding enabled
+        // revisions. Refresh the managed setting whenever content tools resolve.
+        $safeDrafting->applyManagedConfiguration();
+    }
 
     /** @param  array<string, mixed>  $patch */
     public function proposeUpdate(

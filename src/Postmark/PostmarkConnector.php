@@ -82,6 +82,7 @@ final class PostmarkConnector
             'webhook_endpoint' => $this->email->webhookEndpoint($publicUrl),
             'webhook_credentials_fingerprint' => $this->email->webhookCredentialsFingerprint(),
             'connected_at' => now()->toIso8601String(),
+            'forwarding_confirmed_at' => null,
         ];
 
         $this->email->store($settings);

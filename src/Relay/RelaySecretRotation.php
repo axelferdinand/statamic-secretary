@@ -2,12 +2,15 @@
 
 namespace AxelFerdinand\StatamicSecretary\Relay;
 
+use AxelFerdinand\StatamicSecretary\Database\SecretaryDatabase;
 use AxelFerdinand\StatamicSecretary\Exceptions\RelaySecretRotationFailed;
-use Illuminate\Support\Facades\DB;
 
 final readonly class RelaySecretRotation
 {
-    public function __construct(private RelayConfiguration $configuration) {}
+    public function __construct(
+        private RelayConfiguration $configuration,
+        private SecretaryDatabase $database,
+    ) {}
 
     /** @return array{rotation_id: string, grace_expires_at: int, duplicate: bool} */
     public function install(
@@ -32,7 +35,7 @@ final readonly class RelaySecretRotation
             throw new RelaySecretRotationFailed('Relay signing-secret rotation input is invalid.');
         }
 
-        return DB::transaction(function () use (
+        return $this->database->transaction(function () use (
             $newSecret,
             $rotationId,
             $graceMinutes,

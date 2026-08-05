@@ -35,6 +35,10 @@ const conversationQuery = ref('');
 const conversationMenuOpen = ref(false);
 const busy = ref(false);
 const setupBusy = ref(false);
+const diagnosticsBusy = ref(false);
+const safeDraftingBusy = ref(false);
+const copiedPostmarkAddress = ref(false);
+const copiedActiveEmailAddress = ref(false);
 const postmarkApiKey = ref('');
 const publishCandidate = ref(null);
 const reviewingTarget = ref(null);
@@ -62,6 +66,17 @@ const activeEmailAddress = computed(() => {
 
     return null;
 });
+const firstEmailSender = computed(() => props.relay_setup.sender
+    ?? props.relay_setup.suggested_sender
+    ?? null);
+const firstEmailHref = computed(() => {
+    if (!activeEmailAddress.value) return null;
+
+    const subject = encodeURIComponent('My first Secretary request');
+    const body = encodeURIComponent('Please make the homepage introduction clearer.');
+
+    return `mailto:${activeEmailAddress.value}?subject=${subject}&body=${body}`;
+});
 const showSetup = ref(!emailConnected.value);
 const setupMode = ref(props.relay_setup.connected || (!props.email_setup.token_configured && props.relay_setup.pairing_available)
     ? 'relay'
@@ -73,7 +88,7 @@ const relayEmail = ref(props.relay_setup.pending_sender
     ?? props.relay_setup.sender
     ?? props.relay_setup.suggested_sender
     ?? '');
-const relayPublicUrl = ref(props.relay_setup.suggested_public_url ?? '');
+const relayPublicUrl = ref(props.relay_setup.pending_public_url ?? props.relay_setup.suggested_public_url ?? '');
 const sharedAddressPreview = computed(() => {
     if (props.relay_setup.address) {
         return props.relay_setup.address;
@@ -86,23 +101,29 @@ const sharedAddressPreview = computed(() => {
             return `${hostname}@statamic.no`;
         }
     } catch {
-        // Keep the example until a valid public URL has been entered.
+        // Show the address only after a valid public URL has been entered.
     }
 
-    return 'yourdomain.com@statamic.no';
+    return null;
 });
 const actionError = ref(null);
+const postmarkForwardingRequired = computed(() => props.email_setup.connected
+    && props.email_setup.forwarding_confirmation_required);
+const safeDraftingRequired = computed(() => props.configured
+    && !props.onboarding.safe_drafting.ready);
 const onboardingActive = computed(() => props.openai_setup.can_configure
-    && (!props.configured || (
+    && (!props.configured || safeDraftingRequired.value || postmarkForwardingRequired.value || (
         props.conversations.length === 0
         && !emailConnected.value
         && !props.onboarding.email_skipped
     )));
 const error = computed(() => props.errors?.secretary ?? actionError.value ?? null);
 const setupError = computed(() => props.errors?.relay_setup
+    ?? props.errors?.safe_drafting
     ?? props.errors?.pairing_code
     ?? props.errors?.relay_email
     ?? props.errors?.postmark_setup
+    ?? props.errors?.postmark_api_key
     ?? props.errors?.email
     ?? props.errors?.public_url
     ?? null);
@@ -141,6 +162,26 @@ const diagnosticSummary = computed(() => {
 
     return { blockers, warnings, ready: blockers === 0 };
 });
+
+function enableSafeDrafting() {
+    if (safeDraftingBusy.value || !props.onboarding.safe_drafting.setup_url) return;
+
+    router.post(props.onboarding.safe_drafting.setup_url, {}, {
+        preserveScroll: true,
+        onStart: () => safeDraftingBusy.value = true,
+        onFinish: () => safeDraftingBusy.value = false,
+    });
+}
+
+function runDiagnostics() {
+    if (diagnosticsBusy.value || !props.diagnostics.run_url) return;
+
+    router.post(props.diagnostics.run_url, {}, {
+        preserveScroll: true,
+        onStart: () => diagnosticsBusy.value = true,
+        onFinish: () => diagnosticsBusy.value = false,
+    });
+}
 const promptSuggestions = computed(() => {
     const field = props.conversation?.context?.field;
 
@@ -214,9 +255,10 @@ function connectRelay() {
 }
 
 function requestRelayCode() {
-    if (!props.relay_setup.pairing_available || !relayEmail.value.trim() || setupBusy.value) return;
+    if (!props.relay_setup.pairing_available || !relayPublicUrl.value.trim() || !relayEmail.value.trim() || setupBusy.value) return;
 
     router.post(props.relay_setup.request_code_url, {
+        public_url: relayPublicUrl.value.trim(),
         email: relayEmail.value.trim(),
     }, {
         preserveScroll: true,
@@ -224,6 +266,28 @@ function requestRelayCode() {
         onSuccess: () => nextTick(() => document.getElementById('secretary-pairing-code')?.focus()),
         onFinish: () => setupBusy.value = false,
     });
+}
+
+async function copyPostmarkAddress() {
+    if (!props.email_setup.inbound_address) return;
+
+    try {
+        await navigator.clipboard.writeText(props.email_setup.inbound_address);
+        copiedPostmarkAddress.value = true;
+    } catch {
+        copiedPostmarkAddress.value = false;
+    }
+}
+
+async function copyActiveEmailAddress() {
+    if (!activeEmailAddress.value) return;
+
+    try {
+        await navigator.clipboard.writeText(activeEmailAddress.value);
+        copiedActiveEmailAddress.value = true;
+    } catch {
+        copiedActiveEmailAddress.value = false;
+    }
 }
 
 function send() {
@@ -618,12 +682,22 @@ watch(guideSite, loadGuide);
                     </a>
                     <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
                         <template v-if="email_setup.server_name">{{ email_setup.server_name }} · </template>
-                        Forwarded to the Postmark address below.
+                        Keep this forwarding rule active so Postmark can deliver instructions to Secretary.
                     </p>
-                    <details class="secretary-technical-address">
-                        <summary>Show technical Postmark address</summary>
-                        <code>{{ email_setup.inbound_address }}</code>
-                    </details>
+                    <div class="secretary-forwarding-route">
+                        <span>
+                            <small>Forward mail from</small>
+                            <strong>{{ email_setup.from_address }}</strong>
+                        </span>
+                        <ui-icon name="arrow-right" aria-hidden="true" />
+                        <span>
+                            <small>To Postmark</small>
+                            <strong>{{ email_setup.inbound_address }}</strong>
+                        </span>
+                        <button type="button" @click="copyPostmarkAddress">
+                            {{ copiedPostmarkAddress ? 'Copied' : 'Copy' }}
+                        </button>
+                    </div>
                 </div>
                 <ui-button
                     v-if="email_setup.can_configure"
@@ -684,20 +758,38 @@ watch(guideSite, loadGuide);
 
                 <div v-if="setupMode === 'relay' && relay_setup.pairing_available" class="space-y-5">
                     <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
-                        Fastest setup: verify an existing Statamic user without creating your own Postmark server.
-                    </p>
-                    <div class="secretary-email-example">
-                        <span>
-                            <small>Your Secretary address</small>
-                            <strong>{{ sharedAddressPreview }}</strong>
-                        </span>
-                        <ui-badge variant="success">Recommended</ui-badge>
-                    </div>
-                    <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
-                        You can also use <strong>secretary@statamic.no</strong> when the sender is connected to only one site.
+                        Start with the live site address. Secretary uses its domain to create your unique <code>@statamic.no</code> address.
                     </p>
 
-                    <form class="rounded-lg border p-4 dark:border-gray-700" @submit.prevent="requestRelayCode">
+                    <form class="space-y-4 rounded-lg border p-4 dark:border-gray-700" @submit.prevent="requestRelayCode">
+                        <div>
+                            <label for="secretary-relay-public-url" class="mb-1.5 block text-sm font-semibold">This site’s public URL</label>
+                            <input
+                                id="secretary-relay-public-url"
+                                v-model="relayPublicUrl"
+                                class="secretary-settings-input w-full"
+                                type="url"
+                                inputmode="url"
+                                placeholder="https://example.com"
+                                required
+                            >
+                            <p v-if="!relay_setup.suggested_public_url" class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                                Use the live HTTPS address. A local <code>.test</code> address cannot receive relay email.
+                            </p>
+                        </div>
+
+                        <div class="secretary-email-example">
+                            <span>
+                                <small>Your Secretary address</small>
+                                <strong v-if="sharedAddressPreview">{{ sharedAddressPreview }}</strong>
+                                <em v-else>Enter the public URL above</em>
+                            </span>
+                            <ui-badge variant="success">Recommended</ui-badge>
+                        </div>
+                        <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                            You can also use <strong>secretary@statamic.no</strong> when the sender is connected to only one site.
+                        </p>
+
                         <div class="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                             <div>
                                 <label for="secretary-relay-email" class="mb-1.5 block text-sm font-semibold">Authorized sender</label>
@@ -711,17 +803,16 @@ watch(guideSite, loadGuide);
                                     required
                                 >
                                 <p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                                    The address must belong to a Statamic user with access to Secretary.
+                                    Prefilled from your signed-in Statamic user. You can choose another authorized user.
                                 </p>
                             </div>
-                            <ui-button type="submit" :disabled="setupBusy || !relayEmail.trim()">
+                            <ui-button type="submit" :disabled="setupBusy || !relayPublicUrl.trim() || !relayEmail.trim()">
                                 {{ setupBusy ? 'Sending …' : 'Send one-time code' }}
                             </ui-button>
                         </div>
                     </form>
 
-                    <form class="space-y-4" @submit.prevent="connectRelay">
-                        <div class="grid gap-4 md:grid-cols-2">
+                    <form v-if="relay_setup.pending_sender" class="space-y-4" @submit.prevent="connectRelay">
                         <div>
                             <label for="secretary-pairing-code" class="mb-1.5 block text-sm font-semibold">One-time code</label>
                             <input
@@ -738,23 +829,6 @@ watch(guideSite, loadGuide);
                             <p v-if="relay_setup.pending_sender" class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
                                 The code was sent to {{ relay_setup.pending_sender }} and is valid for 15 minutes.
                             </p>
-                        </div>
-
-                        <div>
-                            <label for="secretary-relay-public-url" class="mb-1.5 block text-sm font-semibold">Site’s public HTTPS URL</label>
-                            <input
-                                id="secretary-relay-public-url"
-                                v-model="relayPublicUrl"
-                                class="secretary-settings-input w-full"
-                                type="url"
-                                inputmode="url"
-                                placeholder="https://example.com"
-                                required
-                            >
-                            <p v-if="!relay_setup.suggested_public_url" class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                                Local testing: paste the HTTPS URL from Herd Share. The relay cannot reach a <code>.test</code> address.
-                            </p>
-                        </div>
                         </div>
 
                         <div class="flex flex-wrap items-center gap-3">
@@ -954,7 +1028,7 @@ watch(guideSite, loadGuide);
                         <span class="secretary-tools-panel-icon"><ui-icon name="dashboard" aria-hidden="true" /></span>
                         <span class="min-w-0 flex-1">
                             <strong>System status</strong>
-                            <small>The same checks as <code>secretary:doctor</code></small>
+                            <small>Checks safe drafts, email, AI, and content access</small>
                         </span>
                         <ui-badge class="secretary-disclosure-badge" :variant="diagnosticSummary.ready ? (diagnosticSummary.warnings ? 'warning' : 'success') : 'error'">
                             {{ diagnosticSummary.ready ? (diagnosticSummary.warnings ? `${diagnosticSummary.warnings} warnings` : 'All clear') : `${diagnosticSummary.blockers} errors` }}
@@ -976,11 +1050,30 @@ watch(guideSite, loadGuide);
                                     <strong>{{ check.label }}</strong>
                                     <small>{{ check.passed ? check.success_details : check.details }}</small>
                                 </span>
+                                <ui-button
+                                    v-if="check.key === 'revisions' && !check.passed && diagnostics.can_configure && onboarding.safe_drafting.pro"
+                                    type="button"
+                                    size="sm"
+                                    :loading="safeDraftingBusy"
+                                    :disabled="safeDraftingBusy"
+                                    @click="enableSafeDrafting"
+                                >
+                                    Enable
+                                </ui-button>
                             </li>
                         </ul>
-                        <p class="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                            CLI: <code>php please secretary:doctor --json</code>
-                        </p>
+                        <div v-if="diagnostics.can_configure" class="secretary-diagnostics-actions">
+                            <ui-button
+                                type="button"
+                                size="sm"
+                                :loading="diagnosticsBusy"
+                                :disabled="diagnosticsBusy"
+                                @click="runDiagnostics"
+                            >
+                                Run checks again
+                            </ui-button>
+                            <small>Checks run here in the Control Panel. No terminal required.</small>
+                        </div>
                     </div>
                 </details>
             </section>
@@ -1301,18 +1394,67 @@ watch(guideSite, loadGuide);
                     </form>
                 </template>
 
-                <div v-else class="grid flex-1 place-items-center px-6 py-20 text-center">
-                    <div class="max-w-md">
+                <div v-else class="secretary-ready-state">
+                    <div v-if="emailConnected && activeEmailAddress" class="secretary-ready-state-inner is-email-first">
+                        <div class="secretary-email-ready-label">
+                            <span aria-hidden="true"></span>
+                            Email is ready
+                        </div>
+                        <div class="secretary-empty-icon mx-auto">
+                            <ui-icon name="mail" aria-hidden="true" />
+                        </div>
+                        <h2>Send your first instruction</h2>
+                        <p class="secretary-first-email-intro">
+                            Write what you want changed in plain language. Secretary will reply when a safe draft is ready for review.
+                        </p>
+
+                        <div class="secretary-first-email-address">
+                            <span>
+                                <small>Send your email to</small>
+                                <a :href="firstEmailHref">{{ activeEmailAddress }}</a>
+                            </span>
+                            <button type="button" @click="copyActiveEmailAddress">
+                                {{ copiedActiveEmailAddress ? 'Copied' : 'Copy address' }}
+                            </button>
+                        </div>
+
+                        <p class="secretary-first-email-sender">
+                            <template v-if="firstEmailSender">
+                                Send from <strong>{{ firstEmailSender }}</strong>, the Statamic user connected to Secretary.
+                            </template>
+                            <template v-else>
+                                Send from a Statamic user with access to Secretary.
+                            </template>
+                        </p>
+
+                        <div class="secretary-ready-state-action is-email-first">
+                            <a :href="firstEmailHref" class="secretary-compose-email-button">
+                                <ui-icon name="mail" aria-hidden="true" />
+                                Open email app
+                            </a>
+                            <button type="button" class="secretary-chat-instead" :disabled="busy" @click="newConversation">
+                                Use Control Panel chat instead
+                            </button>
+                        </div>
+
+                        <p class="secretary-first-email-example">
+                            Try: “Make the homepage introduction clearer.”
+                        </p>
+                    </div>
+
+                    <div v-else class="secretary-ready-state-inner">
                         <div class="secretary-empty-icon mx-auto">
                             <ui-icon name="ai-chat-spark" aria-hidden="true" />
                         </div>
-                        <h2 class="mt-4 text-lg font-bold">Secretary is ready</h2>
-                        <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                        <h2>Secretary is ready</h2>
+                        <p>
                             Start with a plain-language request. Secretary checks the site’s actual structure before preparing anything.
                         </p>
-                        <ui-button class="mt-5" variant="primary" icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
-                            Start a conversation
-                        </ui-button>
+                        <div class="secretary-ready-state-action">
+                            <ui-button variant="primary" icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
+                                Start a conversation
+                            </ui-button>
+                        </div>
                     </div>
                 </div>
             </ui-panel>

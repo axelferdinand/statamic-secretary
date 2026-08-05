@@ -2,8 +2,8 @@
 
 namespace AxelFerdinand\StatamicSecretary\OpenAI;
 
+use AxelFerdinand\StatamicSecretary\Database\SecretaryDatabase;
 use AxelFerdinand\StatamicSecretary\Models\Setting;
-use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 final class OpenAIConfiguration
@@ -57,7 +57,7 @@ final class OpenAIConfiguration
         }
 
         try {
-            if (! Schema::hasTable('secretary_settings')) {
+            if (! app(SecretaryDatabase::class)->schema()->hasTable('secretary_settings')) {
                 return $this->stored = [];
             }
 

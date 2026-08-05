@@ -131,4 +131,4 @@ Verify `hash_hmac('sha256', $exactRawBody, $secret)` using a constant-time compa
 
 ## Operational diagnostics
 
-`secretary:doctor` and the Control Panel system-status card are backed by the same report service. They cover OpenAI, content root, migrations, revisions, queue/retry window, relay, email transport, configured developer tools, and webhook signing configuration without returning credential values.
+The Control Panel's **Run checks again** action and `secretary:doctor` are backed by the same report service. They cover OpenAI, content root, private storage, safe drafts, built-in or persistent background processing, relay, email transport, configured developer tools, and webhook signing configuration without returning credential values. The default `sync` connection is a supported no-worker path; persistent queues are an optional operations choice.

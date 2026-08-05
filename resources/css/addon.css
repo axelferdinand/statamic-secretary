@@ -915,6 +915,11 @@
         padding: clamp(1.25rem, 3vw, 2rem);
     }
 
+    .secretary-onboarding-intro > div:last-child,
+    .secretary-onboarding-step-heading > div {
+        min-width: 0;
+    }
+
     .secretary-onboarding-icon {
         display: grid;
         width: 3rem;
@@ -947,6 +952,7 @@
         font-size: clamp(1.35rem, 3vw, 1.75rem);
         font-weight: 750;
         line-height: 1.2;
+        overflow-wrap: anywhere;
     }
 
     .secretary-onboarding-intro p {
@@ -962,6 +968,14 @@
         border-block: 1px solid var(--color-content-border);
         background: var(--color-gray-50);
         padding: 0.75rem clamp(1.25rem, 3vw, 2rem);
+    }
+
+    .secretary-onboarding-progress.has-three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .secretary-onboarding-progress.has-four {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .secretary-onboarding-progress li {
@@ -1041,6 +1055,7 @@
         font-size: 1.125rem;
         font-weight: 750;
         line-height: 1.4;
+        overflow-wrap: anywhere;
     }
 
     .secretary-onboarding-step-heading p,
@@ -1049,6 +1064,56 @@
         color: var(--color-gray-600);
         font-size: 0.8125rem;
         line-height: 1.4rem;
+    }
+
+    .secretary-safe-drafting-flow {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+        border: 1px solid color-mix(in oklch, var(--color-primary) 20%, var(--color-content-border));
+        border-radius: 0.875rem;
+        background: color-mix(in oklch, var(--color-primary) 4%, var(--color-content-bg));
+        padding: 1rem;
+    }
+
+    .secretary-safe-drafting-flow > span {
+        min-width: 0;
+    }
+
+    .secretary-safe-drafting-flow > span > svg {
+        width: 1.125rem;
+        height: 1.125rem;
+        margin-bottom: 0.65rem;
+        color: var(--color-primary);
+    }
+
+    .secretary-safe-drafting-flow strong,
+    .secretary-safe-drafting-flow small {
+        display: block;
+    }
+
+    .secretary-safe-drafting-flow strong {
+        color: var(--color-gray-900);
+        font-size: 0.75rem;
+        line-height: 1.2rem;
+    }
+
+    .secretary-safe-drafting-flow small {
+        margin-top: 0.2rem;
+        color: var(--color-gray-500);
+        font-size: 0.6875rem;
+        line-height: 1.1rem;
+    }
+
+    .secretary-safe-drafting-flow > svg {
+        width: 1rem;
+        color: var(--color-gray-400);
+    }
+
+    .secretary-safe-drafting-flow + [role="alert"] {
+        margin-top: 1rem;
     }
 
     .secretary-onboarding-form-row,
@@ -1221,6 +1286,11 @@
         padding-top: 1rem;
     }
 
+    .secretary-onboarding-url-first,
+    .secretary-onboarding-inner-form > .secretary-email-example {
+        grid-column: 1 / -1;
+    }
+
     .secretary-onboarding-inner-form.is-code {
         align-items: start;
     }
@@ -1229,6 +1299,84 @@
         display: grid;
         gap: 1rem;
         margin-block: 1.25rem;
+    }
+
+    .secretary-forwarding-step {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 1.25rem;
+        border: 1px solid color-mix(in oklch, var(--color-primary) 24%, var(--color-content-border));
+        border-radius: 0.75rem;
+        background: color-mix(in oklch, var(--color-primary) 5%, var(--color-content-bg));
+        padding: 1rem;
+    }
+
+    .secretary-forwarding-step > span {
+        min-width: 0;
+    }
+
+    .secretary-forwarding-step small,
+    .secretary-forwarding-step strong {
+        display: block;
+    }
+
+    .secretary-forwarding-step small {
+        color: var(--color-gray-500);
+        font-size: 0.6875rem;
+        font-weight: 700;
+        letter-spacing: 0.035em;
+        text-transform: uppercase;
+    }
+
+    .secretary-forwarding-step strong {
+        margin-top: 0.3rem;
+        overflow-wrap: anywhere;
+        color: var(--color-gray-950);
+        font-size: 0.875rem;
+        line-height: 1.35;
+    }
+
+    .secretary-forwarding-step > svg {
+        width: 1rem;
+        color: var(--color-gray-400);
+    }
+
+    .secretary-copy-address {
+        cursor: pointer;
+        border: 1px solid var(--color-content-border);
+        border-radius: 0.5rem;
+        background: var(--color-content-bg);
+        padding: 0.55rem 0.75rem;
+        color: var(--color-primary);
+        font-size: 0.75rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .secretary-copy-address:hover {
+        border-color: color-mix(in oklch, var(--color-primary) 45%, var(--color-content-border));
+    }
+
+    .secretary-copy-address:focus-visible {
+        outline: 2px solid var(--color-focus-outline);
+        outline-offset: 2px;
+    }
+
+    .secretary-onboarding-confirm {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 1.25rem;
+    }
+
+    .secretary-onboarding-confirm small {
+        max-width: 32rem;
+        color: var(--color-gray-500);
+        font-size: 0.6875rem;
+        line-height: 1.15rem;
     }
 
     .secretary-onboarding-skip {
@@ -1492,6 +1640,74 @@
         line-height: 1.35;
     }
 
+    .secretary-email-example em {
+        display: block;
+        margin-top: 0.35rem;
+        color: var(--color-gray-500);
+        font-size: 0.8125rem;
+        font-style: normal;
+        line-height: 1.35;
+    }
+
+    .secretary-forwarding-route {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.75rem;
+        max-width: 52rem;
+        margin-top: 1rem;
+        border: 1px solid var(--color-content-border);
+        border-radius: 0.65rem;
+        background: var(--color-gray-50);
+        padding: 0.75rem;
+    }
+
+    .secretary-forwarding-route > span {
+        min-width: 0;
+    }
+
+    .secretary-forwarding-route small,
+    .secretary-forwarding-route strong {
+        display: block;
+    }
+
+    .secretary-forwarding-route small {
+        color: var(--color-gray-500);
+        font-size: 0.625rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .secretary-forwarding-route strong {
+        margin-top: 0.2rem;
+        overflow-wrap: anywhere;
+        color: var(--color-gray-900);
+        font-size: 0.75rem;
+        line-height: 1.25;
+    }
+
+    .secretary-forwarding-route > svg {
+        width: 0.9rem;
+        color: var(--color-gray-400);
+    }
+
+    .secretary-forwarding-route > button {
+        cursor: pointer;
+        border: 1px solid var(--color-content-border);
+        border-radius: 0.45rem;
+        background: var(--color-content-bg);
+        padding: 0.45rem 0.6rem;
+        color: var(--color-primary);
+        font-size: 0.6875rem;
+        font-weight: 700;
+    }
+
+    .secretary-forwarding-route > button:focus-visible {
+        outline: 2px solid var(--color-focus-outline);
+        outline-offset: 2px;
+    }
+
     .secretary-setup-recommended {
         display: inline-flex;
         margin-inline-start: 0.35rem;
@@ -1736,7 +1952,219 @@
     }
 
     .secretary-main-panel {
+        display: flex;
         min-height: 38rem;
+        flex-direction: column;
+    }
+
+    .secretary-ready-state {
+        display: grid;
+        min-height: 0;
+        flex: 1 1 auto;
+        place-items: center;
+        padding: clamp(3rem, 8svh, 6rem) 1.5rem;
+        text-align: center;
+    }
+
+    .secretary-ready-state-inner {
+        width: min(100%, 30rem);
+        margin: auto;
+    }
+
+    .secretary-ready-state-inner.is-email-first {
+        width: min(100%, 36rem);
+    }
+
+    .secretary-ready-state h2 {
+        margin-top: 1.25rem;
+        color: var(--color-gray-950);
+        font-size: 1.125rem;
+        font-weight: 750;
+        line-height: 1.45;
+    }
+
+    .secretary-ready-state p {
+        margin-top: 0.625rem;
+        color: var(--color-gray-500);
+        font-size: 0.875rem;
+        line-height: 1.5rem;
+    }
+
+    .secretary-ready-state-action {
+        display: flex;
+        justify-content: center;
+        margin-top: 1.5rem;
+    }
+
+    .secretary-email-ready-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        border-radius: 9999px;
+        background: var(--color-green-100);
+        padding: 0.35rem 0.65rem;
+        color: var(--color-green-700);
+        font-size: 0.6875rem;
+        font-weight: 750;
+        letter-spacing: 0.035em;
+        line-height: 1;
+        text-transform: uppercase;
+    }
+
+    .secretary-email-ready-label > span {
+        width: 0.4rem;
+        height: 0.4rem;
+        border-radius: 9999px;
+        background: currentColor;
+    }
+
+    .secretary-ready-state-inner.is-email-first > .secretary-empty-icon {
+        margin-top: 1.25rem;
+    }
+
+    .secretary-ready-state-inner.is-email-first h2 {
+        font-size: clamp(1.35rem, 3vw, 1.625rem);
+        line-height: 1.25;
+    }
+
+    .secretary-ready-state .secretary-first-email-intro {
+        max-width: 31rem;
+        margin-inline: auto;
+    }
+
+    .secretary-first-email-address {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-top: 1.5rem;
+        border: 1px solid color-mix(in oklch, var(--color-primary) 26%, var(--color-content-border));
+        border-radius: 0.75rem;
+        background: color-mix(in oklch, var(--color-primary) 6%, var(--color-content-bg));
+        padding: 1rem;
+        text-align: left;
+    }
+
+    .secretary-first-email-address > span {
+        min-width: 0;
+    }
+
+    .secretary-first-email-address small {
+        display: block;
+        color: var(--color-gray-500);
+        font-size: 0.6875rem;
+        font-weight: 750;
+        letter-spacing: 0.045em;
+        line-height: 1;
+        text-transform: uppercase;
+    }
+
+    .secretary-first-email-address a {
+        display: block;
+        margin-top: 0.4rem;
+        overflow-wrap: anywhere;
+        color: var(--color-gray-950);
+        font-size: clamp(0.9375rem, 2.5vw, 1.125rem);
+        font-weight: 750;
+        line-height: 1.35;
+        text-decoration: underline;
+        text-decoration-color: color-mix(in oklch, var(--color-primary) 38%, transparent);
+        text-underline-offset: 0.18em;
+    }
+
+    .secretary-first-email-address a:hover {
+        color: var(--color-primary);
+        text-decoration-color: currentColor;
+    }
+
+    .secretary-first-email-address button {
+        flex: none;
+        cursor: pointer;
+        border: 1px solid var(--color-content-border);
+        border-radius: 0.5rem;
+        background: var(--color-content-bg);
+        padding: 0.55rem 0.75rem;
+        color: var(--color-primary);
+        font-size: 0.75rem;
+        font-weight: 700;
+        white-space: nowrap;
+        box-shadow: var(--shadow-ui-xs);
+    }
+
+    .secretary-first-email-address a:focus-visible,
+    .secretary-first-email-address button:focus-visible,
+    .secretary-compose-email-button:focus-visible,
+    .secretary-chat-instead:focus-visible {
+        outline: 2px solid var(--color-focus-outline);
+        outline-offset: 2px;
+    }
+
+    .secretary-ready-state .secretary-first-email-sender {
+        margin-top: 0.75rem;
+        color: var(--color-gray-600);
+        font-size: 0.75rem;
+        line-height: 1.25rem;
+    }
+
+    .secretary-ready-state-action.is-email-first {
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem 1rem;
+    }
+
+    .secretary-compose-email-button {
+        display: inline-flex;
+        min-height: 2.75rem;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        border: 1px solid color-mix(in oklch, var(--color-primary) 72%, black);
+        border-radius: 0.625rem;
+        background: var(--color-primary);
+        padding: 0.625rem 1rem;
+        color: white;
+        font-size: 0.875rem;
+        font-weight: 700;
+        line-height: 1;
+        box-shadow: var(--shadow-ui-md);
+        transition: filter 140ms ease, transform 140ms ease;
+    }
+
+    .secretary-compose-email-button:hover {
+        color: white;
+        filter: brightness(1.06);
+        transform: translateY(-1px);
+    }
+
+    .secretary-compose-email-button > svg {
+        width: 1rem;
+        height: 1rem;
+    }
+
+    .secretary-chat-instead {
+        cursor: pointer;
+        border-radius: 0.4rem;
+        color: var(--color-primary);
+        font-size: 0.8125rem;
+        font-weight: 700;
+    }
+
+    .secretary-chat-instead:hover {
+        text-decoration: underline;
+        text-underline-offset: 0.18em;
+    }
+
+    .secretary-chat-instead:disabled {
+        cursor: wait;
+        opacity: 0.55;
+    }
+
+    .secretary-ready-state .secretary-first-email-example {
+        margin-top: 1.25rem;
+        color: var(--color-gray-500);
+        font-size: 0.75rem;
+        font-style: italic;
+        line-height: 1.25rem;
     }
 
     .secretary-tools-panel > summary {
@@ -1870,6 +2298,22 @@
         color: var(--color-red-700);
     }
 
+    .secretary-diagnostics-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 1rem;
+        border-top: 1px solid var(--color-content-border);
+        padding-top: 1rem;
+    }
+
+    .secretary-diagnostics-actions small {
+        color: var(--color-gray-500);
+        font-size: 0.6875rem;
+        line-height: 1.1rem;
+    }
+
     @keyframes secretary-working-dot {
         0%,
         60%,
@@ -1937,7 +2381,8 @@
 
     @media (max-width: 39.999rem) {
         .secretary-onboarding-intro {
-            align-items: center;
+            align-items: flex-start;
+            flex-direction: column;
         }
 
         .secretary-onboarding-progress li > div {
@@ -1956,6 +2401,66 @@
             align-items: flex-start;
             flex-direction: column;
             gap: 0.75rem;
+        }
+
+        .secretary-onboarding-progress.has-three,
+        .secretary-onboarding-progress.has-four {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .secretary-onboarding-progress.has-four {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .secretary-safe-drafting-flow {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .secretary-safe-drafting-flow > svg {
+            transform: rotate(90deg);
+        }
+
+        .secretary-forwarding-step {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .secretary-forwarding-step > svg {
+            transform: rotate(90deg);
+        }
+
+        .secretary-copy-address {
+            width: 100%;
+        }
+
+        .secretary-forwarding-route {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .secretary-forwarding-route > svg {
+            transform: rotate(90deg);
+        }
+
+        .secretary-forwarding-route > button {
+            width: 100%;
+        }
+
+        .secretary-ready-state {
+            padding: 2.5rem 1rem;
+        }
+
+        .secretary-first-email-address {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .secretary-first-email-address button,
+        .secretary-compose-email-button {
+            width: 100%;
+        }
+
+        .secretary-ready-state-action.is-email-first {
+            align-items: stretch;
+            flex-direction: column;
         }
 
         .secretary-disclosure-action .secretary-settings-action-open,
@@ -2028,7 +2533,8 @@
 
     .dark .secretary-tools-panel > summary strong,
     .dark .secretary-page-settings > details > summary strong,
-    .dark .secretary-diagnostics strong {
+    .dark .secretary-diagnostics strong,
+    .dark .secretary-ready-state h2 {
         color: var(--color-gray-100);
     }
 
@@ -2046,6 +2552,20 @@
     .dark .secretary-onboarding-method,
     .dark .secretary-tools-panel-content {
         background: color-mix(in oklch, var(--color-gray-950) 82%, var(--color-gray-900));
+    }
+
+    .dark .secretary-first-email-address {
+        border-color: color-mix(in oklch, var(--color-primary) 32%, var(--color-gray-700));
+        background: color-mix(in oklch, var(--color-primary) 9%, var(--color-gray-900));
+    }
+
+    .dark .secretary-first-email-address a {
+        color: var(--color-gray-100);
+    }
+
+    .dark .secretary-first-email-address button {
+        border-color: var(--color-gray-700);
+        background: var(--color-gray-950);
     }
 
     .dark .secretary-page-settings > details > summary:hover,
@@ -2076,6 +2596,20 @@
         color: var(--color-gray-100);
     }
 
+    .dark .secretary-forwarding-route {
+        border-color: var(--color-gray-700);
+        background: var(--color-gray-950);
+    }
+
+    .dark .secretary-forwarding-route strong {
+        color: var(--color-gray-100);
+    }
+
+    .dark .secretary-forwarding-route > button {
+        border-color: var(--color-gray-700);
+        background: var(--color-gray-900);
+    }
+
     .dark .secretary-settings-input:disabled,
     .dark .secretary-settings-input[readonly],
     .dark .secretary-active-input:disabled,
@@ -2092,6 +2626,19 @@
 
     .dark .secretary-email-example {
         background: color-mix(in oklch, var(--color-primary) 9%, var(--color-gray-900));
+    }
+
+    .dark .secretary-forwarding-step {
+        background: color-mix(in oklch, var(--color-primary) 9%, var(--color-gray-900));
+    }
+
+    .dark .secretary-forwarding-step strong {
+        color: var(--color-gray-100);
+    }
+
+    .dark .secretary-copy-address {
+        border-color: var(--color-gray-700);
+        background: var(--color-gray-950);
     }
 
     .dark .secretary-email-example strong {

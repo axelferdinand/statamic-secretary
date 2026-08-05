@@ -41,7 +41,7 @@ Secretary never receives shell access or a generic file-writing tool. It can onl
 
 - Statamic 6 Pro for safe working-copy revisions of published entries.
 - PHP 8.3 or newer.
-- A database supported by Laravel.
+- A writable Laravel `storage` directory. Secretary creates its own private SQLite store automatically.
 - An OpenAI API project with access to the configured model.
 - A persistent Laravel queue for production email processing.
 - Optional Postmark server for email conversations.
@@ -54,7 +54,7 @@ For a site-controlled mailbox, email setup requires only a Postmark Server API T
 composer require axelferdinand/statamic-secretary
 ```
 
-That is the complete standard installation. Open **Content → Secretary** to add the OpenAI key and choose **Easy setup** (Secretary Relay) or **Advanced setup** (your own Postmark server). Secretary runs its package migrations automatically through Statamic's addon installation hook. `secretary:doctor` remains available as an optional deployment diagnostic.
+That is the complete standard installation. Open **Content → Secretary** to add the OpenAI key and choose **Easy setup** (Secretary Relay) or **Advanced setup** (your own Postmark server). Secretary creates and migrates its private store automatically; the site's database does not need to be configured. `secretary:doctor` remains available as an optional deployment diagnostic.
 
 ## Marketplace assets still needed
 

@@ -23,6 +23,7 @@ abstract class TestCase extends AddonTestCase
             'database' => ':memory:',
             'prefix' => '',
         ]);
+        $app['config']->set('secretary.database.connection', 'testing');
         $app['config']->set('statamic.editions.pro', true);
         $app['config']->set('statamic.revisions.enabled', true);
         $app['config']->set('statamic.revisions.path', $fixtures.'/revisions');
@@ -43,7 +44,7 @@ abstract class TestCase extends AddonTestCase
         parent::setUp();
 
         config()->set('secretary.openai.api_key', 'test-key');
-        $this->artisan('migrate', ['--force' => true])->run();
+        $this->artisan('secretary:install')->run();
     }
 
     protected function tearDown(): void

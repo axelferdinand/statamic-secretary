@@ -16,15 +16,17 @@ final class RelayPairingClient
         private readonly EmailConfiguration $email,
     ) {}
 
-    public function requestCode(string $email, string $label): void
+    public function requestCode(string $email, string $label, string $publicUrl): void
     {
         $email = mb_strtolower(trim($email));
         $label = trim(preg_replace('/\s+/u', ' ', $label) ?? '');
+        $publicUrl = rtrim(trim($publicUrl), '/');
 
         if (filter_var($email, FILTER_VALIDATE_EMAIL) === false
             || mb_strlen($email) > 255
             || $label === ''
             || mb_strlen($label) > 120
+            || ! $this->email->isPublicHttpsUrl($publicUrl)
             || ! $this->configuration->hasValidBaseUrl()
             || ! $this->configuration->pairingAvailable()) {
             throw new RelayDeliveryFailed('Secretary relay verification request is invalid.');
@@ -59,6 +61,7 @@ final class RelayPairingClient
         $this->configuration->store([
             ...$this->configuration->stored(),
             'pending_sender' => $email,
+            'pending_public_url' => $publicUrl,
             'verification_requested_at' => now()->toIso8601String(),
         ]);
     }
