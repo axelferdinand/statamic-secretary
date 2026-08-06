@@ -4,6 +4,10 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.1 - 2026-08-06
+
+- Rebuild the Marketplace and GitHub README around the product value, a three-step installation, the email-first workflow, new-page and structured-module creation, and concise links to the detailed technical documentation.
+
 ## 0.1.0 - 2026-08-06
 
 - First stable release of Secretary for Statamic.

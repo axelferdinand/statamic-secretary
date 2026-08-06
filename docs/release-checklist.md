@@ -14,7 +14,7 @@ Last verified: 2026-08-06.
 - [x] PHP 8.3/8.4/8.5, Laravel 12/13, asset reproducibility, archive inspection, and clean-install CI.
 - [x] Latest published `main` workflow completed successfully on 2026-08-05.
 - [x] Current local source passes strict Composer validation, Pint, and 267 tests / 2,036 assertions.
-- [x] Current Composer candidate is a clean 1.3 MB / 137-file runtime archive with private relay operations, Marketplace media, and development files excluded.
+- [x] Current Composer candidate is a clean 1.4 MB / 138-file runtime archive with private relay operations, Marketplace media, and development files excluded.
 - [x] Current candidate installs as a non-symlink Composer artifact in a fresh Statamic 6.27 / Laravel 13.24 site, publishes CP assets, creates its private store, runs its own migrations, registers routes, and exposes `secretary:doctor` without manual setup.
 
 ## Final product gates
