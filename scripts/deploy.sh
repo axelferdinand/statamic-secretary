@@ -5,13 +5,25 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELAY_EXCLUDES_FILE="${PROJECT_ROOT}/scripts/deploy-relay-excluded.txt"
 ADDON_EXCLUDES_FILE="${PROJECT_ROOT}/scripts/deploy-addon-excluded.txt"
 
-REMOTE_HOST="${SECRETARY_DEPLOY_HOST:-prototypen.sircon.net}"
+REMOTE_HOST="prototypen.sircon.net"
 REMOTE_USER="statamic"
 REMOTE_HOME="/home2/statamic"
 REMOTE_TARGET="${REMOTE_USER}@${REMOTE_HOST}"
 SSH_KEY="${SECRETARY_DEPLOY_SSH_KEY:-${HOME}/.ssh/codex_statamic_deploy}"
-REMOTE_PHP="/opt/cpanel/ea-php85/root/usr/bin/php"
+# cPanel's documented, version-specific PHP CLI symlink. It is executed by the
+# verified, unprivileged statamic account.
+REMOTE_PHP="/usr/local/bin/ea-php85"
 REMOTE_COMPOSER="${REMOTE_HOME}/secretary-relay-private/composer.phar"
+KNOWN_HOSTS_FILE="${PROJECT_ROOT}/scripts/deploy-known-hosts"
+EXPECTED_DEPLOY_KEY_FINGERPRINT="SHA256:/LdBGJm+IghdraK0pGKf61bgmIlrhq4GualHCyH5pt4"
+EXPECTED_HOST_KEY_FINGERPRINT="SHA256:E7FT1LJWhFOOWTrQVZi0Pq38DqNDdpACCt4DEm2pPRE"
+RELEASE_REMOTE_URL="https://github.com/axelferdinand/statamic-secretary.git"
+SSH_CONTROL_DIR=""
+SSH_CONTROL_PATH=""
+SSH_AGENT_DIR=""
+DEPLOY_SSH_AGENT_PID=""
+RELAY_POST_CHECK=""
+ADDON_POST_CHECK=""
 
 LOCAL_RELAY="${PROJECT_ROOT}/relay/"
 LOCAL_ADDON="${PROJECT_ROOT}/"
@@ -27,19 +39,20 @@ MODE="dry-run"
 usage() {
   cat <<'EOF'
 Usage:
+  scripts/deploy.sh --audit     Verify the remote account and stop
   scripts/deploy.sh             Preview relay and live-demo changes
   scripts/deploy.sh --apply     Deploy, refresh the demo, and verify production
   scripts/deploy.sh --help      Show this help
 
 Optional environment variables:
-  SECRETARY_DEPLOY_HOST         SSH host (default: prototypen.sircon.net)
   SECRETARY_DEPLOY_SSH_KEY      Dedicated private SSH key
   SECRETARY_DEPLOY_RELAY_URL    Relay URL used by production checks
   SECRETARY_DEPLOY_DEMO_URL     Demo URL used by production checks
 
-The script deploys the current working tree, including uncommitted changes.
-It never deploys or deletes production .env files, databases, logs, demo
-content, user data, or other runtime-owned files.
+Dry-run may preview the current working tree. Apply requires a clean, tagged
+main commit that is already published as the same main commit and tag on
+GitHub. The script never deploys or deletes production .env files, databases,
+logs, demo content, user data, or other runtime-owned files.
 EOF
 }
 
@@ -48,8 +61,29 @@ fail() {
   exit 1
 }
 
+cleanup() {
+  if [[ -n "$SSH_CONTROL_PATH" && -S "$SSH_CONTROL_PATH" ]]; then
+    ssh -F /dev/null -S "$SSH_CONTROL_PATH" -O exit "$REMOTE_TARGET" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "$DEPLOY_SSH_AGENT_PID" ]]; then
+    kill "$DEPLOY_SSH_AGENT_PID" >/dev/null 2>&1 || true
+    wait "$DEPLOY_SSH_AGENT_PID" >/dev/null 2>&1 || true
+  fi
+
+  [[ -z "$RELAY_POST_CHECK" ]] || rm -f "$RELAY_POST_CHECK"
+  [[ -z "$ADDON_POST_CHECK" ]] || rm -f "$ADDON_POST_CHECK"
+  [[ -z "$SSH_CONTROL_DIR" ]] || rmdir "$SSH_CONTROL_DIR" 2>/dev/null || true
+  [[ -z "$SSH_AGENT_DIR" ]] || rmdir "$SSH_AGENT_DIR" 2>/dev/null || true
+}
+
+trap cleanup EXIT
+
 for argument in "$@"; do
   case "$argument" in
+    --audit)
+      MODE="audit"
+      ;;
     --apply)
       MODE="apply"
       ;;
@@ -68,16 +102,19 @@ done
 
 cd "$PROJECT_ROOT"
 
-for command_name in rsync ssh ssh-add ssh-keygen curl git php rg find awk; do
+for command_name in rsync ssh ssh-add ssh-agent ssh-keygen curl git php rg find awk sed sleep stat; do
   command -v "$command_name" >/dev/null 2>&1 ||
     fail "Missing command: ${command_name}."
 done
 
 [[ -f "$RELAY_EXCLUDES_FILE" ]] || fail "Missing ${RELAY_EXCLUDES_FILE}."
 [[ -f "$ADDON_EXCLUDES_FILE" ]] || fail "Missing ${ADDON_EXCLUDES_FILE}."
+[[ -f "$KNOWN_HOSTS_FILE" ]] || fail "Missing the pinned Secretary host key."
 [[ -f "$SSH_KEY" ]] || fail "Missing the dedicated SSH key ${SSH_KEY}. See docs/deployment.md."
+[[ ! -L "$SSH_KEY" ]] || fail "The deployment key must not be a symbolic link."
 [[ -d "$LOCAL_RELAY" ]] || fail "Missing the local relay directory."
 [[ -f "${LOCAL_ADDON}composer.json" ]] || fail "The addon source directory is invalid."
+[[ "$REMOTE_HOST" == "prototypen.sircon.net" ]] || fail "Unexpected SSH host."
 [[ "$REMOTE_USER" == "statamic" ]] || fail "Unexpected SSH user."
 [[ "$REMOTE_HOME" == "/home2/statamic" ]] || fail "Unexpected remote home directory."
 [[ "$REMOTE_RELAY" == "/home2/statamic/secretary-relay/" ]] || fail "Unexpected relay target."
@@ -95,40 +132,131 @@ for required_exclusion in ".env" "/.git/" "/.secretary-deploy/" "/relay/" "/sand
 done
 
 KEY_FINGERPRINT="$(ssh-keygen -lf "$SSH_KEY" | awk '{ print $2 }')"
+[[ "$KEY_FINGERPRINT" == "$EXPECTED_DEPLOY_KEY_FINGERPRINT" ]] ||
+  fail "The deployment key fingerprint does not match the pinned Secretary key."
 
-if ! ssh-add -l 2>/dev/null | rg --fixed-strings "$KEY_FINGERPRINT" >/dev/null; then
-  if [[ -t 0 ]]; then
-    printf 'Loading the dedicated Secretary deployment key …\n'
-    ssh-add --apple-use-keychain "$SSH_KEY" 2>/dev/null || ssh-add "$SSH_KEY"
-  else
-    fail "The SSH key is not loaded. Run: ssh-add --apple-use-keychain ${SSH_KEY}"
+KEY_PERMISSIONS="$(stat -f '%Lp' "$SSH_KEY")"
+[[ "$KEY_PERMISSIONS" == "400" || "$KEY_PERMISSIONS" == "600" ]] ||
+  fail "The deployment key must have mode 0400 or 0600."
+
+HOST_KEY_FINGERPRINT="$(ssh-keygen -lf "$KNOWN_HOSTS_FILE" | awk '{ print $2 }')"
+[[ "$HOST_KEY_FINGERPRINT" == "$EXPECTED_HOST_KEY_FINGERPRINT" ]] ||
+  fail "The pinned server host key is missing, duplicated, or unexpected."
+rg --line-regexp 'prototypen\.sircon\.net ssh-ed25519 [A-Za-z0-9+/=]+' "$KNOWN_HOSTS_FILE" >/dev/null ||
+  fail "The pinned server host key has an unexpected host or key type."
+
+if [[ "$MODE" != "audit" ]]; then
+  git diff --check
+
+  if find resources/js resources/css -type f \( -name '*.js' -o -name '*.vue' -o -name '*.css' \) \
+    -newer resources/dist/build/manifest.json -print -quit | rg -q .; then
+    fail "The addon source is newer than resources/dist/build. Run npm run build first."
+  fi
+
+  RELAY_AUTOLOAD="relay/vendor/composer/autoload_classmap.php"
+
+  [[ -f "$RELAY_AUTOLOAD" ]] ||
+    fail "The relay autoloader is missing. Run composer dump-autoload --working-dir=relay --no-dev --classmap-authoritative --no-scripts."
+
+  if find relay/src -type f -name '*.php' -newer "$RELAY_AUTOLOAD" -print -quit | rg -q .; then
+    fail "The relay source is newer than its authoritative autoloader. Run composer dump-autoload --working-dir=relay --no-dev --classmap-authoritative --no-scripts."
   fi
 fi
 
-git diff --check
+if [[ "$MODE" == "apply" ]]; then
+  [[ "$(git branch --show-current)" == "main" ]] ||
+    fail "Apply requires the main branch."
+  [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] ||
+    fail "Apply requires a clean working tree."
 
-if find resources/js resources/css -type f \( -name '*.js' -o -name '*.vue' -o -name '*.css' \) \
-  -newer resources/dist/build/manifest.json -print -quit | rg -q .; then
-  fail "The addon source is newer than resources/dist/build. Run npm run build first."
+  RELEASE_TAG="$(git tag --points-at HEAD | rg '^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$' || true)"
+  [[ -n "$RELEASE_TAG" && "$RELEASE_TAG" != *$'\n'* ]] ||
+    fail "Apply requires exactly one semantic release tag on HEAD."
+
+  HEAD_SHA="$(git rev-parse HEAD)"
+  REMOTE_REFS="$(git ls-remote --exit-code "$RELEASE_REMOTE_URL" \
+    refs/heads/main "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}")" ||
+    fail "Could not verify the release on GitHub."
+  REMOTE_MAIN_SHA="$(printf '%s\n' "$REMOTE_REFS" | awk '$2 == "refs/heads/main" { print $1 }')"
+  REMOTE_TAG_SHA="$(printf '%s\n' "$REMOTE_REFS" | awk -v ref="refs/tags/${RELEASE_TAG}" '
+    $2 == ref { sha = $1 }
+    $2 == ref "^{}" { sha = $1 }
+    END { print sha }
+  ')"
+
+  [[ "$REMOTE_MAIN_SHA" == "$HEAD_SHA" ]] ||
+    fail "GitHub main does not match the local release commit."
+  [[ "$REMOTE_TAG_SHA" == "$HEAD_SHA" ]] ||
+    fail "The GitHub release tag does not match the local release commit."
 fi
 
-RELAY_AUTOLOAD="relay/vendor/composer/autoload_classmap.php"
+SSH_AGENT_DIR="$(mktemp -d -t secretary-ssh-agent.XXXXXX)"
+SSH_AUTH_SOCK="${SSH_AGENT_DIR}/agent.sock"
+export SSH_AUTH_SOCK
+ssh-agent -a "$SSH_AUTH_SOCK" -D >/dev/null 2>&1 &
+DEPLOY_SSH_AGENT_PID="$!"
 
-[[ -f "$RELAY_AUTOLOAD" ]] ||
-  fail "The relay autoloader is missing. Run composer dump-autoload --working-dir=relay --no-dev --classmap-authoritative --no-scripts."
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -S "$SSH_AUTH_SOCK" ]] && break
+  sleep 0.05
+done
+[[ -S "$SSH_AUTH_SOCK" ]] || fail "Could not start the private deployment key agent."
 
-if find relay/src -type f -name '*.php' -newer "$RELAY_AUTOLOAD" -print -quit | rg -q .; then
-  fail "The relay source is newer than its authoritative autoloader. Run composer dump-autoload --working-dir=relay --no-dev --classmap-authoritative --no-scripts."
+printf 'Loading the dedicated Secretary deployment key into a private, short-lived agent …\n'
+if [[ -t 0 ]]; then
+  ssh-add -t 600 --apple-use-keychain "$SSH_KEY" 2>/dev/null || ssh-add -t 600 "$SSH_KEY"
+else
+  ssh-add -t 600 --apple-use-keychain "$SSH_KEY" </dev/null 2>/dev/null || true
 fi
+ssh-add -l 2>/dev/null | rg --fixed-strings "$KEY_FINGERPRINT" >/dev/null ||
+  fail "The dedicated deployment key could not be unlocked."
 
 SSH_OPTIONS=(
+  -F /dev/null
+  -p 22
   -i "$SSH_KEY"
+  -o Hostname=prototypen.sircon.net
+  -o "IdentityAgent=${SSH_AUTH_SOCK}"
   -o IdentitiesOnly=yes
+  -o AddKeysToAgent=no
   -o BatchMode=yes
+  -o NumberOfPasswordPrompts=0
+  -o PreferredAuthentications=publickey
+  -o PubkeyAuthentication=yes
+  -o PasswordAuthentication=no
+  -o KbdInteractiveAuthentication=no
+  -o GSSAPIAuthentication=no
+  -o HostbasedAuthentication=no
+  -o ForwardAgent=no
+  -o ForwardX11=no
+  -o ClearAllForwardings=yes
+  -o PermitLocalCommand=no
+  -o KnownHostsCommand=none
+  -o ProxyCommand=none
+  -o ProxyJump=none
+  -o RemoteCommand=none
+  -o RequestTTY=no
+  -o StrictHostKeyChecking=yes
+  -o "UserKnownHostsFile=${KNOWN_HOSTS_FILE}"
+  -o GlobalKnownHostsFile=/dev/null
+  -o HostKeyAlgorithms=ssh-ed25519
+  -o UpdateHostKeys=no
+  -o VerifyHostKeyDNS=no
+  -o CheckHostIP=no
+  -o CanonicalizeHostname=no
+  -o ConnectionAttempts=1
   -o ConnectTimeout=10
 )
 
-printf -v RSYNC_SSH_COMMAND 'ssh -i %q -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10' "$SSH_KEY"
+SSH_CONTROL_DIR="$(mktemp -d -t secretary-ssh-control.XXXXXX)"
+SSH_CONTROL_PATH="${SSH_CONTROL_DIR}/control"
+SSH_OPTIONS+=(
+  -o "ControlPath=${SSH_CONTROL_PATH}"
+)
+
+printf -v RSYNC_SSH_COMMAND \
+  'ssh -F /dev/null -p 22 -i %q -o Hostname=prototypen.sircon.net -o IdentityAgent=%q -o IdentitiesOnly=yes -o AddKeysToAgent=no -o BatchMode=yes -o NumberOfPasswordPrompts=0 -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o GSSAPIAuthentication=no -o HostbasedAuthentication=no -o ForwardAgent=no -o ForwardX11=no -o ClearAllForwardings=yes -o PermitLocalCommand=no -o KnownHostsCommand=none -o ProxyCommand=none -o ProxyJump=none -o RemoteCommand=none -o RequestTTY=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile=%q -o GlobalKnownHostsFile=/dev/null -o HostKeyAlgorithms=ssh-ed25519 -o UpdateHostKeys=no -o VerifyHostKeyDNS=no -o CheckHostIP=no -o CanonicalizeHostname=no -o ConnectionAttempts=1 -o ConnectTimeout=10 -o ControlMaster=no -o ControlPath=%q' \
+  "$SSH_KEY" "$SSH_AUTH_SOCK" "$KNOWN_HOSTS_FILE" "$SSH_CONTROL_PATH"
 
 RSYNC_COMMON=(
   -avz
@@ -148,16 +276,42 @@ ADDON_RSYNC=(
   --exclude-from="$ADDON_EXCLUDES_FILE"
 )
 
+printf 'Opening one shared SSH connection to %s …\n' "$REMOTE_TARGET"
+ssh "${SSH_OPTIONS[@]}" -o ControlMaster=yes -o ControlPersist=no -MNf "$REMOTE_TARGET" ||
+  fail "Could not open the dedicated Secretary deployment connection."
+
 printf 'Checking SSH target %s …\n' "$REMOTE_TARGET"
 REMOTE_PROBE="$(ssh "${SSH_OPTIONS[@]}" "$REMOTE_TARGET" '
   set -eu
-  printf "%s\n%s\n" "$(id -un)" "$(pwd)"
+  printf "%s\n%s\n%s\n%s\n%s\n" "$(id -un)" "$(id -ru)" "$(id -u)" "$HOME" "$(pwd)"
   test -d /home2/statamic/secretary-relay
+  test ! -L /home2/statamic/secretary-relay
   test -d /home2/statamic/secretary-demo/vendor/axelferdinand/statamic-secretary
+  test ! -L /home2/statamic/secretary-demo/vendor/axelferdinand/statamic-secretary
+  test "$(stat -c %u /home2/statamic/secretary-relay)" = "$(id -u)"
+  test "$(stat -c %u /home2/statamic/secretary-demo/vendor/axelferdinand/statamic-secretary)" = "$(id -u)"
+  test -x /usr/local/bin/ea-php85
+  test ! -u /usr/local/bin/ea-php85
 ')" || fail "Could not log in with the dedicated Secretary deployment key."
 
-[[ "$REMOTE_PROBE" == $'statamic\n/home2/statamic' ]] ||
+PROBE_USER="$(printf '%s\n' "$REMOTE_PROBE" | sed -n '1p')"
+PROBE_REAL_UID="$(printf '%s\n' "$REMOTE_PROBE" | sed -n '2p')"
+PROBE_EFFECTIVE_UID="$(printf '%s\n' "$REMOTE_PROBE" | sed -n '3p')"
+PROBE_HOME="$(printf '%s\n' "$REMOTE_PROBE" | sed -n '4p')"
+PROBE_PWD="$(printf '%s\n' "$REMOTE_PROBE" | sed -n '5p')"
+
+[[ "$PROBE_USER" == "statamic" && "$PROBE_REAL_UID" =~ ^[0-9]+$ &&
+  "$PROBE_EFFECTIVE_UID" =~ ^[0-9]+$ && "$PROBE_REAL_UID" -ne 0 &&
+  "$PROBE_EFFECTIVE_UID" -ne 0 && "$PROBE_REAL_UID" == "$PROBE_EFFECTIVE_UID" &&
+  "$PROBE_HOME" == "/home2/statamic" && "$PROBE_PWD" == "/home2/statamic" ]] ||
   fail "The SSH target did not identify itself as the expected account and home directory."
+
+if [[ "$MODE" == "audit" ]]; then
+  printf 'Verified remote account: user=%s real_uid=%s effective_uid=%s home=%s\n' \
+    "$PROBE_USER" "$PROBE_REAL_UID" "$PROBE_EFFECTIVE_UID" "$PROBE_HOME"
+  printf 'No deployed file contents were read; no files were transferred, changed, or deleted.\n'
+  exit 0
+fi
 
 printf '\nRelay dry-run: %s:%s\n' "$REMOTE_TARGET" "$REMOTE_RELAY"
 rsync "${RELAY_RSYNC[@]}" --dry-run --itemize-changes "$LOCAL_RELAY" "${REMOTE_TARGET}:${REMOTE_RELAY}"
@@ -170,7 +324,7 @@ if [[ "$MODE" == "dry-run" ]]; then
   exit 0
 fi
 
-printf '\nDeploying the current working tree …\n'
+printf '\nDeploying the verified tagged release …\n'
 git status --short
 rsync "${RELAY_RSYNC[@]}" "$LOCAL_RELAY" "${REMOTE_TARGET}:${REMOTE_RELAY}"
 rsync "${ADDON_RSYNC[@]}" "$LOCAL_ADDON" "${REMOTE_TARGET}:${REMOTE_ADDON}"
@@ -178,6 +332,9 @@ rsync "${ADDON_RSYNC[@]}" "$LOCAL_ADDON" "${REMOTE_TARGET}:${REMOTE_ADDON}"
 printf '\nMigrating the relay and refreshing the live demo …\n'
 ssh "${SSH_OPTIONS[@]}" "$REMOTE_TARGET" "
   set -eu
+  test \"\$(id -un)\" = 'statamic'
+  test \"\$(id -ru)\" = \"\$(id -u)\"
+  test \"\$(id -u)\" -ne 0
 
   cd '${REMOTE_RELAY%/}'
   '${REMOTE_PHP}' bin/migrate.php
@@ -191,11 +348,14 @@ ssh "${SSH_OPTIONS[@]}" "$REMOTE_TARGET" "
   '${REMOTE_PHP}' artisan secretary:install --no-interaction
   '${REMOTE_PHP}' artisan statamic:stache:refresh --no-interaction
   '${REMOTE_PHP}' artisan secretary:doctor --json --no-interaction
+
+  test \"\$(id -un)\" = 'statamic'
+  test \"\$(id -ru)\" = \"\$(id -u)\"
+  test \"\$(id -u)\" -ne 0
 "
 
 RELAY_POST_CHECK="$(mktemp -t secretary-relay-post-check.XXXXXX)"
 ADDON_POST_CHECK="$(mktemp -t secretary-addon-post-check.XXXXXX)"
-trap 'rm -f "$RELAY_POST_CHECK" "$ADDON_POST_CHECK"' EXIT
 
 printf '\nChecking that both code targets are synchronized …\n'
 rsync "${RELAY_RSYNC[@]}" --dry-run --itemize-changes "$LOCAL_RELAY" "${REMOTE_TARGET}:${REMOTE_RELAY}" > "$RELAY_POST_CHECK"

@@ -104,6 +104,11 @@ final class PostmarkMailTransport implements MailTransport
             foreach ($reply->changeSets as $changeSet) {
                 $status = $changeSet['status'] === 'published' ? $copy['published'] : $copy['draft'];
                 $body .= "\n- {$changeSet['summary']} — {$status}";
+
+                if (is_string($changeSet['native_url'] ?? null)
+                    && $this->isSafeLink($changeSet['native_url'])) {
+                    $body .= "\n{$changeSet['native_url']}";
+                }
             }
         }
 

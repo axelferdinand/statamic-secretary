@@ -33,10 +33,10 @@ Asset deletion, replacement, arbitrary uploads, metadata editing, code, template
 
 ## Installation
 
-Install the public beta in a Statamic 6 site:
+Install Secretary in a Statamic 6 site:
 
 ```shell
-composer require "axelferdinand/statamic-secretary:^0.1@beta"
+composer require axelferdinand/statamic-secretary
 ```
 
 That is the complete standard installation. Statamic publishes the Control Panel assets, while Secretary creates and migrates its own private SQLite store independently of the site's database configuration. Open **Content → Secretary** to add the OpenAI key and choose the easy hosted relay or the advanced self-hosted Postmark setup.
@@ -188,4 +188,4 @@ See the [completion matrix](docs/completion-matrix.md) for requirement-by-requir
 
 ## Marketplace status
 
-The public beta is available on [Packagist](https://packagist.org/packages/axelferdinand/statamic-secretary), installs through Composer, and has tagged GitHub prereleases. Package metadata, compiled assets, support/privacy/security policies, diagnostics, CI, Marketplace copy, and release checks are in place. The remaining launch gates are the final live acceptance tests, Marketplace screenshots and seller setup, and a stable `v0.1.0` release.
+The stable `0.1.0` package is available through [Packagist](https://packagist.org/packages/axelferdinand/statamic-secretary) and installs through Composer. Package metadata, compiled assets, support/privacy/security policies, diagnostics, CI, Marketplace copy, release checks, and 1200×800 Marketplace media are in place. Marketplace seller approval and publication remain separate from the Composer release.

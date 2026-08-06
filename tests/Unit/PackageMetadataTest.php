@@ -18,4 +18,13 @@ class PackageMetadataTest extends TestCase
         $this->assertSame('Secretary', $composer['extra']['statamic']['name']);
         $this->assertStringContainsString('Secretary for Statamic', $composer['description']);
     }
+
+    public function test_marketplace_documentation_is_present_and_describes_page_creation(): void
+    {
+        $documentation = (string) file_get_contents(dirname(__DIR__, 2).'/DOCUMENTATION.md');
+
+        $this->assertStringContainsString('composer require axelferdinand/statamic-secretary', $documentation);
+        $this->assertStringContainsString('create new pages', $documentation);
+        $this->assertStringContainsString('Bard or Replicator', $documentation);
+    }
 }

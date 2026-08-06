@@ -15,7 +15,7 @@ Use this document as the source of truth when creating the Statamic Marketplace 
 
 ## Short description
 
-Ask for Statamic content changes by email or in the Control Panel. Secretary follows your blueprints, prepares safe drafts, and leaves publishing to you.
+Send an email or chat request. Get a structured Statamic draft. Secretary updates content or builds new pages with your own blueprints and modules—ready for review.
 
 ## Overview
 
@@ -73,6 +73,7 @@ The Marketplace license costs **USD 49 for each production site**. Local develop
 Secretary is self-hosted. Conversation and audit records stay in a private store on the Statamic installation. Requests and the minimum relevant content are sent to the customer's configured OpenAI project. Email customers additionally use Postmark directly or through the optional hosted relay.
 
 - Documentation: https://github.com/axelferdinand/statamic-secretary#readme
+- Marketplace documentation: https://github.com/axelferdinand/statamic-secretary/blob/main/DOCUMENTATION.md
 - Privacy: https://github.com/axelferdinand/statamic-secretary/blob/main/PRIVACY.md
 - Support policy: https://github.com/axelferdinand/statamic-secretary/blob/main/SUPPORT.md
 - Security policy: https://github.com/axelferdinand/statamic-secretary/blob/main/SECURITY.md
@@ -83,16 +84,23 @@ Secretary is self-hosted. Conversation and audit records stay in a private store
 
 Ready:
 
-- `docs/assets/statamic-secretary-icon.png` — 1024×1024.
-- `docs/assets/statamic-secretary-icon-512.png` — 512×512.
+- `docs/assets/statamic-secretary-icon-v2.png` — recommended thumbnail concept, 1024×1024.
+- `docs/assets/statamic-secretary-icon-v2-512.png` — recommended thumbnail concept, 512×512.
+- `docs/assets/statamic-secretary-icon-v2.svg` — editable source for the new concept.
+- `docs/assets/statamic-secretary-icon.png` and `docs/assets/statamic-secretary-icon-512.png` — preserved original; do not upload if the new concept is approved.
+- `docs/assets/marketplace/01-cover.png` — concept-led Marketplace cover in the landing-page design, 1200×800.
+- `docs/assets/marketplace/02-email-first.png` — genuine email-first Control Panel view with the full Statamic header and page context, 1200×800.
+- `docs/assets/marketplace/03-email-to-page.png` — an email-created page conversation continued inside Secretary, 1200×800.
+- `docs/assets/marketplace/04-contextual-editor.png` — a real content entry with the contextual Secretary panel open on the right, 1200×800.
 
-Capture from the final stable build:
+Upload them in that order. The first image sells the workflow without borrowing the demo site's visual identity; the remaining three prove the product in genuine Statamic views with realistic content. The original local captures are retained under `docs/assets/marketplace/raw/` only as source material and are not Marketplace assets.
 
-1. **Email to safe draft** — a redacted email instruction beside the resulting Statamic draft.
-2. **Contextual chat** — the floating panel open on a real entry with a concise conversation.
-3. **Review before publishing** — a change card with before/after or field-level review.
-4. **Editor workspace** — conversation list and current result on desktop.
-5. **Mobile Control Panel** — the same conversation at a narrow viewport.
-6. Optional 30–45 second video: email request → acknowledgement → draft → refinement in CP → publish.
+Marketplace form:
+
+- Main content: `README.md`.
+- Documentation: `DOCUMENTATION.md`.
+- Live Preview URL: `https://secretary.statamic.no`.
+
+Optional 30–45 second video: email request → acknowledgement → draft → refinement in CP → publish.
 
 Use only demo content and demo identities. Do not show API keys, pairing codes, private email addresses, provider IDs, or production customer content.

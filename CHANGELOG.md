@@ -4,6 +4,14 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.0 - 2026-08-06
+
+- First stable release of Secretary for Statamic.
+- Link every completed email change directly to its native Statamic editor, including entries, taxonomy terms, globals, and navigation; multi-resource replies link every affected resource separately.
+- Keep setup, pairing, and one-time-code email in English by default while matching the language of each editor instruction in acknowledgements and completed-work replies.
+- Add Marketplace-ready documentation, product icons, a 1200×800 concept cover, and genuine Control Panel screenshots.
+- Ship the complete guarded email and Control Panel workflow proven through the `0.1.0` beta series: blueprint-aware drafts, new pages and structured modules, explicit publication, contextual chat, attachments, hosted relay, private storage, and native Statamic permissions.
+
 ## 0.1.0-beta.6 - 2026-08-06
 
 - Restore hosted relay acknowledgements and replies by making the relay language layer fully standalone from the Composer addon.

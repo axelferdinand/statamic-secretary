@@ -17,7 +17,7 @@ This matrix maps the product brief to evidence in the repository. “Automated�
 | Preserve human edits | Read-before-write fingerprints, separate live baseline, native working copies, staged non-revision changes, exact crash recovery | Stale proposal, live edit, draft edit, duplicate call and already-applied retry tests | Automated |
 | Native user authorization | Secretary permissions plus Statamic view/edit/create/publish policies per resource | Non-super read, term editor/creator, navigation reference and CP ownership tests | Automated |
 | Background processing | Zero-configuration after-response processing on Laravel's default `sync` connection; optional durable dispatch for sites that already use persistent queues; unique replies; retry-safe duplicate jobs; per-conversation overlap lock and FIFO deferral; bounded failure replies | Sync/no-worker diagnostic, queue dispatch, duplicate delivery, cross-channel lock, ordering and exhausted-retry tests | Default path automated; optional persistent-worker recovery proof pending |
-| Marketplace package | Public Packagist beta, clean runtime archive, commercial/support/privacy/security docs, listing copy, release checklist, square icon, compiled assets, PHP/Laravel CI matrix | Archive hygiene/runtime manifest checks; clean artifact install; latest published `main` CI passed on 2026-08-05; current local suite passes 261 tests / 1,999 assertions | Beta distribution-ready; stable release and Marketplace product pending |
+| Marketplace package | Stable Packagist package, clean runtime archive, commercial/support/privacy/security docs, listing copy, release checklist, square icon, compiled assets, PHP/Laravel CI matrix | Archive hygiene/runtime manifest checks; clean artifact install; release suite, package inspection, and production synchronization checks | Stable Composer distribution; Marketplace product publication pending |
 
 ## Required live gates
 
@@ -26,6 +26,6 @@ This matrix maps the product brief to evidence in the repository. “Automated�
 - Complete the remaining dark-theme, full keyboard/focus-cycle, error, empty, pending and published-state browser QA. The global panel's desktop, 390px mobile, long Norwegian text, Escape close, and cross-page launcher checks passed on 2026-07-27.
 - Complete a real Postmark new-thread → reply → draft → authenticated publication flow and a mail-transport failure/restart exercise.
 - Pair two public Statamic installations and complete the X/Y/random-sender live isolation exercise before offering `secretary@statamic.no` broadly.
-- Complete the stable `v0.1.0` release, connect the existing Packagist package to a Statamic seller product, add screenshots, and test the final Marketplace install command.
+- Connect the stable `v0.1.0` Packagist package to the Statamic seller product and test the final Marketplace install command.
 
 The addon must not be described as production-proven or Marketplace-released until every live gate is complete.

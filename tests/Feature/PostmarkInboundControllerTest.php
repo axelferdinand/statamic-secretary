@@ -26,6 +26,10 @@ use Statamic\Facades\Asset;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
+use Statamic\Facades\Taxonomy;
+use Statamic\Facades\Term;
 use Statamic\Facades\User;
 
 class PostmarkInboundControllerTest extends TestCase
@@ -681,24 +685,100 @@ class PostmarkInboundControllerTest extends TestCase
         $mail = new SecretaryReply($conversation, $reply);
         $draftUrl = Entry::find('home')->editUrl();
         $publicUrl = Entry::find('home')->absoluteUrl();
-        $conversationUrl = $draftUrl.'?secretary='.$conversation->id;
+        $draftContextUrl = $draftUrl.'?secretary='.$conversation->id;
+        $conversationUrl = cp_route('secretary.show', $conversation);
 
         $mail->assertSeeInText('Åpne utkastet i Statamic:')
+            ->assertSeeInText($draftContextUrl)
             ->assertSeeInText($conversationUrl)
             ->assertSeeInText('Berørt side: Forsiden — '.$publicUrl)
-            ->assertDontSeeInText('Fortsett samtalen i Secretary:')
+            ->assertSeeInText('Fortsett samtalen i Secretary:')
             ->assertDontSeeInText('Endringer i denne meldingen')
             ->assertDontSeeInText('Klargjorte endringer')
             ->assertDontSeeInText('Berørt side: Forsiden (`/`)');
         $rendered = $mail->render();
         $this->assertStringNotContainsString('href="'.$draftUrl.'"', $rendered);
         $this->assertStringContainsString('href="'.$publicUrl.'"', $rendered);
+        $this->assertStringContainsString('href="'.$draftContextUrl.'"', $rendered);
         $this->assertStringContainsString('href="'.$conversationUrl.'"', $rendered);
-        $this->assertStringNotContainsString('Fortsett samtalen i Secretary', $rendered);
+        $this->assertStringContainsString('Fortsett samtalen i Secretary', $rendered);
         $this->assertLessThan(
             strpos($rendered, 'Status: Klar som utkast'),
             strpos($rendered, 'Berørt side:'),
         );
+    }
+
+    public function test_email_replies_link_every_changed_resource_to_its_native_statamic_editor(): void
+    {
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()
+            ->id('about')
+            ->collection($collection)
+            ->slug('about')
+            ->data(['title' => 'About'])
+            ->save();
+        $taxonomy = Taxonomy::make('topics')->title('Topics');
+        $taxonomy->save();
+        Term::make()
+            ->taxonomy($taxonomy)
+            ->in('default')
+            ->data(['title' => 'News'])
+            ->slug('news')
+            ->save();
+        $global = GlobalSet::make('company')->title('Company');
+        $global->save();
+        $global->in('default')->data(['phone' => '11 11 11 11'])->save();
+        $navigation = Nav::make('main')->title('Main');
+        $navigation->save();
+        $navigation->makeTree('default', [['title' => 'Home', 'url' => '/']])->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = app(ConversationService::class)->start(
+            'email',
+            $user,
+            'editor@example.com',
+            'native-resource-links',
+        );
+        $changes = collect([
+            ['entry', 'about', 'pages', 'Updated About'],
+            ['term', 'topics::news', 'topics', 'Updated News term'],
+            ['global', 'company::default', 'company', 'Updated Company globals'],
+            ['navigation', 'main::default', 'main', 'Updated Main navigation'],
+        ])->map(fn (array $change) => $conversation->changeSets()->create([
+            'status' => 'draft',
+            'operation' => 'update',
+            'resource_type' => $change[0],
+            'resource_id' => $change[1],
+            'collection' => $change[2],
+            'site' => 'default',
+            'summary' => $change[3],
+        ]));
+        $reply = $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'email',
+            'role' => 'assistant',
+            'body' => 'Done. Four content resources are ready for review.',
+            'metadata' => ['change_set_ids' => $changes->pluck('id')->all()],
+            'processed_at' => now(),
+        ]);
+        $mail = new SecretaryReply($conversation, $reply);
+        $entryUrl = Entry::find('about')->editUrl().'?secretary='.$conversation->id;
+        $termUrl = Term::find('topics::news')->in('default')->editUrl();
+        $globalUrl = GlobalSet::findByHandle('company')->in('default')->editUrl();
+        $navigationUrl = Nav::findByHandle('main')->in('default')->editUrl();
+
+        $mail->assertSeeInText($entryUrl)
+            ->assertSeeInText($termUrl)
+            ->assertSeeInText($globalUrl)
+            ->assertSeeInText($navigationUrl)
+            ->assertSeeInText(cp_route('secretary.show', $conversation));
+
+        $rendered = $mail->render();
+
+        foreach ([$entryUrl, $termUrl, $globalUrl, $navigationUrl] as $url) {
+            $this->assertStringContainsString('href="'.$url.'"', $rendered);
+        }
     }
 
     public function test_an_english_instruction_receives_english_email_chrome(): void

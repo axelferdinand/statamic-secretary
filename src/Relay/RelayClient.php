@@ -58,7 +58,7 @@ final class RelayClient
                 $copy['attachments'],
             ),
             'locale' => $locale,
-            'review_url' => $this->changeSets->conversationUrl($conversation, $changeSets),
+            'review_url' => $this->changeSets->conversationUrl($conversation),
             'change_sets' => $changeSets,
             'route_token' => $routeToken,
             'conversation_token' => $conversationToken,

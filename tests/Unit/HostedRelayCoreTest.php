@@ -578,6 +578,61 @@ class HostedRelayCoreTest extends TestCase
         );
     }
 
+    public function test_postmark_mail_transport_links_every_resource_when_one_reply_changes_multiple_items(): void
+    {
+        $http = new MemoryHttpTransport(new HttpTransportResponse(200, json_encode([
+            'ErrorCode' => 0,
+            'Message' => 'OK',
+            'MessageID' => 'postmark-outbound-many',
+        ], JSON_THROW_ON_ERROR)));
+        $transport = new PostmarkMailTransport(
+            $http,
+            'postmark-server-token',
+            'secretary@statamic.no',
+            'Secretary',
+        );
+        $reply = new OutboundReply(
+            'secretary-reply-'.str_repeat('b', 24),
+            $this->installationA()->id,
+            'editor@example.com',
+            'Re: Update content',
+            'Two drafts are ready.',
+            $this->alias(Tokens::route(), Tokens::conversation()),
+            '<postmark-inbound-many@example.com>',
+            'https://site-a.example.com/cp/secretary/thread',
+            [[
+                'id' => 'draft-entry',
+                'status' => 'draft',
+                'summary' => 'Updated the About page',
+                'native_url' => 'https://site-a.example.com/cp/collections/pages/entries/about?secretary=thread',
+                'resource_title' => 'About',
+                'public_url' => 'https://site-a.example.com/about',
+            ], [
+                'id' => 'draft-global',
+                'status' => 'draft',
+                'summary' => 'Updated the Company globals',
+                'native_url' => 'https://site-a.example.com/cp/globals/company',
+                'resource_title' => 'Company',
+                'public_url' => null,
+            ]],
+            'en',
+        );
+
+        $transport->send($reply);
+        $payload = json_decode($http->requests[0]['body'], true, flags: JSON_THROW_ON_ERROR);
+
+        foreach ($reply->changeSets as $changeSet) {
+            $this->assertStringContainsString($changeSet['summary'], $payload['TextBody']);
+            $this->assertStringContainsString($changeSet['native_url'], $payload['TextBody']);
+            $this->assertStringContainsString(
+                '<a href="'.$changeSet['native_url'].'"',
+                $payload['HtmlBody'],
+            );
+        }
+
+        $this->assertStringContainsString($reply->reviewUrl, $payload['TextBody']);
+    }
+
     /** @return array{MemoryRelayStore, MemorySiteTransport, InboundRouter} */
     private function router(): array
     {

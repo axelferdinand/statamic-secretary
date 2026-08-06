@@ -65,10 +65,7 @@ final class SecretaryReply extends Mailable
             fn (array $changeSet): bool => is_string($changeSet['public_url']),
         ));
         $affectedChange = count($affectedChanges) === 1 ? $affectedChanges[0] : null;
-        $conversationUrl = app(ReplyChangeSetPresenter::class)->conversationUrl(
-            $this->conversation,
-            $changeSets,
-        );
+        $conversationUrl = app(ReplyChangeSetPresenter::class)->conversationUrl($this->conversation);
         $bodySections = app(ReplyChangeSetPresenter::class)->emailBodySections(
             $this->reply->body,
             $changeSets,
@@ -78,9 +75,7 @@ final class SecretaryReply extends Mailable
             $this->reply,
         );
         $primaryUrl = $primaryChange
-            ? ($primaryChange['status'] === 'draft'
-                ? $conversationUrl
-                : $primaryChange['native_url'])
+            ? $primaryChange['native_url']
             : $conversationUrl;
 
         return new Content(

@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Secretary Marketplace media</title>
+    <style>
+        :root {
+            --ink: #082f3d;
+            --ink-deep: #041f29;
+            --paper: #f4f0e7;
+            --paper-deep: #e7e0d3;
+            --white: #fffdf9;
+            --mint: #08efad;
+            --mint-bright: #31ffc2;
+            --mint-soft: #c8f8e8;
+            --coral: #ff654f;
+            --yellow: #f8d95c;
+            --line: rgba(8, 47, 61, .17);
+            --font: "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+            --display: "Arial Rounded MT Bold", "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+        }
+
+        * { box-sizing: border-box; }
+
+        html,
+        body {
+            width: 1200px;
+            height: 800px;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        body {
+            color: var(--ink);
+            background: var(--paper);
+            font-family: var(--font);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .scene {
+            position: relative;
+            display: none;
+            width: 1200px;
+            height: 800px;
+            overflow: hidden;
+        }
+
+        body[data-scene="cover"] .scene-cover,
+        body[data-scene="email"] .scene-email,
+        body[data-scene="conversation"] .scene-conversation,
+        body[data-scene="context"] .scene-context {
+            display: block;
+        }
+
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 19px;
+            letter-spacing: -.03em;
+        }
+
+        .brand img {
+            width: 54px;
+            height: 54px;
+            border-radius: 14px;
+            box-shadow: 0 8px 0 rgba(4, 31, 41, .18);
+        }
+
+        .brand strong { font-weight: 850; }
+
+        .cover {
+            color: var(--white);
+            background:
+                radial-gradient(circle at 88% 16%, rgba(8, 239, 173, .13), transparent 330px),
+                linear-gradient(118deg, var(--ink-deep), var(--ink));
+        }
+
+        .cover::before {
+            position: absolute;
+            inset: 0;
+            content: "";
+            opacity: .12;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, .18) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, .18) 1px, transparent 1px);
+            background-size: 54px 54px;
+            mask-image: linear-gradient(105deg, black, transparent 72%);
+        }
+
+        .cover::after {
+            position: absolute;
+            right: -155px;
+            bottom: -335px;
+            width: 710px;
+            height: 710px;
+            border: 2px solid rgba(8, 239, 173, .26);
+            border-radius: 50%;
+            content: "";
+            box-shadow: 0 0 0 70px rgba(8, 239, 173, .035), 0 0 0 160px rgba(8, 239, 173, .018);
+        }
+
+        .cover-inner {
+            position: relative;
+            z-index: 2;
+            display: grid;
+            grid-template-columns: 495px 1fr;
+            height: 100%;
+            padding: 56px 62px 52px;
+            gap: 44px;
+        }
+
+        .cover-copy { align-self: center; }
+
+        .cover-copy .brand {
+            position: absolute;
+            top: 47px;
+            left: 62px;
+        }
+
+        .eyebrow {
+            display: flex;
+            align-items: center;
+            margin: 0 0 20px;
+            gap: 12px;
+            color: var(--mint);
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+        }
+
+        .eyebrow::before {
+            width: 38px;
+            height: 2px;
+            content: "";
+            background: currentColor;
+        }
+
+        h1,
+        h2 {
+            margin: 0;
+            font-family: var(--display);
+            font-weight: 850;
+            letter-spacing: -.06em;
+            line-height: .98;
+        }
+
+        .cover h1 {
+            max-width: 510px;
+            font-size: 70px;
+        }
+
+        .cover h1 em {
+            position: relative;
+            display: inline-block;
+            color: var(--mint);
+            font-style: normal;
+        }
+
+        .cover h1 em::after {
+            position: absolute;
+            right: 0;
+            bottom: -7px;
+            left: 2px;
+            height: 7px;
+            border-radius: 99px;
+            content: "";
+            transform: rotate(-1.4deg);
+            background: var(--coral);
+        }
+
+        .cover-lead {
+            max-width: 455px;
+            margin: 28px 0 0;
+            color: rgba(255, 253, 249, .76);
+            font-size: 20px;
+            line-height: 1.55;
+        }
+
+        .principles {
+            display: flex;
+            flex-wrap: wrap;
+            margin: 28px 0 0;
+            padding: 0;
+            gap: 9px;
+            list-style: none;
+        }
+
+        .principles li {
+            padding: 8px 12px;
+            border: 1px solid rgba(255, 255, 255, .17);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .04);
+            color: rgba(255, 253, 249, .78);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .principles span { color: var(--mint); }
+
+        .flow {
+            position: relative;
+            align-self: center;
+            padding-top: 18px;
+            transform: rotate(1deg);
+        }
+
+        .flow::before {
+            position: absolute;
+            z-index: -1;
+            right: 13px;
+            bottom: -21px;
+            width: 94%;
+            height: 88%;
+            border-radius: 24px;
+            content: "";
+            background: rgba(8, 239, 173, .15);
+        }
+
+        .product-window {
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, .19);
+            border-radius: 22px;
+            background: #eef2f3;
+            color: var(--ink);
+            box-shadow: 0 32px 78px rgba(0, 0, 0, .3);
+        }
+
+        .window-bar {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            min-height: 62px;
+            padding: 12px 17px;
+            border-bottom: 1px solid #dbe2e5;
+            background: var(--white);
+            gap: 12px;
+        }
+
+        .window-dots { display: flex; gap: 6px; }
+        .window-dots i { width: 10px; height: 10px; border-radius: 50%; background: #dbe2e5; }
+        .window-dots i:first-child { background: var(--coral); }
+        .window-dots i:nth-child(2) { background: var(--yellow); }
+        .window-dots i:last-child { background: var(--mint); }
+        .window-title { color: #5b7079; font-size: 13px; font-weight: 850; text-align: center; }
+        .window-status { display: flex; align-items: center; gap: 6px; color: #61777f; font-size: 11px; font-weight: 850; }
+        .window-status::before { width: 8px; height: 8px; border-radius: 50%; content: ""; background: var(--mint); box-shadow: 0 0 0 4px rgba(8, 239, 173, .14); }
+
+        .flow-body {
+            padding: 23px;
+            background: radial-gradient(circle at 100% 0, rgba(8, 239, 173, .11), transparent 270px), #eef2f3;
+        }
+
+        .email-card,
+        .draft-card {
+            border: 1px solid #d7e0e2;
+            border-radius: 15px;
+            background: var(--white);
+            box-shadow: 0 7px 24px rgba(8, 47, 61, .08);
+        }
+
+        .email-card { padding: 17px 19px 18px; }
+        .email-meta { display: grid; grid-template-columns: 65px 1fr; margin-bottom: 10px; gap: 6px; color: #61777f; font-size: 12px; }
+        .email-meta strong { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+        .email-card p { margin: 0; color: #274955; font-size: 15px; font-weight: 700; line-height: 1.45; }
+
+        .working {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 16px 0;
+            gap: 9px;
+            color: #58717a;
+            font-size: 12px;
+            font-weight: 850;
+        }
+
+        .working span { display: flex; gap: 4px; }
+        .working i { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); }
+        .working i:nth-child(2) { opacity: .55; }
+        .working i:nth-child(3) { opacity: .25; }
+
+        .draft-head {
+            display: flex;
+            align-items: start;
+            justify-content: space-between;
+            padding: 16px 18px 14px;
+            border-bottom: 1px solid #e7ecee;
+            gap: 16px;
+        }
+
+        .draft-kicker { margin: 0 0 2px; color: #687b82; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+        .draft-title { margin: 0; font-size: 16px; font-weight: 850; }
+        .draft-badge { flex: 0 0 auto; padding: 6px 9px; border-radius: 999px; background: var(--mint-soft); color: #087054; font-size: 10px; font-weight: 900; }
+        .module-row { display: flex; flex-wrap: wrap; padding: 14px 18px 9px; gap: 7px; }
+        .module-row span { padding: 6px 9px; border: 1px solid #d7e0e2; border-radius: 7px; background: #f7faf9; color: #345764; font-size: 10px; font-weight: 800; }
+        .draft-actions { display: flex; align-items: center; justify-content: space-between; padding: 9px 18px 17px; color: #60747b; font-size: 11px; font-weight: 750; }
+        .publish { padding: 10px 15px; border: 1px solid var(--ink); border-radius: 8px; background: var(--coral); color: var(--ink-deep); font-size: 12px; font-weight: 900; box-shadow: 0 5px 0 rgba(4, 31, 41, .18); }
+        .flow-tag { position: absolute; z-index: 4; padding: 9px 13px; border: 1px solid rgba(255, 255, 255, .22); border-radius: 8px; background: rgba(4, 31, 41, .94); color: var(--mint); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; font-weight: 800; box-shadow: 0 12px 32px rgba(4, 31, 41, .22); }
+        .flow-tag.top { top: 0; right: 38px; transform: rotate(3deg); }
+        .flow-tag.bottom { bottom: -20px; left: -18px; transform: rotate(-4deg); color: var(--coral); }
+
+        .shot-scene {
+            padding: 42px 54px 44px;
+            background:
+                radial-gradient(circle at 88% 10%, rgba(8, 239, 173, .17), transparent 280px),
+                var(--paper);
+        }
+
+        .shot-scene::before {
+            position: absolute;
+            right: -120px;
+            top: -290px;
+            width: 520px;
+            height: 520px;
+            border: 2px solid rgba(8, 47, 61, .1);
+            border-radius: 50%;
+            content: "";
+            box-shadow: 0 0 0 55px rgba(8, 47, 61, .025);
+        }
+
+        .shot-header {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: start;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .shot-copy { max-width: 760px; }
+        .shot-copy .kicker { margin: 0 0 8px; color: var(--coral-dark, #d94232); font-size: 12px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+        .shot-copy h2 { font-size: 43px; }
+        .shot-copy p { margin: 10px 0 0; color: #45636d; font-size: 17px; line-height: 1.45; }
+        .shot-header .brand { margin-top: 2px; font-size: 15px; }
+        .shot-header .brand img { width: 42px; height: 42px; border-radius: 11px; box-shadow: 0 6px 0 rgba(4, 31, 41, .14); }
+
+        .browser-frame {
+            position: relative;
+            z-index: 2;
+            height: 545px;
+            overflow: hidden;
+            border: 1px solid rgba(8, 47, 61, .22);
+            border-radius: 22px;
+            background: var(--white);
+            box-shadow: 17px 20px 0 var(--mint-soft), 0 24px 70px rgba(4, 31, 41, .14);
+        }
+
+        .shot-viewport {
+            position: relative;
+            height: 100%;
+            overflow: hidden;
+            background: #f8fafb;
+        }
+
+        .shot-viewport img {
+            position: absolute;
+            display: block;
+            max-width: none;
+        }
+
+        .email-shot img {
+            width: 1092px;
+            left: 0;
+            top: 0;
+        }
+
+        .conversation-shot img,
+        .context-shot img {
+            width: 1092px;
+            left: 0;
+            top: 0;
+        }
+    </style>
+</head>
+<body>
+    <section class="scene scene-cover cover" aria-label="Secretary for Statamic cover">
+        <div class="cover-inner">
+            <div class="cover-copy">
+                <div class="brand">
+                    <img src="../assets/statamic-secretary-icon-v2-512.png" alt="">
+                    <span><strong>Secretary</strong> for Statamic</span>
+                </div>
+                <p class="eyebrow">A content assistant for Statamic</p>
+                <h1>Email your site. <em>Get a draft back.</em></h1>
+                <p class="cover-lead">Update content or build complete new pages with the blueprints and modules already in your Statamic toolbox.</p>
+                <ul class="principles">
+                    <li><span>✓</span> Email or chat</li>
+                    <li><span>✓</span> Blueprint aware</li>
+                    <li><span>✓</span> You publish</li>
+                </ul>
+            </div>
+
+            <div class="flow">
+                <span class="flow-tag top">your blueprints ✓</span>
+                <div class="product-window">
+                    <div class="window-bar">
+                        <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+                        <div class="window-title">Secretary · Content desk</div>
+                        <div class="window-status">ready</div>
+                    </div>
+                    <div class="flow-body">
+                        <article class="email-card">
+                            <div class="email-meta"><span>TO</span><strong>mysite.com@statamic.no</strong></div>
+                            <div class="email-meta"><span>SUBJECT</span><strong>A new Services page</strong></div>
+                            <p>Create a page for Strategy under Services. Use our hero, feature grid, testimonial, and FAQ.</p>
+                        </article>
+
+                        <div class="working"><span><i></i><i></i><i></i></span> Reading structure and content</div>
+
+                        <article class="draft-card">
+                            <div class="draft-head">
+                                <div>
+                                    <p class="draft-kicker">New page · Services</p>
+                                    <p class="draft-title">Strategy that turns into action</p>
+                                </div>
+                                <span class="draft-badge">Draft ready</span>
+                            </div>
+                            <div class="module-row">
+                                <span>Hero</span><span>Feature grid</span><span>Testimonial</span><span>FAQ</span>
+                            </div>
+                            <div class="draft-actions">
+                                <span>4 modules · nothing published</span>
+                                <span class="publish">Review &amp; publish →</span>
+                            </div>
+                        </article>
+                    </div>
+                </div>
+                <span class="flow-tag bottom">content/ only</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="scene scene-email shot-scene" aria-label="Email setup screenshot">
+        <header class="shot-header">
+            <div class="shot-copy">
+                <p class="kicker">Email first</p>
+                <h2>One address. No tiny tickets.</h2>
+                <p>Send the instruction you would send a colleague. Secretary replies when the safe draft is ready.</p>
+            </div>
+            <div class="brand">
+                <img src="../assets/statamic-secretary-icon-v2-512.png" alt="">
+                <span><strong>Secretary</strong> for Statamic</span>
+            </div>
+        </header>
+        <div class="browser-frame">
+            <div class="shot-viewport email-shot">
+                <img src="../assets/marketplace/raw/01-email-ready.png" alt="Secretary email onboarding in Statamic">
+            </div>
+        </div>
+    </section>
+
+    <section class="scene scene-conversation shot-scene" aria-label="Email-created page conversation screenshot">
+        <header class="shot-header">
+            <div class="shot-copy">
+                <p class="kicker">One thread, two places</p>
+                <h2>Email in. Keep refining in Statamic.</h2>
+                <p>The full request and result follow you into the Control Panel, ready for review or another instruction.</p>
+            </div>
+            <div class="brand">
+                <img src="../assets/statamic-secretary-icon-v2-512.png" alt="">
+                <span><strong>Secretary</strong> for Statamic</span>
+            </div>
+        </header>
+        <div class="browser-frame">
+            <div class="shot-viewport conversation-shot">
+                <img src="../assets/marketplace/raw/02-email-conversation.png" alt="An email-created page conversation continued in the Statamic Control Panel">
+            </div>
+        </div>
+    </section>
+
+    <section class="scene scene-context shot-scene" aria-label="Contextual Secretary assistant screenshot">
+        <header class="shot-header">
+            <div class="shot-copy">
+                <p class="kicker">Built into the editor</p>
+                <h2>Edit the page you are looking at.</h2>
+                <p>Open a real entry and Secretary brings the right conversation, page context, and draft status with it.</p>
+            </div>
+            <div class="brand">
+                <img src="../assets/statamic-secretary-icon-v2-512.png" alt="">
+                <span><strong>Secretary</strong> for Statamic</span>
+            </div>
+        </header>
+        <div class="browser-frame">
+            <div class="shot-viewport context-shot">
+                <img src="../assets/marketplace/raw/03-contextual-page.png" alt="A real Statamic page with the contextual Secretary assistant open on the right">
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const scene = new URLSearchParams(window.location.search).get('scene') || 'cover';
+        document.body.dataset.scene = ['cover', 'email', 'conversation', 'context'].includes(scene) ? scene : 'cover';
+    </script>
+</body>
+</html>

@@ -37,7 +37,7 @@ The product must not be described as production-proven until these gates pass.
 1. Finish the product-proof and distribution gates above.
 2. Commit the intended release files to the public GitHub repository.
 3. Move the changelog entries from `Unreleased` to stable version `0.1.0`.
-4. Create and push the stable semantic version tag `v0.1.0`.
+4. Create and push the stable semantic version tag `v0.1.0`. This is also the value to use for Marketplace’s **Minimum Git Version** field.
 5. Wait for the existing [Packagist package](https://packagist.org/packages/axelferdinand/statamic-secretary) to index `0.1.0`, then inspect the published dependency constraints and archive.
 6. In a completely fresh Statamic 6 site, run:
 

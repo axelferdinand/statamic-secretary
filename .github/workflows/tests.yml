@@ -49,6 +49,23 @@ jobs:
       - run: npm run build
       - run: git diff --exit-code -- resources/dist
 
+  deploy-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the least-privilege deployment boundary
+        run: |
+          bash -n scripts/deploy.sh
+          grep -Fx 'REMOTE_HOST="prototypen.sircon.net"' scripts/deploy.sh
+          grep -Fx 'REMOTE_USER="statamic"' scripts/deploy.sh
+          grep -F 'EXPECTED_DEPLOY_KEY_FINGERPRINT="SHA256:/LdBGJm+IghdraK0pGKf61bgmIlrhq4GualHCyH5pt4"' scripts/deploy.sh
+          grep -F 'EXPECTED_HOST_KEY_FINGERPRINT="SHA256:E7FT1LJWhFOOWTrQVZi0Pq38DqNDdpACCt4DEm2pPRE"' scripts/deploy.sh
+          grep -F -- '-o PreferredAuthentications=publickey' scripts/deploy.sh
+          grep -F -- '-o PasswordAuthentication=no' scripts/deploy.sh
+          grep -F -- '-o StrictHostKeyChecking=yes' scripts/deploy.sh
+          ! grep -E 'root@|/root/|REMOTE_USER="root"|SECRETARY_DEPLOY_HOST' scripts/deploy.sh
+          test "$(ssh-keygen -lf scripts/deploy-known-hosts | awk '{ print $2 }')" = 'SHA256:E7FT1LJWhFOOWTrQVZi0Pq38DqNDdpACCt4DEm2pPRE'
+
   package:
     runs-on: ubuntu-latest
     steps:

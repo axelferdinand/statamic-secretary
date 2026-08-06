@@ -4,6 +4,30 @@ Secretary uses the same deployment pattern as the Virke project: a dedicated
 SSH identity, a one-way `rsync`, a mandatory dry-run, narrowly scoped remote
 maintenance, a second synchronization check, and live HTTP checks.
 
+The routine is fixed to `statamic@prototypen.sircon.net`; the host cannot be
+overridden through the environment. It pins both the dedicated deployment-key
+fingerprint and the server's Ed25519 host key, ignores user SSH configuration,
+and allows public-key authentication only. The key is loaded into a private,
+short-lived agent that is destroyed when the command exits.
+
+One authenticated SSH master connection is reused for the probe, both `rsync`
+targets, remote maintenance and post-deployment synchronization checks. The
+probe rejects UID 0, mismatched real/effective UIDs, unexpected home or working
+directories, symlinked deployment targets, and targets not owned by the
+`statamic` account. This keeps one deploy to one tightly scoped SSH
+authentication event and prevents monitoring noise from each operation.
+
+Before any dry-run or deployment, verify only the account boundary:
+
+```bash
+scripts/deploy.sh --audit
+```
+
+This opens the same single hardened connection, proves that the real and
+effective UIDs are identical and nonzero, verifies the fixed paths, and exits
+without reading deployed file contents or transferring, changing or deleting
+files.
+
 ## Repository and deliverables
 
 One source repository, `axelferdinand/statamic-secretary`, owns three tracked
@@ -71,15 +95,15 @@ added to this repository.
 
 ## Normal deployment
 
-In this project, an unqualified request to **Deploy** means a complete beta
+In this project, an unqualified request to **Deploy** means a complete
 release, not only a server synchronization. Unless the request is explicitly
 limited to a target, the release owner must:
 
 1. validate the addon and compiled assets;
-2. move the current changelog entries into the next beta version;
+2. move the current changelog entries into the next semantic version;
 3. commit and push the release to `main`;
-4. create and push the matching `v0.1.0-beta.N` tag so Composer/Packagist can
-   distribute the same code;
+4. create and push the matching stable or prerelease tag so Composer/Packagist
+   can distribute the same code;
 5. run the dry-run and production deployment below; and
 6. verify the synchronized targets, production URLs, and published Composer
    version.
@@ -100,12 +124,14 @@ If the dry-run contains no unexpected deletion, deploy:
 scripts/deploy.sh --apply
 ```
 
-The apply step uploads the current working tree, including uncommitted work.
-It then migrates the relay, provisions any missing friendly aliases, refreshes
-the demo autoloader and published addon assets, prepares Secretary's private
-database, clears caches, refreshes the Stache, runs Secretary Doctor, verifies
-that both remote code targets exactly match the local sources, and checks the
-relay, landing page, demo, login, and current compiled addon asset over HTTPS.
+The apply step accepts only a clean, tagged `main` commit after verifying that
+the exact same commit is already published as both `main` and the release tag on
+GitHub. It then migrates the relay, provisions any missing friendly aliases,
+refreshes the demo autoloader and published addon assets, prepares Secretary's
+private database, clears caches, refreshes the Stache, runs Secretary Doctor,
+verifies that both remote code targets exactly match the local sources, and
+checks the relay, landing page, demo, login, and current compiled addon asset
+over HTTPS.
 
 The deployment does not run `composer install` or an application build.
 `composer dump-autoload` is used only for the live demo because its optimized

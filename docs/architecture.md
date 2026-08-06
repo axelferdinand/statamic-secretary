@@ -111,9 +111,9 @@ The API key may come from environment configuration or the first-run Control Pan
 
 ## Marketplace shape
 
-The repository is a standalone `statamic-addon` Composer package with a Statamic addon service provider. Public beta releases are tagged on GitHub and indexed by Packagist. The package includes installation, privacy, security, support, Postmark, relay, and OpenAI documentation, compiled Control Panel assets, and automated PHP/Laravel/package tests. Statamic performs commercial addon license validation from the Marketplace product; Secretary does not implement a parallel license system.
+The repository is a standalone `statamic-addon` Composer package with a Statamic addon service provider. Semantic releases are tagged on GitHub and indexed by Packagist. The package includes installation, privacy, security, support, Postmark, relay, and OpenAI documentation, compiled Control Panel assets, and automated PHP/Laravel/package tests. Statamic performs commercial addon license validation from the Marketplace product; Secretary does not implement a parallel license system.
 
-The remaining Marketplace work is operational: complete the final live acceptance gates, capture current product screenshots, create the Creator shop with GitHub and Stripe, connect the Packagist package, and publish a stable semantic release.
+The remaining Marketplace work is operational: complete the final live acceptance gates, create the Creator shop with GitHub and Stripe, connect the stable Packagist package, upload the finished product media, and publish the Marketplace product.
 
 ## Deliberate limits
 

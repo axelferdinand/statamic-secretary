@@ -1,11 +1,11 @@
 # Release and Marketplace checklist
 
-Last verified: 2026-08-05.
+Last verified: 2026-08-06.
 
 ## Already in place
 
 - [x] Public GitHub repository: `axelferdinand/statamic-secretary`.
-- [x] Public Composer package on Packagist with three installable beta tags.
+- [x] Public Composer package on Packagist with installable beta releases and stable `0.1.0` release metadata.
 - [x] `statamic-addon` metadata, provider discovery, compiled CP assets, and automatic private-store installation.
 - [x] Commercial license for **USD 49 per production site**; Statamic handles Marketplace license validation.
 - [x] README, changelog, privacy, support, security, architecture, relay, and developer documentation.
@@ -13,8 +13,8 @@ Last verified: 2026-08-05.
 - [x] Copy-ready Marketplace listing in `docs/marketplace-listing.md`.
 - [x] PHP 8.3/8.4/8.5, Laravel 12/13, asset reproducibility, archive inspection, and clean-install CI.
 - [x] Latest published `main` workflow completed successfully on 2026-08-05.
-- [x] Current local source passes strict Composer validation, Pint, and 261 tests / 1,999 assertions.
-- [x] Current Composer candidate is a clean 1.2 MB / 122-file runtime archive with private relay operations and development files excluded.
+- [x] Current local source passes strict Composer validation, Pint, and 267 tests / 2,036 assertions.
+- [x] Current Composer candidate is a clean 1.3 MB / 137-file runtime archive with private relay operations, Marketplace media, and development files excluded.
 - [x] Current candidate installs as a non-symlink Composer artifact in a fresh Statamic 6.27 / Laravel 13.24 site, publishes CP assets, creates its private store, runs its own migrations, registers routes, and exposes `secretary:doctor` without manual setup.
 
 ## Final product gates
@@ -24,14 +24,14 @@ Last verified: 2026-08-05.
 - [ ] Verify a normal non-super editor is limited by native Statamic permissions.
 - [ ] Verify a direct human edit blocks publication of a stale Secretary draft.
 - [ ] Complete final desktop/mobile, light/dark, keyboard/focus, loading, empty, error, draft, and published-state browser QA.
-- [ ] Capture the five clean screenshots listed in `docs/marketplace-listing.md`.
+- [x] Create a landing-page-led 1200×800 Marketplace cover and three genuine Control Panel screenshots: email-first setup, an email-created page conversation, and the contextual editor panel.
 
 ## Stable package gate
 
 - [ ] Commit the intended release source and generated `resources/dist` assets.
 - [ ] Confirm the release CI matrix repeats the archive and clean-install checks successfully from the committed source.
 - [ ] Repeat the human onboarding flow in that fresh site without terminal-only setup.
-- [ ] Move the `Unreleased` changelog entries to `0.1.0` with the release date.
+- [x] Move the `Unreleased` changelog entries to `0.1.0` with the release date.
 - [ ] Create and push stable tag `v0.1.0`; confirm Packagist indexes `0.1.0`.
 - [ ] Verify the final public command: `composer require axelferdinand/statamic-secretary`.
 

@@ -5,6 +5,9 @@ namespace AxelFerdinand\StatamicSecretary\Email;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Models\Message;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
+use Statamic\Facades\Term;
 use Statamic\Facades\User;
 use Throwable;
 
@@ -27,7 +30,7 @@ final class ReplyChangeSetPresenter
         $presented = $conversation->changeSets()
             ->whereIn('id', (array) data_get($reply->metadata, 'change_set_ids', []))
             ->get()
-            ->map(fn ($change): array => $this->presentChange($change, $user))
+            ->map(fn ($change): array => $this->presentChange($change, $user, $conversation))
             ->values()
             ->all();
         $affectedIndexes = array_keys(array_filter(
@@ -43,22 +46,9 @@ final class ReplyChangeSetPresenter
         return $presented;
     }
 
-    /** @param  array<int, array<string, mixed>>  $changeSets */
-    public function conversationUrl(Conversation $conversation, array $changeSets): string
+    public function conversationUrl(Conversation $conversation): string
     {
-        $nativeChanges = array_values(array_filter(
-            $changeSets,
-            static fn (array $changeSet): bool => is_string($changeSet['native_url'] ?? null),
-        ));
-
-        if (count($nativeChanges) !== 1) {
-            return cp_route('secretary.show', $conversation);
-        }
-
-        $url = $nativeChanges[0]['native_url'];
-        $separator = str_contains($url, '?') ? '&' : '?';
-
-        return $url.$separator.'secretary='.rawurlencode((string) $conversation->id);
+        return cp_route('secretary.show', $conversation);
     }
 
     /** @param  array<int, array<string, mixed>>  $changeSets */
@@ -105,46 +95,71 @@ final class ReplyChangeSetPresenter
         ];
     }
 
-    private function presentChange($change, $user): array
+    private function presentChange($change, $user, Conversation $conversation): array
     {
         if (! $user
-            || $change->resource_type !== 'entry'
             || ! in_array($change->status, ['draft', 'published'], true)) {
-            return [
-                'id' => (string) $change->id,
-                'status' => (string) $change->status,
-                'summary' => (string) ($change->summary ?: $change->resource_id),
-                'native_url' => null,
-                'resource_title' => null,
-                'public_url' => null,
-            ];
+            return $this->unlinkedChange($change);
         }
 
         try {
-            $entry = Entry::find((string) $change->resource_id);
+            $resource = match ($change->resource_type) {
+                'entry' => Entry::find((string) $change->resource_id),
+                'term' => Term::find((string) $change->resource_id)?->in((string) $change->site),
+                'global' => GlobalSet::findByHandle((string) $change->collection)?->in((string) $change->site),
+                'navigation' => Nav::findByHandle((string) $change->collection)?->in((string) $change->site),
+                default => null,
+            };
 
-            if (! $entry || ! $user->can('view', $entry)) {
-                throw new \RuntimeException('Entry is not available to this user.');
+            if (! $resource || ! $user->can('view', $resource)) {
+                throw new \RuntimeException('Content resource is not available to this user.');
+            }
+
+            $nativeUrl = $resource->editUrl();
+
+            if ($change->resource_type === 'entry' && $change->status === 'draft') {
+                $nativeUrl .= (str_contains($nativeUrl, '?') ? '&' : '?')
+                    .'secretary='.rawurlencode((string) $conversation->id);
             }
 
             return [
                 'id' => (string) $change->id,
                 'status' => (string) $change->status,
                 'summary' => (string) ($change->summary ?: $change->resource_id),
-                'native_url' => $entry->editUrl(),
-                'resource_title' => trim((string) $entry->get('title')) ?: (string) $change->resource_id,
-                'public_url' => $entry->absoluteUrl(),
+                'native_url' => $nativeUrl,
+                'resource_title' => $this->resourceTitle($change, $resource),
+                'public_url' => $change->resource_type === 'entry' ? $resource->absoluteUrl() : null,
             ];
         } catch (Throwable) {
-            return [
-                'id' => (string) $change->id,
-                'status' => (string) $change->status,
-                'summary' => (string) ($change->summary ?: $change->resource_id),
-                'native_url' => null,
-                'resource_title' => null,
-                'public_url' => null,
-            ];
+            return $this->unlinkedChange($change);
         }
+    }
+
+    private function resourceTitle($change, $resource): string
+    {
+        $title = match ($change->resource_type) {
+            'entry' => (string) ($resource->get('title') ?: $resource->slug()),
+            'term' => (string) $resource->title(),
+            'global' => (string) (GlobalSet::findByHandle((string) $change->collection)?->title()
+                ?: $change->collection),
+            'navigation' => (string) (Nav::findByHandle((string) $change->collection)?->title()
+                ?: $change->collection),
+            default => '',
+        };
+
+        return trim($title) ?: (string) ($change->summary ?: $change->resource_id);
+    }
+
+    private function unlinkedChange($change): array
+    {
+        return [
+            'id' => (string) $change->id,
+            'status' => (string) $change->status,
+            'summary' => (string) ($change->summary ?: $change->resource_id),
+            'native_url' => null,
+            'resource_title' => null,
+            'public_url' => null,
+        ];
     }
 
     private function affectedPageLabel(string $body): ?string
