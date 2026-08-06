@@ -71,6 +71,23 @@ added to this repository.
 
 ## Normal deployment
 
+In this project, an unqualified request to **Deploy** means a complete beta
+release, not only a server synchronization. Unless the request is explicitly
+limited to a target, the release owner must:
+
+1. validate the addon and compiled assets;
+2. move the current changelog entries into the next beta version;
+3. commit and push the release to `main`;
+4. create and push the matching `v0.1.0-beta.N` tag so Composer/Packagist can
+   distribute the same code;
+5. run the dry-run and production deployment below; and
+6. verify the synchronized targets, production URLs, and published Composer
+   version.
+
+Use **Deploy live only** when the intended scope is deliberately limited to
+the hosted relay, landing page, and live demo without publishing a new
+Composer version.
+
 Preview the exact upload and deletions:
 
 ```bash

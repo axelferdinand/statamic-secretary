@@ -652,4 +652,63 @@ class AgentOrchestratorTest extends TestCase
 
         $this->assertSame('resp_previous_complete', $conversation->fresh()->openai_response_id);
     }
+
+    public function test_it_returns_a_useful_final_message_when_the_safe_tool_budget_is_exhausted(): void
+    {
+        config()->set('secretary.limits.max_tool_rounds', 2);
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create(['channel' => 'email', 'user_id' => $user->id()]);
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Bytt ut tekst og bilder med bedre innhold.',
+        ]);
+        $client = new class implements AgentClient
+        {
+            /** @var array<int, AgentRequest> */
+            public array $requests = [];
+
+            public function respond(AgentRequest $request): AgentResponse
+            {
+                $this->requests[] = $request;
+                $round = count($this->requests);
+
+                if ($round <= 2) {
+                    return new AgentResponse('resp_tool_'.$round, 'completed', [[
+                        'type' => 'function_call',
+                        'call_id' => 'call_'.$round,
+                        'name' => 'list_collections',
+                        'arguments' => '{}',
+                    ]], '');
+                }
+
+                return new AgentResponse('resp_budget_final', 'completed', [[
+                    'type' => 'message',
+                    'content' => [[
+                        'type' => 'output_text',
+                        'text' => 'Hvilket mål og hvilken målgruppe skal siden optimaliseres for?',
+                    ]],
+                ]], 'Hvilket mål og hvilken målgruppe skal siden optimaliseres for?');
+            }
+        };
+        $orchestrator = new AgentOrchestrator(
+            $client,
+            app(EntryCatalog::class),
+            app(EntryChangeService::class),
+            app(ContentResourceCatalog::class),
+            app(StagedContentChangeService::class),
+        );
+
+        $reply = $orchestrator->respond($conversation, $inbound, $user);
+
+        $this->assertSame('Hvilket mål og hvilken målgruppe skal siden optimaliseres for?', $reply->body);
+        $this->assertCount(3, $client->requests);
+        $this->assertSame([], $client->requests[2]->tools);
+        $this->assertSame('resp_tool_2', $client->requests[2]->previousResponseId);
+        $this->assertStringContainsString('safe inspection budget is now exhausted', $client->requests[2]->instructions);
+        $this->assertNotNull($inbound->fresh()->processed_at);
+        $this->assertSame('resp_budget_final', $conversation->fresh()->openai_response_id);
+    }
 }

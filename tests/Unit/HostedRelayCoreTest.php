@@ -273,7 +273,11 @@ class HostedRelayCoreTest extends TestCase
         $routed = $router->route($this->message('reply-inbound', $this->alias($this->installationA()->routeToken)));
         $mail = new MemoryMailTransport;
         $service = new ReplyService($store, $mail, new RelayAddress('secretary@statamic.no'));
-        $payload = $this->replyPayload('reply-inbound', $this->installationA(), $routed->conversationToken);
+        $payload = $this->replyPayload('reply-inbound', $this->installationA(), $routed->conversationToken, [
+            'version' => 2,
+            'locale' => 'en',
+            'body' => 'The draft is ready.',
+        ]);
         $body = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         $headers = Signature::headers($this->installationA(), 'POST', '/v1/replies', $body);
 
@@ -291,6 +295,7 @@ class HostedRelayCoreTest extends TestCase
         $this->assertCount(1, $mail->replies);
         $reply = $mail->replies[0];
         $this->assertSame('editor@example.com', $reply->recipient);
+        $this->assertSame('en', $reply->locale);
         $this->assertSame(
             $this->alias($this->installationA()->routeToken, $routed->conversationToken),
             $reply->replyTo,
@@ -540,6 +545,7 @@ class HostedRelayCoreTest extends TestCase
                 'resource_title' => 'Forsiden',
                 'public_url' => 'https://site-a.example.com/',
             ]],
+            'nb',
         );
 
         $providerMessageId = $transport->send($reply);

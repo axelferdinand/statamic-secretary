@@ -1,72 +1,98 @@
-# Marketplace listing draft
+# Marketplace listing — ready-to-paste copy
 
-## Product name
+Use this document as the source of truth when creating the Statamic Marketplace product.
 
-**Statamic Secretary**
+## Product details
 
-Recommended alternatives if the final brand should be less literal:
-
-- **Content Steward** — emphasizes guarded responsibility rather than autonomous control.
-- **Statamic Concierge** — friendly and service-oriented, but less explicit about editing.
-- **Draftmate** — concise and clearly draft-first, though less tied to Statamic.
-
-`Statamic Secretary` remains the clearest working name because the email address, CP label, and human-assistant metaphor all reinforce each other.
+- **Name:** Statamic Secretary
+- **Type:** Addon
+- **Price:** USD 49 per production site
+- **Package:** `axelferdinand/statamic-secretary`
+- **Compatibility:** Statamic 6, PHP 8.3+
+- **Website:** https://secretary.statamic.no
+- **Support:** https://github.com/axelferdinand/statamic-secretary/issues
+- **Security:** https://github.com/axelferdinand/statamic-secretary/security/policy
 
 ## Short description
 
-Ask for Statamic content changes in plain language from the Control Panel or by email. Secretary inspects your real blueprints, prepares guarded drafts, and publishes only after explicit approval.
+Ask for Statamic content changes by email or in the Control Panel. Secretary follows your blueprints, prepares safe drafts, and leaves publishing to you.
 
 ## Overview
 
-Statamic Secretary is a content-only AI assistant for live Statamic sites. Editors can write the same instruction they would send to a colleague — “update the opening hours”, “create a page beneath Services”, or “change the footer phone number” — and receive a reviewable draft.
+Statamic Secretary gives editors a plain-language way to work with real Statamic content. Send the instruction you would normally send to a colleague — “update the opening hours”, “create a page beneath Services”, or “make this introduction less corporate” — and Secretary finds the right content, follows its blueprint, and prepares a reviewable draft.
 
-Secretary never receives shell access or a generic file-writing tool. It can only use narrowly typed Statamic operations. Every content path is verified against the configured `content/` root, every field is checked against the real blueprint, and every action runs with the requesting editor's native Statamic permissions.
+Use the contextual chat panel anywhere in the Control Panel, or send an email and carry the same conversation back into Statamic. Secretary acknowledges email requests immediately, replies in the sender's language, and links directly to the resulting draft. Nothing is published until an authorized human explicitly approves it.
 
-## Key features
+Secretary is deliberately content-only. The model receives no shell, generic filesystem, template, blueprint, configuration, or arbitrary web access. Every operation goes through typed Statamic tools, native permissions, blueprint validation, content-root checks, optimistic locking, and an audit trail.
 
-- Global Control Panel chat panel with persistent multi-turn conversations and automatic in-place updates.
-- One-screen Postmark setup with threaded inbound email and an isolated outbound mailer.
-- Configurable GPT-5.5 Responses API integration.
-- Entries/pages, taxonomy terms, globals, and navigation trees.
-- Native Statamic revisions for published entries.
-- Database-staged drafts for content types without revisions.
-- Explicit publication from the CP or an authenticated email command.
-- Per-resource allowlists, native permissions, optimistic locking, and full audit records.
-- Author-domain DKIM checks, spam threshold, webhook Basic Auth, idempotency, and queue retries.
-- Existing Statamic image search plus safe JPEG/PNG/WebP email attachments, imported append-only with native asset permissions.
-- Optional email-verified connection to the hosted `secretary@statamic.no` address, without a customer Postmark account.
-- No code, template, blueprint, config, shell, generic HTTP, asset replacement/deletion, or arbitrary filesystem tools.
+## Highlights
+
+- Contextual Control Panel chat that follows the page or entry you are editing.
+- Multi-turn email conversations with immediate receipt acknowledgements and language-matched replies.
+- Safe working-copy drafts for published entries using Statamic revisions.
+- New unpublished entries, taxonomy terms, globals, and navigation changes.
+- Real blueprint, Bard/Replicator, collection, hierarchy, multisite, and permission awareness.
+- Existing Statamic asset search and safe JPEG, PNG, or WebP email attachments.
+- Before/after review, field-level keep/reject controls, preview, and explicit publication.
+- Automatic conversation continuity when moving between email, drafts, and the Control Panel.
+- Guardrails against stale drafts, duplicate webhooks, sender spoofing, unsafe files, and content-boundary escapes.
+- Private site-local SQLite storage created automatically; no customer database setup or install command.
+
+## Email options
+
+**Secretary Relay** is the quickest setup. Verify an existing permitted Statamic user and receive a site-specific address such as `example.com@statamic.no`. No mailbox, Postmark account, webhook, or queue worker is required. The hosted relay is a separate optional service at **USD 49/year** after its beta period.
+
+**Your own Postmark server** keeps email delivery under the site owner's account. Paste the Postmark Server API Token in Secretary, then create the one forwarding rule shown by onboarding. Secretary discovers and secures the remaining Postmark configuration automatically.
+
+Control Panel chat works without either email option.
 
 ## Requirements
 
-- Statamic 6 Pro for safe working-copy revisions of published entries.
+- Statamic 6 Pro. Revisions are required to keep changes to published entries safely separated from live content.
 - PHP 8.3 or newer.
-- A writable Laravel `storage` directory. Secretary creates its own private SQLite store automatically.
-- An OpenAI API project with access to the configured model.
-- A persistent Laravel queue for production email processing.
-- Optional Postmark server for email conversations.
+- A writable Laravel `storage` directory.
+- An OpenAI API project and API key for usage billed by OpenAI.
+- Outbound HTTPS access to OpenAI and, when selected, Secretary Relay or Postmark.
 
-For a site-controlled mailbox, email setup requires only a Postmark Server API Token, which may be entered in the Control Panel or supplied through the environment. The addon includes the Postmark transport, discovers the server's inbound address, registers its secured webhook, and leaves the site's normal mailer untouched. The optional hosted address instead pairs an existing permitted Statamic user by a short-lived email code; the customer does not create a mailbox or Postmark server.
+Secretary creates and migrates its own private SQLite store. The standard installation does not require an external database, a migration command, Stache maintenance, `secretary:doctor`, or a queue worker. Sites that already operate persistent Laravel queues may opt into one for additional durability and throughput.
 
-## Installation command
+## Installation
 
 ```shell
 composer require axelferdinand/statamic-secretary
 ```
 
-That is the complete standard installation. Open **Content → Secretary** to add the OpenAI key and choose **Easy setup** (Secretary Relay) or **Advanced setup** (your own Postmark server). Secretary creates and migrates its private store automatically; the site's database does not need to be configured. `secretary:doctor` remains available as an optional deployment diagnostic.
+Then open **Content → Secretary**. The guided setup connects OpenAI, turns on safe drafts, and offers Relay, private Postmark, or Control Panel-only use.
 
-## Marketplace assets still needed
+## Pricing and included services
 
-- [x] Square addon icon: `docs/assets/statamic-secretary-icon.png` (1024×1024) and `docs/assets/statamic-secretary-icon-512.png` (512×512).
-- CP desktop conversation screenshot.
-- CP mobile conversation screenshot.
-- Before/after change-card screenshot.
-- Postmark email-thread screenshot with private information removed.
-- Optional short demo video.
+The Marketplace license costs **USD 49 for each production site**. Local development, testing, and staging use are permitted without another license. The Marketplace license does not include OpenAI usage, a Statamic license, customer-managed Postmark charges, or the optional hosted Relay subscription.
 
-## Commercial license
+## Support and data handling
 
-Statamic Secretary is paid software at **USD 49 per production site**. It may be installed and evaluated without a license during local development and testing, but production use requires a valid license purchased through the Statamic Marketplace and attached to the corresponding Statamic Site.
+Secretary is self-hosted. Conversation and audit records stay in a private store on the Statamic installation. Requests and the minimum relevant content are sent to the customer's configured OpenAI project. Email customers additionally use Postmark directly or through the optional hosted relay.
 
-The optional hosted `secretary@statamic.no` inbox is a separate **USD 49/year** service. OpenAI usage, customer-managed Postmark usage, and the Statamic license are not included.
+- Documentation: https://github.com/axelferdinand/statamic-secretary#readme
+- Privacy: https://github.com/axelferdinand/statamic-secretary/blob/main/PRIVACY.md
+- Support policy: https://github.com/axelferdinand/statamic-secretary/blob/main/SUPPORT.md
+- Security policy: https://github.com/axelferdinand/statamic-secretary/blob/main/SECURITY.md
+- Changelog: https://github.com/axelferdinand/statamic-secretary/blob/main/CHANGELOG.md
+- Commercial license: https://github.com/axelferdinand/statamic-secretary/blob/main/LICENSE.md
+
+## Marketplace media
+
+Ready:
+
+- `docs/assets/statamic-secretary-icon.png` — 1024×1024.
+- `docs/assets/statamic-secretary-icon-512.png` — 512×512.
+
+Capture from the final stable build:
+
+1. **Email to safe draft** — a redacted email instruction beside the resulting Statamic draft.
+2. **Contextual chat** — the floating panel open on a real entry with a concise conversation.
+3. **Review before publishing** — a change card with before/after or field-level review.
+4. **Editor workspace** — conversation list and current result on desktop.
+5. **Mobile Control Panel** — the same conversation at a narrow viewport.
+6. Optional 30–45 second video: email request → acknowledgement → draft → refinement in CP → publish.
+
+Use only demo content and demo identities. Do not show API keys, pairing codes, private email addresses, provider IDs, or production customer content.

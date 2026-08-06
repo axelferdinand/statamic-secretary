@@ -107,6 +107,7 @@ const sharedAddressPreview = computed(() => {
     return null;
 });
 const actionError = ref(null);
+const sendingSuggestion = ref(null);
 const postmarkForwardingRequired = computed(() => props.email_setup.connected
     && props.email_setup.forwarding_confirmation_required);
 const safeDraftingRequired = computed(() => props.configured
@@ -187,28 +188,28 @@ const promptSuggestions = computed(() => {
 
     if (field?.type === 'bard' || field?.type === 'replicator') {
         return [
-            `Improve the copy in the ${field.set_type ? `${field.set_type} module` : field.display}.`,
-            'Make this module shorter without changing the rest of the page.',
-            'Suggest a better order for the content modules.',
+            `Make the ${field.set_type ? `${field.set_type} module` : field.display} clearer and more engaging.`,
+            'Trim this module until every sentence earns its keep.',
+            'Reorder these modules so the story stops doing parkour.',
         ];
     }
 
     if (field) {
         return [
             `Make the “${field.display}” field clearer.`,
-            `Proofread only “${field.display}”.`,
-            `Write three alternatives for “${field.display}”.`,
+            `Proofread only “${field.display}” — hunt typos, spare everything else.`,
+            `Write three alternatives for “${field.display}”: safe, bold, and slightly cheeky.`,
         ];
     }
 
     return props.conversation?.context ? [
-        'Make the introduction clearer and shorter.',
-        'Find language issues on this page.',
-        'Suggest a better page title.',
+        'Make the introduction clearer, shorter, and less corporate.',
+        'Hunt down awkward language and suspicious commas.',
+        'Give this page a title people might actually remember.',
     ] : [
-        'Make the homepage introduction clearer.',
-        'Find the “About us” page and suggest a better title.',
-        'Draft a new contact page.',
+        'Make the homepage introduction sound more human.',
+        'Find the “About us” page and rescue its title.',
+        'Draft a contact page that doesn’t feel like paperwork.',
     ];
 });
 const { start: startPolling, stop: stopPolling } = usePoll(2000, {
@@ -254,6 +255,9 @@ function connectRelay() {
     });
 }
 
+const pairingCodeReady = computed(() => /^pc_[A-Za-z0-9_-]{43}$/.test(pairingCode.value.trim())
+    && Boolean(relayPublicUrl.value.trim()));
+
 function requestRelayCode() {
     if (!props.relay_setup.pairing_available || !relayPublicUrl.value.trim() || !relayEmail.value.trim() || setupBusy.value) return;
 
@@ -290,15 +294,30 @@ async function copyActiveEmailAddress() {
     }
 }
 
-function send() {
-    if (!props.conversation || !message.value.trim() || busy.value || !props.configured) return;
+function submitMessage(text, suggestion = null) {
+    if (!props.conversation || !text || busy.value || !props.configured) return;
 
-    router.post(props.conversation.send_url, { message: message.value.trim() }, {
+    sendingSuggestion.value = suggestion;
+
+    router.post(props.conversation.send_url, { message: text }, {
         preserveScroll: true,
         onStart: () => busy.value = true,
-        onSuccess: () => message.value = '',
-        onFinish: () => busy.value = false,
+        onSuccess: () => {
+            if (!suggestion) message.value = '';
+        },
+        onFinish: () => {
+            busy.value = false;
+            sendingSuggestion.value = null;
+        },
     });
+}
+
+function send() {
+    submitMessage(message.value.trim());
+}
+
+function sendSuggestion(suggestion) {
+    submitMessage(suggestion, suggestion);
 }
 
 function requestPublish(change) {
@@ -460,11 +479,6 @@ function saveGuide() {
     });
 }
 
-function useSuggestion(suggestion) {
-    message.value = suggestion;
-    nextTick(() => document.getElementById('secretary-message')?.focus());
-}
-
 function onComposerKeydown(event) {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
@@ -567,30 +581,44 @@ watch(guideSite, loadGuide);
 <template>
     <Head title="Secretary" />
 
-    <ui-header title="Secretary">
-        <template #actions>
-            <ui-button v-if="!onboardingActive" icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
-                New conversation
-            </ui-button>
-        </template>
-    </ui-header>
+    <div class="secretary-admin">
+        <ui-header title="Secretary">
+            <template #actions>
+                <ui-button v-if="!onboardingActive" icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
+                    New conversation
+                </ui-button>
+            </template>
+        </ui-header>
 
-    <p v-if="!onboardingActive" class="secretary-page-lead">
-        Ask for a change. Secretary prepares the draft; you review and publish.
-    </p>
+        <section v-if="!onboardingActive" class="secretary-admin-intro" aria-label="Secretary workflow">
+            <div class="secretary-admin-intro-copy">
+                <span class="secretary-admin-mark" aria-hidden="true">
+                    <ui-icon name="ai-chat-spark" />
+                </span>
+                <p class="secretary-page-lead">
+                    <span>Content desk</span>
+                    Ask for a change. Secretary prepares the draft; you review and publish.
+                </p>
+            </div>
+            <ul class="secretary-admin-principles" aria-label="How Secretary works">
+                <li><span aria-hidden="true" />Blueprint aware</li>
+                <li><span aria-hidden="true" />Draft first</li>
+                <li><span aria-hidden="true" />You publish</li>
+            </ul>
+        </section>
 
-    <SecretaryOnboarding
-        v-if="onboardingActive"
-        :configured="configured"
-        :openai="openai_setup"
-        :email="email_setup"
-        :relay="relay_setup"
-        :onboarding="onboarding"
-        :errors="errors"
-        :success="success"
-    />
+        <SecretaryOnboarding
+            v-if="onboardingActive"
+            :configured="configured"
+            :openai="openai_setup"
+            :email="email_setup"
+            :relay="relay_setup"
+            :onboarding="onboarding"
+            :errors="errors"
+            :success="success"
+        />
 
-    <div v-else class="space-y-4">
+        <div v-else class="space-y-4">
         <ui-alert
             v-if="!configured"
             variant="warning"
@@ -832,7 +860,11 @@ watch(guideSite, loadGuide);
                         </div>
 
                         <div class="flex flex-wrap items-center gap-3">
-                            <ui-button type="submit" :disabled="setupBusy || !pairingCode.trim() || !relayPublicUrl.trim()">
+                            <ui-button
+                                type="submit"
+                                :variant="pairingCodeReady ? 'primary' : 'default'"
+                                :disabled="setupBusy || !pairingCodeReady"
+                            >
                                 {{ setupBusy ? 'Connecting …' : 'Connect shared address' }}
                             </ui-button>
                             <ui-button
@@ -1204,7 +1236,7 @@ watch(guideSite, loadGuide);
                     </Link>
 
                     <div v-if="conversation.processing_error" class="secretary-action-error m-4 mb-0" role="alert">
-                        <div class="font-semibold">Secretary stopped</div>
+                        <div class="font-semibold">Secretary couldn’t finish this request</div>
                         <div class="mt-1">{{ conversation.processing_error }}</div>
                         <button
                             v-if="conversation.failed_message_body"
@@ -1212,7 +1244,7 @@ watch(guideSite, loadGuide);
                             class="secretary-error-action"
                             @click="reuseFailedMessage"
                         >
-                            Put the request back in the composer
+                            Edit and try again
                         </button>
                     </div>
 
@@ -1231,9 +1263,11 @@ watch(guideSite, loadGuide);
                                     :key="suggestion"
                                     type="button"
                                     class="secretary-prompt-suggestion"
-                                    @click="useSuggestion(suggestion)"
+                                    :aria-label="`Send: ${suggestion}`"
+                                    :disabled="busy || !configured"
+                                    @click="sendSuggestion(suggestion)"
                                 >
-                                    <span>{{ suggestion }}</span>
+                                    <span>{{ sendingSuggestion === suggestion ? 'Sending …' : suggestion }}</span>
                                     <ui-icon name="arrow-right" class="size-4 shrink-0" aria-hidden="true" />
                                 </button>
                             </div>
@@ -1459,31 +1493,32 @@ watch(guideSite, loadGuide);
                 </div>
             </ui-panel>
         </div>
+        </div>
+
+        <ui-modal
+            :open="Boolean(publishCandidate)"
+            title="Publish this change?"
+            icon="checkmark"
+            @update:open="value => { if (!value && !busy) publishCandidate = null }"
+        >
+            <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
+                <strong class="text-gray-950 dark:text-white">{{ publishCandidate?.summary }}</strong>
+                will become visible on the site. This is the only action here that affects published content.
+            </p>
+            <template #footer>
+                <div class="flex w-full justify-end gap-2">
+                    <ui-button variant="ghost" :disabled="busy" @click="publishCandidate = null">Not yet</ui-button>
+                    <ui-button variant="primary" :loading="busy" :disabled="busy" @click="publish">Publish</ui-button>
+                </div>
+            </template>
+        </ui-modal>
+
+        <ChangePreviewModal
+            :open="previewOpen"
+            :preview="previewData"
+            :loading="previewLoading"
+            :error="previewError"
+            @close="closePreview"
+        />
     </div>
-
-    <ui-modal
-        :open="Boolean(publishCandidate)"
-        title="Publish this change?"
-        icon="checkmark"
-        @update:open="value => { if (!value && !busy) publishCandidate = null }"
-    >
-        <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
-            <strong class="text-gray-950 dark:text-white">{{ publishCandidate?.summary }}</strong>
-            will become visible on the site. This is the only action here that affects published content.
-        </p>
-        <template #footer>
-            <div class="flex w-full justify-end gap-2">
-                <ui-button variant="ghost" :disabled="busy" @click="publishCandidate = null">Not yet</ui-button>
-                <ui-button variant="primary" :loading="busy" :disabled="busy" @click="publish">Publish</ui-button>
-            </div>
-        </template>
-    </ui-modal>
-
-    <ChangePreviewModal
-        :open="previewOpen"
-        :preview="previewData"
-        :loading="previewLoading"
-        :error="previewError"
-        @close="closePreview"
-    />
 </template>

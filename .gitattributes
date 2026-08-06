@@ -3,7 +3,13 @@
 /.gitattributes export-ignore
 /.gitignore export-ignore
 /composer.lock export-ignore
+/docs/completion-matrix.md export-ignore
 /docs/deployment.md export-ignore
+/docs/landing-page-qa.md export-ignore
+/docs/marketplace-listing.md export-ignore
+/docs/release-and-marketplace-roadmap.md export-ignore
+/docs/release-checklist.md export-ignore
+/docs/assets/statamic-secretary-icon-source.png export-ignore
 /package-lock.json export-ignore
 /package.json export-ignore
 /phpunit.xml.dist export-ignore

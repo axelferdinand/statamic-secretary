@@ -33,11 +33,13 @@ class HostedRelayHttpSecurityTest extends TestCase
         $this->assertStringContainsString('secretary@statamic.no', $english->body);
         $this->assertStringContainsString('https://statamic.com/marketplace', $english->body);
         $this->assertStringContainsString('data-demo', $english->body);
+        $this->assertStringContainsString('Speak human. In your language.', $english->body);
 
         $this->assertSame(200, $norwegian->status);
         $this->assertSame('nb', $norwegian->headers['Content-Language']);
         $this->assertStringContainsString('<html lang="nb"', $norwegian->body);
         $this->assertStringContainsString('Statamic-siden din', $norwegian->body);
+        $this->assertStringContainsString('Snakk menneske. På ditt språk.', $norwegian->body);
         $this->assertStringContainsString('lang="en"', $norwegian->body);
     }
 
@@ -347,7 +349,8 @@ class HostedRelayHttpSecurityTest extends TestCase
         $this->assertSame('editor@example.com', $payload['To']);
         $this->assertStringContainsString($notice->candidates[0]['address'], $payload['TextBody']);
         $this->assertStringContainsString($notice->candidates[1]['address'], $payload['TextBody']);
-        $this->assertStringContainsString('ikke sendt til noe nettsted', $payload['TextBody']);
+        $this->assertSame('Choose a site for Statamic Secretary', $payload['Subject']);
+        $this->assertStringContainsString('was not sent to a site', $payload['TextBody']);
         $this->assertArrayNotHasKey('HtmlBody', $payload);
     }
 
@@ -381,7 +384,8 @@ class HostedRelayHttpSecurityTest extends TestCase
         $this->assertStringNotContainsString($token, $request['body']);
         $payload = json_decode($request['body'], true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame('owner@example.com', $payload['To']);
-        $this->assertSame('Bekreft Statamic Secretary', $payload['Subject']);
+        $this->assertSame('Confirm Statamic Secretary', $payload['Subject']);
+        $this->assertStringContainsString('One-time code:', $payload['TextBody']);
         $this->assertStringContainsString($notice->code, $payload['TextBody']);
         $this->assertStringContainsString('Kunde X', $payload['TextBody']);
         $this->assertArrayNotHasKey('HtmlBody', $payload);

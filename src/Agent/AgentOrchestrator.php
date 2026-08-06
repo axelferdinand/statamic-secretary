@@ -9,6 +9,7 @@ use AxelFerdinand\StatamicSecretary\Content\EntryChangeService;
 use AxelFerdinand\StatamicSecretary\Content\StagedContentChangeService;
 use AxelFerdinand\StatamicSecretary\Contracts\AgentClient;
 use AxelFerdinand\StatamicSecretary\Data\AgentRequest;
+use AxelFerdinand\StatamicSecretary\Data\AgentResponse;
 use AxelFerdinand\StatamicSecretary\Developer\SecretaryToolContext;
 use AxelFerdinand\StatamicSecretary\Developer\ToolRegistry;
 use AxelFerdinand\StatamicSecretary\Editorial\EditorialStyleGuide;
@@ -82,50 +83,18 @@ final class AgentOrchestrator
             $calls = $this->functionCalls($response->output);
 
             if ($calls === []) {
-                $this->setProcessingStage($message, 'writing_reply');
-                $body = trim($response->text);
-
-                if ($body === '') {
-                    throw new RuntimeException('Secretary received no final answer from OpenAI.');
-                }
-
-                $metadata = [
-                    'openai_response_id' => $response->id,
-                    'usage' => $usage,
-                    'change_set_ids' => array_values(array_unique($changeSetIds)),
-                    'reply_to_message_id' => $message->id,
-                ];
-
-                if (config('secretary.developer.mode')) {
-                    $metadata['developer_trace'] = [
-                        'model' => (string) config('secretary.openai.model'),
-                        'rounds' => $rounds,
-                        'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
-                        'usage' => $usage,
-                        'estimated_cost_usd' => $this->estimatedCost($usage),
-                        'tools' => $toolTrace,
-                        'dry_run' => $dryRun,
-                    ];
-                }
-
-                $reply = $conversation->messages()->create([
-                    'direction' => 'outbound',
-                    'channel' => $message->channel,
-                    'role' => 'assistant',
-                    'body' => $body,
-                    'reply_to_message_id' => $message->id,
-                    'metadata' => $metadata,
-                    'processed_at' => now(),
-                ]);
-
-                if ($stored) {
-                    $conversation->update(['openai_response_id' => $response->id]);
-                }
-
-                $message->update(['processed_at' => now()]);
-                AgentCompleted::dispatch($reply);
-
-                return $reply;
+                return $this->completeResponse(
+                    $response,
+                    $conversation,
+                    $message,
+                    $stored,
+                    $changeSetIds,
+                    $usage,
+                    $toolTrace,
+                    $rounds,
+                    $startedAt,
+                    $dryRun,
+                );
             }
 
             $this->setProcessingStage($message, $this->processingStageForCalls($calls));
@@ -185,7 +154,94 @@ final class AgentOrchestrator
             }
         }
 
-        throw new RuntimeException('Secretary stopped because the tool-call limit was reached.');
+        $response = $this->client->respond(new AgentRequest(
+            input: $input,
+            tools: [],
+            previousResponseId: $previousResponseId,
+            safetyIdentifier: $this->safetyIdentifier($user),
+            instructions: $this->instructions($conversation, $dryRun).<<<'PROMPT'
+
+
+The safe inspection budget is now exhausted. You have no more tools. Give the user the safest useful result from the evidence already gathered. If a draft was saved, report it accurately. If the request is still incomplete or subjective, ask one focused clarification that makes the next attempt actionable. Never claim that work was completed when it was not.
+PROMPT,
+        ));
+        $usage = $this->mergeUsage($usage, $response->usage);
+
+        return $this->completeResponse(
+            $response,
+            $conversation,
+            $message,
+            $stored,
+            $changeSetIds,
+            $usage,
+            $toolTrace,
+            $rounds + 1,
+            $startedAt,
+            $dryRun,
+        );
+    }
+
+    /**
+     * @param  array<int, string>  $changeSetIds
+     * @param  array<string, mixed>  $usage
+     * @param  array<int, array<string, mixed>>  $toolTrace
+     */
+    private function completeResponse(
+        AgentResponse $response,
+        Conversation $conversation,
+        Message $message,
+        bool $stored,
+        array $changeSetIds,
+        array $usage,
+        array $toolTrace,
+        int $rounds,
+        float $startedAt,
+        bool $dryRun,
+    ): Message {
+        $this->setProcessingStage($message, 'writing_reply');
+        $body = trim($response->text);
+
+        if ($body === '') {
+            throw new RuntimeException('Secretary received no final answer from OpenAI.');
+        }
+
+        $metadata = [
+            'openai_response_id' => $response->id,
+            'usage' => $usage,
+            'change_set_ids' => array_values(array_unique($changeSetIds)),
+            'reply_to_message_id' => $message->id,
+        ];
+
+        if (config('secretary.developer.mode')) {
+            $metadata['developer_trace'] = [
+                'model' => (string) config('secretary.openai.model'),
+                'rounds' => $rounds,
+                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                'usage' => $usage,
+                'estimated_cost_usd' => $this->estimatedCost($usage),
+                'tools' => $toolTrace,
+                'dry_run' => $dryRun,
+            ];
+        }
+
+        $reply = $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => $message->channel,
+            'role' => 'assistant',
+            'body' => $body,
+            'reply_to_message_id' => $message->id,
+            'metadata' => $metadata,
+            'processed_at' => now(),
+        ]);
+
+        if ($stored) {
+            $conversation->update(['openai_response_id' => $response->id]);
+        }
+
+        $message->update(['processed_at' => now()]);
+        AgentCompleted::dispatch($reply);
+
+        return $reply;
     }
 
     /** @param  array<int, array{call_id: string, name: string, arguments: array<string, mixed>}>  $calls */
@@ -953,7 +1009,7 @@ final class AgentOrchestrator
     private function instructions(Conversation $conversation, bool $dryRun = false): string
     {
         $instructions = <<<'PROMPT'
-You are Statamic Secretary, a cautious Norwegian-first content assistant inside a live Statamic control panel.
+You are Statamic Secretary, a cautious language-adaptive content assistant inside a live Statamic control panel.
 
 Hard boundaries:
 - Work only through the supplied tools. They are the complete authority for readable and writable content.
@@ -972,8 +1028,9 @@ Hard boundaries:
 - A successful create/update tool produces a draft only. Entries use Statamic revisions or unpublished state. Other resources remain database-staged and do not touch live content until explicit publication. Never claim anything is published.
 - Publishing is intentionally unavailable to you and is handled by a separate explicit-confirmation path.
 - If a request is ambiguous, ask one focused question instead of guessing.
+- Broad subjective requests such as “replace the text and images with better content” are ambiguous unless the user provides a goal, audience, evidence, or suitable assets. Inspect only enough to identify the target, then ask one focused question before attempting a full-page rewrite.
 - Briefly report what changed, the affected entry, and that it is ready as a draft. Report tool failures honestly.
-- Reply in the language used by the user, with concise plain text suitable for both chat and email.
+- Reply in the language used by the user, with concise plain text suitable for both chat and email. Keep following the latest user's language if a conversation switches language. If the request contains no natural language, use English.
 
 Email context:
 - Email user messages may include a normalized “Email subject” above the message body. Treat the subject and body together as one request.

@@ -4,8 +4,16 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.0-beta.4 - 2026-08-06
+
 - Reuse the original relay installation and domain address when the same public site and exact sender set complete onboarding again, while retaining collision-safe aliases for genuinely different installations.
 - Align the onboarding card with the Control Panel page heading and give success and error messages a dedicated, spaced notice area.
+- Send an immediate, lightly human acknowledgement when an inbound instruction is accepted, without duplicating acknowledgements on provider retries.
+- Keep system email in English while matching the sender's language in acknowledgements, results, publication messages, attachment labels, and relay replies.
+- Make suggested prompts more useful and playful, and submit them directly instead of copying them into the composer.
+- Replace implementation-oriented recovery copy with a clear “Edit and try again” action.
+- Give the relay pairing action a clear primary state only after a complete one-time code is present.
+- Increase the default inspection budget and return a safe, useful response or focused clarification when the tool budget is exhausted.
 
 ## 0.1.0-beta.3 - 2026-08-05
 

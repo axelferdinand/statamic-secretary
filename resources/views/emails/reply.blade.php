@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="no">
+<html lang="{{ $locale }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,7 +12,7 @@
             <div style="font-size:16px;line-height:1.65;white-space:pre-wrap">{{ $bodyBeforeAffected }}</div>
             @if ($affectedChange)
                 <div style="margin-top:18px;font-size:14px;line-height:1.6">
-                    <strong>Berørt side:</strong>
+                    <strong>{{ $copy['affected_page'] }}:</strong>
                     <a href="{{ $affectedChange['public_url'] }}" style="color:#2563eb;text-decoration:underline">{{ $affectedChange['resource_title'] }}</a>
                     —
                     <a href="{{ $affectedChange['public_url'] }}" style="color:#52525b;text-decoration:underline">{{ $affectedChange['public_url'] }}</a>
@@ -23,7 +23,7 @@
             @endif
             @if ($showChangeList)
                 <div style="margin-top:22px;border-top:1px solid #e4e4e7;padding-top:18px">
-                    <div style="margin-bottom:8px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#71717a">Klargjorte endringer</div>
+                    <div style="margin-bottom:8px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#71717a">{{ $copy['prepared_changes'] }}</div>
                     <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6">
                         @foreach ($changeSets as $changeSet)
                             <li>
@@ -32,7 +32,7 @@
                                 @else
                                     {{ $changeSet['summary'] }}
                                 @endif
-                                — {{ $changeSet['status'] === 'published' ? 'publisert' : 'utkast' }}
+                                — {{ $changeSet['status'] === 'published' ? $copy['published'] : $copy['draft'] }}
                             </li>
                         @endforeach
                     </ul>
@@ -40,7 +40,7 @@
             @endif
             @if ($attachments)
                 <div style="margin-top:22px;border-top:1px solid #e4e4e7;padding-top:18px">
-                    <div style="margin-bottom:8px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#71717a">Vedlegg i Statamic</div>
+                    <div style="margin-bottom:8px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#71717a">{{ $copy['attachments'] }}</div>
                     <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.7">
                         @foreach ($attachments as $attachment)
                             <li>
@@ -55,11 +55,11 @@
             </div>
             @if ($conversationUrl !== $primaryUrl)
                 <div style="margin-top:14px;font-size:13px">
-                    <a href="{{ $conversationUrl }}" style="color:#52525b;text-decoration:underline">Fortsett samtalen i Secretary</a>
+                    <a href="{{ $conversationUrl }}" style="color:#52525b;text-decoration:underline">{{ $copy['continue_conversation'] }}</a>
                 </div>
             @endif
         </div>
-        <p style="margin:16px 4px 0;font-size:12px;line-height:1.5;color:#71717a">Svar på denne e-posten for å fortsette samme samtale.</p>
+        <p style="margin:16px 4px 0;font-size:12px;line-height:1.5;color:#71717a">{{ $copy['reply_to_continue'] }}</p>
     </div>
 </body>
 </html>

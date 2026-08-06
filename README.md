@@ -72,7 +72,7 @@ SECRETARY_OPENAI_MODEL=gpt-5.5
 SECRETARY_OPENAI_REASONING_EFFORT=medium
 SECRETARY_OPENAI_MAX_OUTPUT_TOKENS=4096
 SECRETARY_OPENAI_STORE=true
-SECRETARY_MAX_TOOL_ROUNDS=12
+SECRETARY_MAX_TOOL_ROUNDS=20
 SECRETARY_JOB_TIMEOUT=1200
 SECRETARY_RETENTION_DAYS=90
 SECRETARY_MAX_RESOURCE_CHARACTERS=250000
@@ -184,4 +184,4 @@ See the [completion matrix](docs/completion-matrix.md) for requirement-by-requir
 
 ## Marketplace status
 
-The Composer package structure, compiled assets, support/privacy/security policies, diagnostics, CI matrix, [Marketplace copy](docs/marketplace-listing.md), and [release checklist](docs/release-checklist.md) are ready for a development install. Before a public Marketplace release, the project still needs live proof, a tagged GitHub release, Packagist publication, and final Marketplace assets.
+The public beta is available on [Packagist](https://packagist.org/packages/axelferdinand/statamic-secretary), installs through Composer, and has tagged GitHub prereleases. Package metadata, compiled assets, support/privacy/security policies, diagnostics, CI, Marketplace copy, and release checks are in place. The remaining launch gates are the final live acceptance tests, Marketplace screenshots and seller setup, and a stable `v0.1.0` release.

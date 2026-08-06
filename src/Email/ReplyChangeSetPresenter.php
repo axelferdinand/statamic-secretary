@@ -74,7 +74,7 @@ final class ReplyChangeSetPresenter
         }
 
         return trim((string) preg_replace(
-            '/^Berørt side:\s*.*(?:\R|$)/miu',
+            '/^(?:Berørt side|Affected page):\s*.*(?:\R|$)/miu',
             '',
             $body,
         ));
@@ -149,7 +149,7 @@ final class ReplyChangeSetPresenter
 
     private function affectedPageLabel(string $body): ?string
     {
-        if (preg_match('/^Berørt side:\s*(.+)$/miu', $body, $matches) !== 1) {
+        if (preg_match('/^(?:Berørt side|Affected page):\s*(.+)$/miu', $body, $matches) !== 1) {
             return null;
         }
 

@@ -40,7 +40,7 @@ final class PostmarkSelectionTransport implements SelectionTransport
             $body = json_encode([
                 'From' => $this->fromName.' <'.$this->fromAddress.'>',
                 'To' => $notice->recipient,
-                'Subject' => 'Velg nettsted for Statamic Secretary',
+                'Subject' => 'Choose a site for Statamic Secretary',
                 'TextBody' => $this->textBody($notice),
                 'Headers' => $headers,
                 'MessageStream' => $this->messageStream,
@@ -80,13 +80,13 @@ final class PostmarkSelectionTransport implements SelectionTransport
 
     private function textBody(SelectionNotice $notice): string
     {
-        $body = "Forespørselen din ble ikke sendt til noe nettsted fordi e-postadressen din er knyttet til flere Statamic-nettsteder.\n\n";
-        $body .= "Send den opprinnelige forespørselen på nytt til én av disse adressene:\n";
+        $body = "Your request was not sent to a site because your email address is connected to multiple Statamic sites.\n\n";
+        $body .= "Send the original request again to one of these addresses:\n";
 
         foreach ($notice->candidates as $candidate) {
             $body .= "\n- {$candidate['label']}: {$candidate['address']}";
         }
 
-        return $body."\n\nIkke svar direkte på denne meldingen; bruk én av adressene over.";
+        return $body."\n\nDo not reply directly to this message; use one of the addresses above.";
     }
 }

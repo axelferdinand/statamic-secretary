@@ -24,6 +24,8 @@ final class InboundEmailService
         private readonly Dispatcher $bus,
         private readonly EmailConfiguration $email,
         private readonly AttachmentImporter $attachments,
+        private readonly ReplyLanguage $replyLanguage,
+        private readonly InboundAcknowledgement $acknowledgement,
     ) {}
 
     /** @return array{duplicate: bool, message: Message} */
@@ -44,7 +46,7 @@ final class InboundEmailService
         $maximumCharacters = max(1, (int) config('secretary.limits.max_input_characters', 20000));
         abort_if(mb_strlen($body) > $maximumCharacters, 403, 'The inbound email instruction is too long.');
         abort_if(
-            ! app(OpenAIConfiguration::class)->configured() && ! $this->publicationIntent->matches($body ?: 'Vedlagt bilde'),
+            ! app(OpenAIConfiguration::class)->configured() && ! $this->publicationIntent->matches($body ?: 'Attached image'),
             503,
             'Secretary OpenAI is not configured.',
         );
@@ -56,7 +58,8 @@ final class InboundEmailService
         }
 
         if ($body === '') {
-            $body = 'Vedlagt bilde: '.implode(', ', array_column($importedAttachments, 'name'));
+            $locale = $this->replyLanguage->detect(trim((string) $inbound->subject));
+            $body = $this->replyLanguage->copy($locale)['attached_image'].': '.implode(', ', array_column($importedAttachments, 'name'));
         }
 
         $conversation = $this->resolveConversation($inbound, $sender, $user);
@@ -81,6 +84,7 @@ final class InboundEmailService
         } catch (QueryException $exception) {
             if ($duplicate = Message::query()->where('provider_message_id', $inbound->providerMessageId)->first()) {
                 $this->ensureDuplicateMatches($duplicate, $inbound, $sender);
+                $this->acknowledgement->send($duplicate);
                 $this->dispatchMessage($duplicate);
 
                 return ['duplicate' => true, 'message' => $duplicate];
@@ -89,6 +93,7 @@ final class InboundEmailService
             throw $exception;
         }
 
+        $this->acknowledgement->send($message);
         $this->dispatchMessage($message);
 
         return ['duplicate' => false, 'message' => $message];
@@ -105,6 +110,7 @@ final class InboundEmailService
         }
 
         $this->ensureDuplicateMatches($duplicate, $inbound, mb_strtolower(trim($inbound->sender)));
+        $this->acknowledgement->send($duplicate);
         $this->dispatchMessage($duplicate);
 
         return ['duplicate' => true, 'message' => $duplicate];

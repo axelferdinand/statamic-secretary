@@ -25,6 +25,8 @@ const relayEmail = ref(props.relay.pending_sender ?? props.relay.suggested_sende
 const relayPublicUrl = ref(props.relay.pending_public_url ?? props.relay.suggested_public_url ?? '');
 const pairingCode = ref('');
 const emailReady = computed(() => props.email.connected || props.relay.connected);
+const pairingCodeReady = computed(() => /^pc_[A-Za-z0-9_-]{43}$/.test(pairingCode.value.trim())
+    && Boolean(relayPublicUrl.value.trim()));
 const setupError = computed(() => props.errors?.openai_api_key
     ?? props.errors?.api_key
     ?? props.errors?.safe_drafting
@@ -348,7 +350,12 @@ function skipEmail() {
                         >
                         <p>Sent to {{ relay.pending_sender }}. Valid for 15 minutes.</p>
                     </div>
-                    <ui-button type="submit" variant="primary" :loading="busy" :disabled="busy || !pairingCode.trim() || !relayPublicUrl.trim()">
+                    <ui-button
+                        type="submit"
+                        :variant="pairingCodeReady ? 'primary' : 'default'"
+                        :loading="busy"
+                        :disabled="busy || !pairingCodeReady"
+                    >
                         Connect email
                     </ui-button>
                 </form>

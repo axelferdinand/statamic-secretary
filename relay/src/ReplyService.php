@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay;
 
+use AxelFerdinand\StatamicSecretary\Email\ReplyLanguage;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\MailTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\RelayStore;
 use AxelFerdinand\StatamicSecretaryRelay\Data\ClaimState;
@@ -103,6 +104,9 @@ final class ReplyService
             $payload['in_reply_to'],
             $payload['review_url'],
             $payload['change_sets'],
+            $payload['version'] === 2
+                ? (string) $payload['locale']
+                : (new ReplyLanguage)->detect((string) $payload['body']),
         );
 
         try {
@@ -131,6 +135,7 @@ final class ReplyService
             throw new RelayRejected('Reply payload is invalid JSON.', previous: $exception);
         }
 
+        $version = is_array($payload) ? ($payload['version'] ?? null) : null;
         $allowed = [
             'version',
             'idempotency_key',
@@ -145,10 +150,14 @@ final class ReplyService
             'in_reply_to',
         ];
 
+        if ($version === 2) {
+            $allowed[] = 'locale';
+        }
+
         if (! is_array($payload)
             || array_diff(array_keys($payload), $allowed) !== []
             || array_diff($allowed, array_keys($payload)) !== []
-            || ($payload['version'] ?? null) !== 1
+            || ! in_array($version, [1, 2], true)
             || ! is_string($payload['idempotency_key'])
             || preg_match('/^secretary-reply-[a-z0-9_-]{20,180}$/D', $payload['idempotency_key']) !== 1
             || ! is_string($payload['inbound_provider_message_id'])
@@ -161,6 +170,8 @@ final class ReplyService
             || ! is_string($payload['body'])
             || trim($payload['body']) === ''
             || mb_strlen($payload['body']) > 20000
+            || ($version === 2 && (! is_string($payload['locale'] ?? null)
+                || ! in_array($payload['locale'], [ReplyLanguage::ENGLISH, ReplyLanguage::NORWEGIAN], true)))
             || ! is_string($payload['route_token'])
             || preg_match('/^r[a-z0-9]{25}$/D', $payload['route_token']) !== 1
             || ! is_string($payload['conversation_token'])

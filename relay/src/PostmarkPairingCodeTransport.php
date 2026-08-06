@@ -44,7 +44,7 @@ final class PostmarkPairingCodeTransport implements PairingCodeTransport
             $body = json_encode([
                 'From' => $this->fromName.' <'.$this->fromAddress.'>',
                 'To' => $notice->recipient,
-                'Subject' => 'Bekreft Statamic Secretary',
+                'Subject' => 'Confirm Statamic Secretary',
                 'TextBody' => $this->textBody($notice),
                 'MessageStream' => $this->messageStream,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -86,12 +86,12 @@ final class PostmarkPairingCodeTransport implements PairingCodeTransport
         $expires = gmdate('H:i', $notice->expiresAt).' UTC';
 
         return <<<TEXT
-            Noen kobler {$notice->label} til den delte Statamic Secretary-adressen.
+            Someone is connecting {$notice->label} to the shared Statamic Secretary address.
 
-            Engangskode:
+            One-time code:
             {$notice->code}
 
-            Koden utløper {$expires}. Lim den inn i Secretary-oppsettet på nettstedet. Hvis du ikke startet dette oppsettet, kan du ignorere meldingen.
+            The code expires at {$expires}. Paste it into the Secretary setup on the site. If you did not start this setup, you can safely ignore this email.
             TEXT;
     }
 

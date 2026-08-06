@@ -284,8 +284,12 @@ class RelayInboundControllerTest extends TestCase
     public function test_a_provider_duplicate_with_a_fresh_nonce_is_idempotent(): void
     {
         $this->configureRelay();
+        config()->set('secretary.relay.base_url', 'https://statamic.no/_secretary-relay');
         $this->authorizedUser();
         Bus::fake();
+        Http::fake([
+            'https://statamic.no/_secretary-relay/v1/replies' => Http::response(['accepted' => true], 202),
+        ]);
         $payload = $this->payload('provider-duplicate');
 
         $this->postSigned($payload)->assertOk()->assertJson(['duplicate' => false]);
@@ -294,6 +298,7 @@ class RelayInboundControllerTest extends TestCase
         $this->assertDatabaseCount('secretary_conversations', 1);
         $this->assertDatabaseCount('secretary_messages', 1);
         Bus::assertDispatchedAfterResponseTimes(ProcessInboundEmail::class, 2);
+        Http::assertSentCount(1);
     }
 
     public function test_a_relay_conversation_sends_one_signed_idempotent_reply_through_the_relay(): void
@@ -337,13 +342,28 @@ class RelayInboundControllerTest extends TestCase
             "Email subject:\nEndre forsiden\n\nEmail message:\nOppdater forsiden.",
             $captured->request?->input[0]['content'],
         );
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
+        Http::assertSent(function ($request) use ($message): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://statamic.no/_secretary-relay/v1/replies'
+                && $payload['version'] === 2
+                && $payload['locale'] === 'nb'
+                && $payload['idempotency_key'] === 'secretary-reply-ack-'.$message->id
+                && $payload['inbound_provider_message_id'] === $message->provider_message_id
+                && $payload['review_url'] === null
+                && $payload['change_sets'] === []
+                && str_contains($payload['body'], 'Mottatt — jeg er på saken.')
+                && str_contains($payload['body'], 'ingen kaffepause nødvendig');
+        });
         Http::assertSent(function ($request) use ($message, $reply): bool {
             $payload = $request->data();
 
             return $request->url() === 'https://statamic.no/_secretary-relay/v1/replies'
                 && $request->hasHeader('Secretary-Installation', config('secretary.relay.installation_id'))
                 && $request->hasHeader('Secretary-Signature')
+                && $payload['version'] === 2
+                && $payload['locale'] === 'nb'
                 && $payload['idempotency_key'] === 'secretary-reply-'.$reply->id
                 && $payload['inbound_provider_message_id'] === $message->provider_message_id
                 && $payload['route_token'] === $this->routeToken()

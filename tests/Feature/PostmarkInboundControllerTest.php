@@ -10,6 +10,7 @@ use AxelFerdinand\StatamicSecretary\Data\AgentRequest;
 use AxelFerdinand\StatamicSecretary\Data\AgentResponse;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessCpMessage;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessInboundEmail;
+use AxelFerdinand\StatamicSecretary\Mail\SecretaryAcknowledgement;
 use AxelFerdinand\StatamicSecretary\Mail\SecretaryReply;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Models\Message;
@@ -91,7 +92,7 @@ class PostmarkInboundControllerTest extends TestCase
         ])->assertOk();
 
         $this->assertSame(
-            'Vedlagt bilde: photo.png',
+            'Attached image: photo.png',
             Message::where('provider_message_id', 'postmark-image-only')->firstOrFail()->body,
         );
 
@@ -259,6 +260,7 @@ class PostmarkInboundControllerTest extends TestCase
         $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
         $user->save();
         Bus::fake();
+        Mail::fake();
 
         $response = $this->withBasicAuth('postmark', 'webhook-secret')->postJson('/_secretary/webhooks/postmark/inbound', [
             'MessageID' => 'postmark-message-1',
@@ -278,7 +280,18 @@ class PostmarkInboundControllerTest extends TestCase
         $inbound = Message::where('provider_message_id', 'postmark-message-1')->first();
         $this->assertSame('Bytt tittel på forsiden.', $inbound->body);
         $this->assertSame('<inbound-1@example.com>', data_get($inbound->metadata, 'rfc_message_id'));
+        $this->assertNotNull(data_get($inbound->metadata, 'acknowledgement_sent_at'));
         Bus::assertDispatched(ProcessInboundEmail::class);
+        Mail::assertSent(SecretaryAcknowledgement::class, function (SecretaryAcknowledgement $mail) use ($inbound): bool {
+            $mail->assertSeeInText('Mottatt — jeg er på saken.')
+                ->assertSeeInText('ingen kaffepause nødvendig');
+            $headers = $mail->headers();
+
+            return $mail->inbound->is($inbound)
+                && $mail->envelope()->subject === 'Re: Endre forsiden'
+                && $headers->references === ['<inbound-1@example.com>']
+                && $headers->text['In-Reply-To'] === '<inbound-1@example.com>';
+        });
 
         $this->withBasicAuth('postmark', 'webhook-secret')
             ->postJson('/_secretary/webhooks/postmark/inbound', [
@@ -289,6 +302,7 @@ class PostmarkInboundControllerTest extends TestCase
             ->assertJson(['duplicate' => true]);
 
         Bus::assertDispatchedAfterResponseTimes(ProcessInboundEmail::class, 2);
+        Mail::assertSentCount(1);
     }
 
     public function test_ambiguous_rfc_message_ids_are_not_reflected_into_replies(): void
@@ -685,6 +699,45 @@ class PostmarkInboundControllerTest extends TestCase
             strpos($rendered, 'Status: Klar som utkast'),
             strpos($rendered, 'Berørt side:'),
         );
+    }
+
+    public function test_an_english_instruction_receives_english_email_chrome(): void
+    {
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = app(ConversationService::class)->start(
+            'email',
+            $user,
+            'editor@example.com',
+            'english-email-thread',
+        );
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Please make the homepage title shorter.',
+            'metadata' => ['subject' => 'Homepage'],
+        ]);
+        $reply = $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'email',
+            'role' => 'assistant',
+            'body' => 'Done.',
+            'reply_to_message_id' => $inbound->id,
+            'metadata' => ['reply_to_message_id' => $inbound->id],
+            'processed_at' => now(),
+        ]);
+        $mail = new SecretaryReply($conversation, $reply);
+        $acknowledgement = new SecretaryAcknowledgement($inbound);
+
+        $mail->assertSeeInText('Open the conversation in Secretary:')
+            ->assertSeeInText('Reply to this email to continue the same conversation.')
+            ->assertDontSeeInText('Åpne samtalen i Secretary');
+        $this->assertStringContainsString('<html lang="en">', $mail->render());
+        $acknowledgement->assertSeeInText('Received — I’m on it.')
+            ->assertSeeInText('no coffee break required')
+            ->assertDontSeeInText('Mottatt — jeg er på saken.');
+        $this->assertStringContainsString('<html lang="en">', $acknowledgement->render());
     }
 
     public function test_the_email_job_reuses_a_stored_reply_after_a_mail_failure_without_calling_the_agent_again(): void

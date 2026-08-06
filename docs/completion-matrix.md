@@ -4,7 +4,7 @@ This matrix maps the product brief to evidence in the repository. “Automated�
 
 | Requirement | Implementation evidence | Verification evidence | Status |
 | --- | --- | --- | --- |
-| Composer-installable Statamic addon | `composer.json`, addon service provider, auto-discovered routes, migrations, Vite bundle | Strict Composer validation; clean archive manifest; path-package discovery plus a clean ZIP/artifact install into a separate Statamic 6 app with provider, addon manifest, commands, routes, and published assets verified on 2026-07-23 | Automated and distribution-installed |
+| Composer-installable Statamic addon | `composer.json`, addon service provider, auto-discovered routes, private-store migrations, Vite bundle | Strict Composer validation; 1.2 MB / 122-file clean archive; current non-symlink ZIP/artifact install into Statamic 6.27 / Laravel 13.24 with provider, private migrations, commands, routes, and published assets verified on 2026-08-05 | Automated and distribution-installed |
 | GPT-5.5 content agent | Responses API client, strict function tools, stored/stateless continuation, bounded rounds/tokens/payloads | HTTP contract and orchestration tests; live GPT-5.5 inspect → new unpublished structured-page draft on 2026-07-21 | Live draft proven; live publication pending |
 | CP assistant | Global native CP side panel plus dedicated Inertia/Vue conversation workspace, async `secretary` queue job, polling only while pending | CP route/props/ownership/dispatch/retry/order tests; production Vite build; global launcher, Escape close, light-mode desktop and 390px mobile QA on 2026-07-27 | Global live path proven; remaining state/theme QA pending |
 | Inbound email and replies | Server-token onboarding, inbound-address discovery, secured Postmark webhook, native user permission plus optional allowlist, author-domain DKIM and spam checks, queue job, isolated Postmark reply mailer | Setup API, secret non-disclosure, webhook, threading, idempotency, mailer configuration, failure and publication tests; CSRF middleware inspection; live Postmark outbound → cPanel forwarder → inbound processing on 2026-07-27 | Live transport proven; paired-site draft and publication pending |
@@ -17,7 +17,7 @@ This matrix maps the product brief to evidence in the repository. “Automated�
 | Preserve human edits | Read-before-write fingerprints, separate live baseline, native working copies, staged non-revision changes, exact crash recovery | Stale proposal, live edit, draft edit, duplicate call and already-applied retry tests | Automated |
 | Native user authorization | Secretary permissions plus Statamic view/edit/create/publish policies per resource | Non-super read, term editor/creator, navigation reference and CP ownership tests | Automated |
 | Background processing | Zero-configuration after-response processing on Laravel's default `sync` connection; optional durable dispatch for sites that already use persistent queues; unique replies; retry-safe duplicate jobs; per-conversation overlap lock and FIFO deferral; bounded failure replies | Sync/no-worker diagnostic, queue dispatch, duplicate delivery, cross-channel lock, ordering and exhausted-retry tests | Default path automated; optional persistent-worker recovery proof pending |
-| Marketplace package | Clean runtime archive, commercial/support/privacy/security docs, listing copy, release checklist, square icon, compiled assets, PHP/Laravel CI matrix | Archive hygiene/runtime manifest checks; clean artifact install; Laravel 12.64 and Laravel 13.22 test suites | Development-ready; public release pending |
+| Marketplace package | Public Packagist beta, clean runtime archive, commercial/support/privacy/security docs, listing copy, release checklist, square icon, compiled assets, PHP/Laravel CI matrix | Archive hygiene/runtime manifest checks; clean artifact install; latest published `main` CI passed on 2026-08-05; current local suite passes 261 tests / 1,999 assertions | Beta distribution-ready; stable release and Marketplace product pending |
 
 ## Required live gates
 
@@ -26,6 +26,6 @@ This matrix maps the product brief to evidence in the repository. “Automated�
 - Complete the remaining dark-theme, full keyboard/focus-cycle, error, empty, pending and published-state browser QA. The global panel's desktop, 390px mobile, long Norwegian text, Escape close, and cross-page launcher checks passed on 2026-07-27.
 - Complete a real Postmark new-thread → reply → draft → authenticated publication flow and a mail-transport failure/restart exercise.
 - Pair two public Statamic installations and complete the X/Y/random-sender live isolation exercise before offering `secretary@statamic.no` broadly.
-- Publish a tagged public repository to Packagist, connect it to a Statamic seller product, add screenshots, and test the final Marketplace install command.
+- Complete the stable `v0.1.0` release, connect the existing Packagist package to a Statamic seller product, add screenshots, and test the final Marketplace install command.
 
 The addon must not be described as production-proven or Marketplace-released until every live gate is complete.

@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay;
 
+use AxelFerdinand\StatamicSecretary\Email\ReplyLanguage;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\HttpTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\MailTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Data\OutboundReply;
@@ -86,6 +87,7 @@ final class PostmarkMailTransport implements MailTransport
 
     private function textBody(OutboundReply $reply): string
     {
+        $copy = (new ReplyLanguage)->copy($reply->locale);
         $body = trim($reply->body);
         $affectedChanges = array_values(array_filter(
             $reply->changeSets,
@@ -94,14 +96,14 @@ final class PostmarkMailTransport implements MailTransport
         ));
         $affectedChange = count($affectedChanges) === 1 ? $affectedChanges[0] : null;
 
-        $body = $this->withAffectedPage($body, $affectedChange);
+        $body = $this->withAffectedPage($body, $affectedChange, $copy);
 
         if (count($reply->changeSets) > 1
             || (count($reply->changeSets) === 1 && $affectedChange === null)) {
-            $body .= "\n\nKlargjorte endringer:";
+            $body .= "\n\n{$copy['prepared_changes']}:";
 
             foreach ($reply->changeSets as $changeSet) {
-                $status = $changeSet['status'] === 'published' ? 'publisert' : 'utkast';
+                $status = $changeSet['status'] === 'published' ? $copy['published'] : $copy['draft'];
                 $body .= "\n- {$changeSet['summary']} — {$status}";
             }
         }
@@ -114,16 +116,16 @@ final class PostmarkMailTransport implements MailTransport
         if (count($nativeChanges) === 1) {
             $nativeChange = $nativeChanges[0];
             $label = $nativeChange['status'] === 'published'
-                ? 'Åpne siden i Statamic'
-                : 'Åpne utkastet i Statamic';
+                ? $copy['open_page']
+                : $copy['open_draft'];
             $body .= "\n\n{$label}:\n{$nativeChange['native_url']}";
         }
 
         if ($reply->reviewUrl !== null) {
-            $body .= "\n\nFortsett samtalen i Secretary:\n{$reply->reviewUrl}";
+            $body .= "\n\n{$copy['continue_conversation']}:\n{$reply->reviewUrl}";
         }
 
-        return $body."\n\nSvar på denne e-posten for å fortsette samme samtale.";
+        return $body."\n\n{$copy['reply_to_continue']}";
     }
 
     private function htmlBody(OutboundReply $reply): string
@@ -154,7 +156,7 @@ final class PostmarkMailTransport implements MailTransport
             $html[] = $this->escape($line);
         }
 
-        return '<!doctype html><html lang="no"><head><meta charset="utf-8"></head>'
+        return '<!doctype html><html lang="'.$reply->locale.'"><head><meta charset="utf-8"></head>'
             .'<body style="margin:0;background:#f4f4f5;color:#18181b;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif">'
             .'<div style="max-width:640px;margin:0 auto;padding:32px 20px">'
             .'<div style="border:1px solid #e4e4e7;border-radius:12px;background:#ffffff;padding:28px;font-size:16px;line-height:1.65">'
@@ -162,14 +164,17 @@ final class PostmarkMailTransport implements MailTransport
             .'</div></div></body></html>';
     }
 
-    /** @param  array<string, mixed>|null  $affectedChange */
-    private function withAffectedPage(string $body, ?array $affectedChange): string
+    /**
+     * @param  array<string, mixed>|null  $affectedChange
+     * @param  array<string, string>  $copy
+     */
+    private function withAffectedPage(string $body, ?array $affectedChange, array $copy): string
     {
         if (! $affectedChange) {
             return $body;
         }
 
-        $line = "Berørt side: {$affectedChange['resource_title']} — {$affectedChange['public_url']}";
+        $line = "{$copy['affected_page']}: {$affectedChange['resource_title']} — {$affectedChange['public_url']}";
 
         if (preg_match('/^Status:\s*.+$/miu', $body, $status, PREG_OFFSET_CAPTURE) !== 1) {
             return $body."\n\n".$line;

@@ -5,6 +5,7 @@ namespace AxelFerdinand\StatamicSecretary\Mail;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
 use AxelFerdinand\StatamicSecretary\Email\ReplyAttachmentPresenter;
 use AxelFerdinand\StatamicSecretary\Email\ReplyChangeSetPresenter;
+use AxelFerdinand\StatamicSecretary\Email\ReplyLanguage;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Models\Message;
 use Illuminate\Bus\Queueable;
@@ -42,6 +43,14 @@ final class SecretaryReply extends Mailable
 
     public function content(): Content
     {
+        $language = app(ReplyLanguage::class);
+        $inbound = $this->conversation->messages()
+            ->whereKey($this->reply->reply_to_message_id ?: data_get($this->reply->metadata, 'reply_to_message_id'))
+            ->first();
+        $locale = $inbound
+            ? $language->forMessage($inbound)
+            : $language->detect($this->reply->body);
+        $copy = $language->copy($locale);
         $changeSets = app(ReplyChangeSetPresenter::class)->present(
             $this->conversation,
             $this->reply,
@@ -80,14 +89,16 @@ final class SecretaryReply extends Mailable
             with: [
                 'bodyBeforeAffected' => $bodySections['before'],
                 'bodyAfterAffected' => $bodySections['after'],
+                'locale' => $locale,
+                'copy' => $copy,
                 'primaryUrl' => $primaryUrl,
                 'primaryLabel' => $primaryChange
                     ? ($primaryChange['status'] === 'published'
-                        ? 'Åpne siden i Statamic'
-                        : 'Åpne utkastet i Statamic')
+                        ? $copy['open_page']
+                        : $copy['open_draft'])
                     : ($changeSets === []
-                        ? 'Åpne samtalen i Secretary'
-                        : 'Se endringene i Secretary'),
+                        ? $copy['open_conversation']
+                        : $copy['review_changes']),
                 'conversationUrl' => $conversationUrl,
                 'changeSets' => $changeSets,
                 'attachments' => $attachments,

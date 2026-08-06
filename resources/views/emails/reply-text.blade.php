@@ -3,7 +3,7 @@ Statamic Secretary
 {{ $bodyBeforeAffected }}
 
 @if ($affectedChange)
-Berørt side: {{ $affectedChange['resource_title'] }} — {{ $affectedChange['public_url'] }}
+{{ $copy['affected_page'] }}: {{ $affectedChange['resource_title'] }} — {{ $affectedChange['public_url'] }}
 
 @endif
 @if ($bodyAfterAffected)
@@ -11,9 +11,9 @@ Berørt side: {{ $affectedChange['resource_title'] }} — {{ $affectedChange['pu
 
 @endif
 @if ($showChangeList)
-Klargjorte endringer:
+{{ $copy['prepared_changes'] }}:
 @foreach ($changeSets as $changeSet)
-- {{ $changeSet['summary'] }} — {{ $changeSet['status'] === 'published' ? 'publisert' : 'utkast' }}
+- {{ $changeSet['summary'] }} — {{ $changeSet['status'] === 'published' ? $copy['published'] : $copy['draft'] }}
 @if ($changeSet['native_url'])
   {{ $changeSet['native_url'] }}
 @endif
@@ -21,7 +21,7 @@ Klargjorte endringer:
 
 @endif
 @if ($attachments)
-Vedlegg i Statamic:
+{{ $copy['attachments'] }}:
 @foreach ($attachments as $attachment)
 - {{ $attachment['name'] }}
   {{ $attachment['native_url'] }}
@@ -32,9 +32,9 @@ Vedlegg i Statamic:
 {{ $primaryUrl }}
 
 @if ($conversationUrl !== $primaryUrl)
-Fortsett samtalen i Secretary:
+{{ $copy['continue_conversation'] }}:
 {{ $conversationUrl }}
 
 @endif
 
-Svar på denne e-posten for å fortsette samme samtale.
+{{ $copy['reply_to_continue'] }}
