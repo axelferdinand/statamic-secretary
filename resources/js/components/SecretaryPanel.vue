@@ -29,11 +29,13 @@ const previewOpen = ref(false);
 const previewLoading = ref(false);
 const previewData = ref(null);
 const previewError = ref(null);
+const previewChange = ref(null);
 const sendingSuggestion = ref(null);
 const pageUrl = ref(typeof window === 'undefined' ? '' : window.location.href);
 let pollTimer = null;
 let referenceTimer = null;
 let contextRequest = 0;
+let previewRequest = 0;
 let activeDraftKey = null;
 let stopNavigationListener = null;
 
@@ -357,25 +359,44 @@ async function review(change, target, decision) {
 async function openPreview(change) {
     if (!change?.preview_url || previewLoading.value) return;
 
+    const requestId = ++previewRequest;
+
     previewOpen.value = true;
     previewLoading.value = true;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = change;
 
     try {
         const response = await axios.get(change.preview_url);
-        previewData.value = response.data;
+
+        if (requestId === previewRequest) previewData.value = response.data;
     } catch (exception) {
-        previewError.value = responseError(exception, 'The preview could not be opened.');
+        if (requestId === previewRequest) {
+            previewError.value = responseError(exception, 'The preview could not be opened.');
+        }
     } finally {
-        previewLoading.value = false;
+        if (requestId === previewRequest) previewLoading.value = false;
     }
 }
 
 function closePreview() {
+    previewRequest += 1;
     previewOpen.value = false;
+    previewLoading.value = false;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = null;
+}
+
+async function publishFromPreview() {
+    const change = previewChange.value;
+
+    if (!change) return;
+
+    const published = await publish(change);
+
+    if (published) closePreview();
 }
 
 function captureFieldContext(event) {
@@ -474,7 +495,7 @@ function reuseFailedMessage() {
 }
 
 async function publish(change) {
-    if (!change?.publish_url || publishingId.value || conversation.value?.processing || !canPublish.value) return;
+    if (!change?.publish_url || publishingId.value || conversation.value?.processing || !canPublish.value) return false;
 
     publishingId.value = change.id;
     error.value = null;
@@ -484,8 +505,10 @@ async function publish(change) {
         applyPanel(response.data);
         announcement.value = 'The change has been published.';
         refreshVisibleContent();
+        return true;
     } catch (exception) {
         error.value = responseError(exception, 'Secretary could not publish the change.');
+        return false;
     } finally {
         publishingId.value = null;
     }
@@ -564,9 +587,12 @@ async function syncPageContext() {
     pageUrl.value = nextUrl;
     fieldContext.value = null;
     selectedConversation.value = '';
+    previewRequest += 1;
     previewOpen.value = false;
+    previewLoading.value = false;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = null;
     if (conversationId) open.value = true;
     await load(conversationId, {
         quiet: panel.value !== null,
@@ -979,7 +1005,10 @@ onBeforeUnmount(() => {
             :preview="previewData"
             :loading="previewLoading"
             :error="previewError"
+            :can-publish="canPublish"
+            :publishing="publishingId === previewChange?.id"
             @close="closePreview"
+            @publish="publishFromPreview"
         />
     </Teleport>
 </template>

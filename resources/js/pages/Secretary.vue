@@ -46,6 +46,7 @@ const previewOpen = ref(false);
 const previewLoading = ref(false);
 const previewData = ref(null);
 const previewError = ref(null);
+const previewChange = ref(null);
 const guideBusy = ref(false);
 const guideSite = ref(props.style_guides.sites?.[0]?.handle ?? '');
 const guideForm = ref({
@@ -54,6 +55,7 @@ const guideForm = ref({
     terminology: '',
     avoid: '',
 });
+let previewRequest = 0;
 const emailConnected = computed(() => props.email_setup.connected || props.relay_setup.connected);
 const activeEmailAddress = computed(() => {
     if (props.relay_setup.connected && props.relay_setup.address) {
@@ -435,25 +437,43 @@ async function review(change, target, decision) {
 async function openPreview(change) {
     if (!axios || !change?.preview_url || previewLoading.value) return;
 
+    const requestId = ++previewRequest;
+
     previewOpen.value = true;
     previewLoading.value = true;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = change;
 
     try {
         const response = await axios.get(change.preview_url);
-        previewData.value = response.data;
+
+        if (requestId === previewRequest) previewData.value = response.data;
     } catch (exception) {
-        previewError.value = responseError(exception, 'The preview could not be opened.');
+        if (requestId === previewRequest) {
+            previewError.value = responseError(exception, 'The preview could not be opened.');
+        }
     } finally {
-        previewLoading.value = false;
+        if (requestId === previewRequest) previewLoading.value = false;
     }
 }
 
 function closePreview() {
+    previewRequest += 1;
     previewOpen.value = false;
+    previewLoading.value = false;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = null;
+}
+
+function requestPreviewPublish() {
+    const change = previewChange.value;
+
+    if (!change) return;
+
+    closePreview();
+    requestPublish(change);
 }
 
 function loadGuide() {
@@ -1518,7 +1538,10 @@ watch(guideSite, loadGuide);
             :preview="previewData"
             :loading="previewLoading"
             :error="previewError"
+            :can-publish="can_publish"
+            :publishing="busy && publishCandidate?.id === previewChange?.id"
             @close="closePreview"
+            @publish="requestPreviewPublish"
         />
     </div>
 </template>

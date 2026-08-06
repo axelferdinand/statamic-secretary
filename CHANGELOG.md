@@ -4,6 +4,14 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.0-beta.6 - 2026-08-06
+
+- Restore hosted relay acknowledgements and replies by making the relay language layer fully standalone from the Composer addon.
+- Recover safely when the model attempts an entry or localized-content update before reading the exact resource, while preserving fingerprint and blueprint guards.
+- Load only the visible preview frame first, show explicit loading and retry states, and keep stale preview requests from updating a closed or changed context.
+- Add a clear “Publish this” action to both the Secretary draft and side-by-side preview views on desktop and mobile.
+- Avoid rewriting an unchanged Statamic working copy when an editor simply marks a field as kept during review.
+
 ## 0.1.0-beta.5 - 2026-08-06
 
 - Rename the public addon from “Statamic Secretary” to “Secretary”, while keeping the Composer package and repository at `axelferdinand/statamic-secretary` and using “Secretary for Statamic” where explanatory context is useful.

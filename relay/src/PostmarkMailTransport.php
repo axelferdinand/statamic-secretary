@@ -2,7 +2,6 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay;
 
-use AxelFerdinand\StatamicSecretary\Email\ReplyLanguage;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\HttpTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\MailTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Data\OutboundReply;

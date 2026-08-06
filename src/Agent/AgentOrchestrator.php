@@ -506,13 +506,21 @@ PROMPT,
         Conversation $conversation,
         Message $message,
         User $user,
-        array $inspection,
+        array &$inspection,
         bool $dryRun = false,
     ): array {
         $entryId = (string) Arr::get($arguments, 'entry_id');
 
         if (! in_array($entryId, $inspection['entries'], true)) {
-            throw new ContentOperationDenied('Read the exact entry before preparing an update draft.');
+            $read = $this->readEntry(['entry_id' => $entryId], $user, $inspection);
+
+            return [
+                'ok' => false,
+                'inspection_completed' => true,
+                'required_action' => 'retry_update_entry_draft',
+                'message' => 'Secretary safely read the exact entry before drafting. Retry update_entry_draft with the fingerprint and editable data below.',
+                'entry' => $read['entry'],
+            ];
         }
 
         $patch = $this->decodeObject((string) Arr::get($arguments, 'patch_json'));
@@ -604,7 +612,7 @@ PROMPT,
         Conversation $conversation,
         Message $message,
         User $user,
-        array $inspection,
+        array &$inspection,
     ): array {
         $type = (string) Arr::get($arguments, 'resource_type');
         $resourceId = (string) Arr::get($arguments, 'resource_id');
@@ -612,7 +620,26 @@ PROMPT,
         $resourceKey = $this->contentResourceKey($type, $resourceId, $site);
 
         if (! in_array($resourceKey, $inspection['content_resources'], true)) {
-            throw new ContentOperationDenied('Read the exact localized content resource before preparing an update draft.');
+            $read = $this->readContentResource([
+                'resource_type' => $type,
+                'resource_id' => $resourceId,
+                'site' => $site,
+            ], $user, $inspection);
+            $resource = (array) $read['resource'];
+            $schema = $this->describeContentSchema([
+                'resource_type' => $type,
+                'source' => (string) ($resource['source'] ?? ''),
+                'blueprint' => $resource['blueprint'] ?? null,
+            ], $user, $inspection);
+
+            return [
+                'ok' => false,
+                'inspection_completed' => true,
+                'required_action' => 'retry_update_content_draft',
+                'message' => 'Secretary safely read the exact localized resource and schema before drafting. Retry update_content_draft with the fingerprint and editable data below.',
+                'resource' => $resource,
+                'schema' => $schema['schema'],
+            ];
         }
 
         $source = (string) data_get($inspection, "content_resource_sources.{$resourceKey}");

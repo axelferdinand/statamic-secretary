@@ -687,6 +687,10 @@
         margin-bottom: 0.75rem;
     }
 
+    .secretary-preview-publish {
+        margin-left: auto;
+    }
+
     .secretary-preview-toolbar-label {
         color: var(--color-gray-500);
         font-size: 0.6875rem;
@@ -751,7 +755,53 @@
         font-weight: 650;
     }
 
-    .secretary-preview-grid iframe {
+    .secretary-preview-frame {
+        position: relative;
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        overflow: hidden;
+        background: white;
+    }
+
+    .secretary-preview-frame-loading {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.65rem;
+        background: var(--color-body-bg);
+        color: var(--color-gray-600);
+        font-size: 0.8125rem;
+    }
+
+    .secretary-preview-frame-loading button {
+        border: 1px solid var(--color-content-border);
+        border-radius: 0.45rem;
+        background: var(--color-content-bg);
+        padding: 0.3rem 0.55rem;
+        color: var(--color-primary);
+        font-size: 0.75rem;
+        font-weight: 650;
+    }
+
+    .secretary-preview-spinner {
+        width: 1rem;
+        height: 1rem;
+        flex: none;
+        border: 2px solid var(--color-gray-300);
+        border-top-color: var(--color-primary);
+        border-radius: 9999px;
+        animation: secretary-preview-spin 0.75s linear infinite;
+    }
+
+    @keyframes secretary-preview-spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .secretary-preview-frame iframe {
         display: block;
         width: 100%;
         min-height: 0;
@@ -777,6 +827,12 @@
         z-index: 2;
         top: 0.75rem;
         right: 0.75rem;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .secretary-preview-spinner {
+            animation-duration: 1.5s;
+        }
     }
 
     .secretary-developer-trace {
@@ -2876,6 +2932,12 @@
         min-width: 0;
     }
 
+    .secretary-preview-publish {
+        width: 100%;
+        margin-left: 0;
+        justify-content: center;
+    }
+
     .secretary-panel-launcher {
         width: 3.25rem;
         height: 3.25rem;
@@ -3348,14 +3410,16 @@
     border-top: 4px solid var(--secretary-yellow);
 }
 
-.secretary-change-publish {
+.secretary-change-publish,
+.secretary-preview-publish {
     border-color: var(--secretary-ink-deep) !important;
     background: linear-gradient(180deg, #ff806c, var(--secretary-coral)) !important;
     color: var(--secretary-ink-deep) !important;
     box-shadow: 0 4px 0 rgb(4 31 41 / 24%) !important;
 }
 
-.secretary-change-publish:hover:not(:disabled) {
+.secretary-change-publish:hover:not(:disabled),
+.secretary-preview-publish:hover:not(:disabled) {
     filter: saturate(1.05) brightness(1.03);
     transform: translateY(-1px);
 }
