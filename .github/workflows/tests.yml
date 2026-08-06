@@ -27,6 +27,7 @@ jobs:
           coverage: none
       - run: composer validate --strict
       - run: composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --with-all-dependencies --no-interaction --prefer-dist
+      - run: composer --working-dir=relay install --no-interaction --prefer-dist --no-dev
       - run: composer lint
       - run: composer test
       - run: composer audit --locked

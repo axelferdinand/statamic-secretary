@@ -4,6 +4,10 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.2 - 2026-08-06
+
+- Install the standalone hosted relay dependencies in every PHP CI job so its isolated autoload boundary is verified consistently across the supported PHP and Laravel matrix.
+
 ## 0.1.1 - 2026-08-06
 
 - Rebuild the Marketplace and GitHub README around the product value, a three-step installation, the email-first workflow, new-page and structured-module creation, and concise links to the detailed technical documentation.
