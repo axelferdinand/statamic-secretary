@@ -15,7 +15,7 @@ final class PostmarkSelectionTransport implements SelectionTransport
         private readonly HttpTransport $http,
         private readonly string $serverToken,
         private readonly string $fromAddress,
-        private readonly string $fromName = 'Statamic Secretary',
+        private readonly string $fromName = 'Secretary',
         private readonly string $messageStream = 'outbound',
     ) {
         if ($serverToken === ''
@@ -40,7 +40,7 @@ final class PostmarkSelectionTransport implements SelectionTransport
             $body = json_encode([
                 'From' => $this->fromName.' <'.$this->fromAddress.'>',
                 'To' => $notice->recipient,
-                'Subject' => 'Choose a site for Statamic Secretary',
+                'Subject' => 'Choose a site for Secretary',
                 'TextBody' => $this->textBody($notice),
                 'Headers' => $headers,
                 'MessageStream' => $this->messageStream,

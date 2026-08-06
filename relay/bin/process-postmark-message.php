@@ -50,6 +50,6 @@ try {
     exit($accepted ? 0 : 1);
 } catch (Throwable $exception) {
     SecurityEventReporter::report($exception);
-    fwrite(STDERR, "Statamic Secretary message recovery failed.\n");
+    fwrite(STDERR, "Secretary message recovery failed.\n");
     exit(1);
 }

@@ -1,4 +1,4 @@
-Statamic Secretary
+Secretary
 
 {{ $title }}
 

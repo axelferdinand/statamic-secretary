@@ -16,7 +16,7 @@ final class PostmarkMailTransport implements MailTransport
         private readonly HttpTransport $http,
         private readonly string $serverToken,
         private readonly string $fromAddress,
-        private readonly string $fromName = 'Statamic Secretary',
+        private readonly string $fromName = 'Secretary',
         private readonly string $messageStream = 'outbound',
         private readonly string $endpoint = 'https://api.postmarkapp.com/email',
     ) {

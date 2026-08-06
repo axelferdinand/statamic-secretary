@@ -1,6 +1,6 @@
 {
     "name": "axelferdinand/statamic-secretary-relay",
-    "description": "Hosted routing service for the optional shared Statamic Secretary address.",
+    "description": "Hosted routing service for the optional shared Secretary for Statamic address.",
     "type": "project",
     "license": "proprietary",
     "require": {

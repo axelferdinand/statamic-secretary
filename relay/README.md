@@ -1,4 +1,4 @@
-# Statamic Secretary hosted relay core
+# Secretary for Statamic hosted relay core
 
 This directory contains the framework-independent routing and security core for the optional shared `secretary@statamic.no` service. It is deliberately excluded from the Composer addon archive and is not deployed by installing the addon.
 

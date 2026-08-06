@@ -11,7 +11,7 @@ final class DoctorCommand extends Command
 {
     protected $signature = 'secretary:doctor {--json : Emit machine-readable JSON}';
 
-    protected $description = 'Check Statamic Secretary configuration without exposing secrets';
+    protected $description = 'Check Secretary configuration without exposing secrets';
 
     public function handle(DoctorReport $report, EmailConfiguration $email, RelayConfiguration $relay): int
     {

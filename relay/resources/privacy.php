@@ -10,8 +10,8 @@ $homeUrl = $isNorwegian ? '/no' : '/';
 $ogImageUrl = 'https://secretary.statamic.no/assets/statamic-secretary-og.png';
 $copy = $isNorwegian ? [
     'html_lang' => 'nb',
-    'title' => 'Personvern – Statamic Secretary',
-    'description' => 'Slik bruker landingssiden til Statamic Secretary valgfri Google Analytics, samtykke og nødvendige serverlogger.',
+    'title' => 'Personvern – Secretary for Statamic',
+    'description' => 'Slik bruker landingssiden til Secretary for Statamic valgfri Google Analytics, samtykke og nødvendige serverlogger.',
     'skip' => 'Hopp til innholdet',
     'language' => 'English',
     'breadcrumb_home' => 'Forside',
@@ -43,8 +43,8 @@ $copy = $isNorwegian ? [
     'footer_privacy' => 'Personvern',
 ] : [
     'html_lang' => 'en',
-    'title' => 'Privacy – Statamic Secretary',
-    'description' => 'How the Statamic Secretary landing site uses optional Google Analytics, consent, and necessary server logs.',
+    'title' => 'Privacy – Secretary for Statamic',
+    'description' => 'How the Secretary for Statamic landing site uses optional Google Analytics, consent, and necessary server logs.',
     'skip' => 'Skip to content',
     'language' => 'Norsk',
     'breadcrumb_home' => 'Home',
@@ -126,7 +126,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="<?= $e($copy['title']) ?>">
-    <meta property="og:site_name" content="Statamic Secretary">
+    <meta property="og:site_name" content="Secretary for Statamic">
     <meta property="og:locale" content="<?= $isNorwegian ? 'nb_NO' : 'en_US' ?>">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="<?= $e($copy['title']) ?>">
@@ -146,7 +146,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
 
     <header class="site-header is-scrolled" data-header>
         <div class="shell nav">
-            <a class="brand" href="<?= $e($homeUrl) ?>" aria-label="Statamic Secretary">
+            <a class="brand" href="<?= $e($homeUrl) ?>" aria-label="Secretary for Statamic">
                 <img src="/assets/secretary-icon.png" alt="" width="52" height="52">
                 <span>Statamic <strong>Secretary</strong></span>
             </a>

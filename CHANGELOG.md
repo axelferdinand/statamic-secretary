@@ -4,6 +4,10 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.0-beta.5 - 2026-08-06
+
+- Rename the public addon from “Statamic Secretary” to “Secretary”, while keeping the Composer package and repository at `axelferdinand/statamic-secretary` and using “Secretary for Statamic” where explanatory context is useful.
+
 ## 0.1.0-beta.4 - 2026-08-06
 
 - Reuse the original relay installation and domain address when the same public site and exact sender set complete onboarding again, while retaining collision-safe aliases for genuinely different installations.

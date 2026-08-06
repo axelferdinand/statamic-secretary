@@ -10,7 +10,7 @@ $ogImageUrl = 'https://secretary.statamic.no/assets/statamic-secretary-og.png';
 
 $copy = $isNorwegian ? [
     'html_lang' => 'nb',
-    'title' => 'Statamic Secretary – AI-assistent for Statamic-innhold',
+    'title' => 'Secretary for Statamic – AI-assistent for Statamic-innhold',
     'description' => 'Be om Statamic-endringer på e-post eller i kontrollpanelet. Secretary følger blueprintene, lager trygge utkast og publiserer bare når du ber om det.',
     'skip' => 'Hopp til innholdet',
     'nav_demo' => 'Se demo',
@@ -142,7 +142,7 @@ $copy = $isNorwegian ? [
     'consent_decline' => 'Bare nødvendige',
 ] : [
     'html_lang' => 'en',
-    'title' => 'Statamic Secretary – AI content assistant for Statamic',
+    'title' => 'Secretary for Statamic – AI content assistant for Statamic',
     'description' => 'Ask for Statamic content changes by email or Control Panel chat. Secretary follows your blueprints, prepares safe drafts, and publishes only when asked.',
     'skip' => 'Skip to content',
     'nav_demo' => 'Try the demo',
@@ -284,7 +284,7 @@ $organizationSchema = [
     '@context' => 'https://schema.org',
     '@type' => 'Organization',
     '@id' => 'https://secretary.statamic.no/#organization',
-    'name' => 'Statamic Secretary',
+    'name' => 'Secretary for Statamic',
     'url' => 'https://secretary.statamic.no/',
     'logo' => 'https://secretary.statamic.no/assets/secretary-icon.png',
     'email' => 'kontakt@prototypen.no',
@@ -296,7 +296,7 @@ $softwareSchema = [
     '@context' => 'https://schema.org',
     '@type' => 'SoftwareApplication',
     '@id' => 'https://secretary.statamic.no/#software',
-    'name' => 'Statamic Secretary',
+    'name' => 'Secretary',
     'applicationCategory' => 'BusinessApplication',
     'operatingSystem' => 'Statamic 6',
     'description' => $copy['description'],
@@ -306,7 +306,7 @@ $softwareSchema = [
     'offers' => [
         [
             '@type' => 'Offer',
-            'name' => 'Statamic Secretary addon',
+            'name' => 'Secretary addon',
             'price' => '49',
             'priceCurrency' => 'USD',
             'url' => $marketplaceUrl,
@@ -370,7 +370,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="<?= $e($copy['title']) ?>">
-    <meta property="og:site_name" content="Statamic Secretary">
+    <meta property="og:site_name" content="Secretary for Statamic">
     <meta property="og:locale" content="<?= $isNorwegian ? 'nb_NO' : 'en_US' ?>">
     <meta property="og:locale:alternate" content="<?= $isNorwegian ? 'en_US' : 'nb_NO' ?>">
     <meta name="twitter:card" content="summary_large_image">
@@ -395,9 +395,9 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
 
     <header class="site-header" data-header>
         <div class="shell nav">
-            <a class="brand" href="<?= $isNorwegian ? '/no' : '/' ?>" aria-label="Statamic Secretary">
+            <a class="brand" href="<?= $isNorwegian ? '/no' : '/' ?>" aria-label="Secretary for Statamic">
                 <img src="/assets/secretary-icon.png" alt="" width="52" height="52">
-                <span>Statamic <strong>Secretary</strong></span>
+                <span><strong>Secretary</strong> for Statamic</span>
             </a>
 
             <nav class="nav-links" aria-label="Primary">
@@ -570,7 +570,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
                         <div class="progress-head">
                             <img src="/assets/secretary-icon.png" alt="" width="54" height="54">
                             <div>
-                                <p>Statamic Secretary</p>
+                                <p>Secretary</p>
                                 <strong data-demo-status aria-live="polite"><?= $e($copy['demo_running']) ?></strong>
                             </div>
                             <span class="working-dots" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -781,7 +781,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
         <div class="shell footer-grid">
             <a class="brand footer-brand" href="<?= $isNorwegian ? '/no' : '/' ?>">
                 <img src="/assets/secretary-icon.png" alt="" width="46" height="46">
-                <span>Statamic <strong>Secretary</strong></span>
+                <span><strong>Secretary</strong> for Statamic</span>
             </a>
             <p><?= $e($copy['footer_line']) ?></p>
             <nav aria-label="Footer">

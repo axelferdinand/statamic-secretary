@@ -1,10 +1,14 @@
-# Statamic Secretary
+# Secretary
 
-<img src="docs/assets/statamic-secretary-icon-512.png" alt="Statamic Secretary icon" width="112">
+<img src="docs/assets/statamic-secretary-icon-512.png" alt="Secretary icon" width="112">
 
-Statamic Secretary is a guarded content assistant for Statamic 6. Editors can request content changes in natural language from the Control Panel or by email, review the resulting draft, and publish only after an explicit command.
+Secretary for Statamic is a guarded content assistant for Statamic 6. Editors can request content changes in natural language from the Control Panel or by email, review the resulting draft, and publish only after an explicit command.
 
-> **Commercial addon:** Statamic Secretary costs **USD 49 per production site** through the Statamic Marketplace. You may use it without a license during local development and testing, but each production installation requires a valid Marketplace license. See [LICENSE.md](LICENSE.md).
+> **Commercial addon:** Secretary costs **USD 49 per production site** through the Statamic Marketplace. You may use it without a license during local development and testing, but each production installation requires a valid Marketplace license. See [LICENSE.md](LICENSE.md).
+
+## Naming
+
+The public addon name is **Secretary**. Use **Secretary for Statamic** when a first mention or marketing context needs to explain the platform. The technical Composer package, repository, namespace, routes, handles, and asset filenames intentionally remain `axelferdinand/statamic-secretary` and `statamic-secretary` for compatibility.
 
 The model never receives shell, arbitrary filesystem, or generic web access. It can only call typed application tools that inspect Statamic collections, blueprints, and configured asset containers, validate field values, enforce native user policies, and write through Statamic's repositories. All prospective and existing content paths are checked against the configured `content/` boundary, including symlink resolution. Image imports use a separate, narrow Statamic asset boundary.
 

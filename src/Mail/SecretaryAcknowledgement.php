@@ -28,7 +28,7 @@ final class SecretaryAcknowledgement extends Mailable
         return new Envelope(
             from: new Address($email->fromAddress(), $email->fromName()),
             replyTo: [new Address($this->replyAddress(), $email->fromName())],
-            subject: str_starts_with(mb_strtolower($subject), 're:') ? $subject : 'Re: '.($subject ?: 'Statamic Secretary'),
+            subject: str_starts_with(mb_strtolower($subject), 're:') ? $subject : 'Re: '.($subject ?: 'Secretary'),
         );
     }
 

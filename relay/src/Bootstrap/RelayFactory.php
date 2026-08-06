@@ -33,7 +33,8 @@ final class RelayFactory
         $http = new CurlHttpTransport;
         $postmarkToken = $this->required('RELAY_POSTMARK_SERVER_TOKEN');
         $fromAddress = $this->optional('RELAY_FROM_ADDRESS', $sharedAddress);
-        $fromName = $this->optional('RELAY_FROM_NAME', 'Statamic Secretary');
+        $fromName = $this->optional('RELAY_FROM_NAME', 'Secretary');
+        $fromName = $fromName === 'Statamic Secretary' ? 'Secretary' : $fromName;
         $messageStream = $this->optional('RELAY_POSTMARK_MESSAGE_STREAM', 'outbound');
         $aliases = $this->publicAliasProvisioner($address);
         $postmark = new PostmarkMailTransport(

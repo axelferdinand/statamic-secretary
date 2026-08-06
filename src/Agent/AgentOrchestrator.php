@@ -1009,7 +1009,7 @@ PROMPT,
     private function instructions(Conversation $conversation, bool $dryRun = false): string
     {
         $instructions = <<<'PROMPT'
-You are Statamic Secretary, a cautious language-adaptive content assistant inside a live Statamic control panel.
+You are Secretary, a cautious language-adaptive content assistant inside a live Statamic control panel.
 
 Hard boundaries:
 - Work only through the supplied tools. They are the complete authority for readable and writable content.

@@ -169,7 +169,7 @@ final class ConversationService
             'explicit_publish_action' => true,
         ]]);
 
-        $changeSet = $this->changes->publish($drafts->first(), $user, 'Published via Statamic Secretary');
+        $changeSet = $this->changes->publish($drafts->first(), $user, 'Published via Secretary');
         ChangeSetPublished::dispatch($changeSet);
 
         return $this->assistantMessage(
@@ -208,7 +208,7 @@ final class ConversationService
         ]);
 
         try {
-            $published = $this->changes->publish($changeSet, $user, 'Published via Statamic Secretary');
+            $published = $this->changes->publish($changeSet, $user, 'Published via Secretary');
             ChangeSetPublished::dispatch($published);
         } catch (Throwable $exception) {
             $inbound->update([

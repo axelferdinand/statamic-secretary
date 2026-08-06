@@ -37,7 +37,7 @@ final class SecretaryReply extends Mailable
         return new Envelope(
             from: new Address($fromAddress, $fromName),
             replyTo: [new Address($this->replyAddress(), $fromName)],
-            subject: str_starts_with(mb_strtolower($subject), 're:') ? $subject : 'Re: '.($subject ?: 'Statamic Secretary'),
+            subject: str_starts_with(mb_strtolower($subject), 're:') ? $subject : 'Re: '.($subject ?: 'Secretary'),
         );
     }
 

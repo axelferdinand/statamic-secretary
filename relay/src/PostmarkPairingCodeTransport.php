@@ -15,7 +15,7 @@ final class PostmarkPairingCodeTransport implements PairingCodeTransport
         private readonly HttpTransport $http,
         private readonly string $serverToken,
         private readonly string $fromAddress,
-        private readonly string $fromName = 'Statamic Secretary',
+        private readonly string $fromName = 'Secretary',
         private readonly string $messageStream = 'outbound',
         private readonly string $endpoint = 'https://api.postmarkapp.com/email',
     ) {
@@ -44,7 +44,7 @@ final class PostmarkPairingCodeTransport implements PairingCodeTransport
             $body = json_encode([
                 'From' => $this->fromName.' <'.$this->fromAddress.'>',
                 'To' => $notice->recipient,
-                'Subject' => 'Confirm Statamic Secretary',
+                'Subject' => 'Confirm Secretary',
                 'TextBody' => $this->textBody($notice),
                 'MessageStream' => $this->messageStream,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -86,7 +86,7 @@ final class PostmarkPairingCodeTransport implements PairingCodeTransport
         $expires = gmdate('H:i', $notice->expiresAt).' UTC';
 
         return <<<TEXT
-            Someone is connecting {$notice->label} to the shared Statamic Secretary address.
+            Someone is connecting {$notice->label} to the shared Secretary address.
 
             One-time code:
             {$notice->code}

@@ -526,7 +526,7 @@ class HostedRelayCoreTest extends TestCase
             $http,
             $token,
             'secretary@statamic.no',
-            'Statamic Secretary',
+            'Secretary',
         );
         $reply = new OutboundReply(
             'secretary-reply-'.str_repeat('a', 24),

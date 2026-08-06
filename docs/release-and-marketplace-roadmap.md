@@ -1,6 +1,6 @@
 # Release and Marketplace roadmap
 
-This document preserves the remaining work required to turn Statamic Secretary from a working product into a production-proven Marketplace addon. It is a reminder list, not evidence that the release gates have passed.
+This document preserves the remaining work required to turn Secretary for Statamic from a working product into a production-proven Marketplace addon. It is a reminder list, not evidence that the release gates have passed.
 
 ## Product proof still required
 

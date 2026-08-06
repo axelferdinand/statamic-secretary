@@ -4,7 +4,7 @@ Use this document as the source of truth when creating the Statamic Marketplace 
 
 ## Product details
 
-- **Name:** Statamic Secretary
+- **Name:** Secretary
 - **Type:** Addon
 - **Price:** USD 49 per production site
 - **Package:** `axelferdinand/statamic-secretary`
@@ -19,7 +19,7 @@ Ask for Statamic content changes by email or in the Control Panel. Secretary fol
 
 ## Overview
 
-Statamic Secretary gives editors a plain-language way to work with real Statamic content. Send the instruction you would normally send to a colleague — “update the opening hours”, “create a page beneath Services”, or “make this introduction less corporate” — and Secretary finds the right content, follows its blueprint, and prepares a reviewable draft.
+Secretary for Statamic gives editors a plain-language way to work with real Statamic content. Send the instruction you would normally send to a colleague — “update the opening hours”, “create a page beneath Services”, or “make this introduction less corporate” — and Secretary finds the right content, follows its blueprint, and prepares a reviewable draft.
 
 Use the contextual chat panel anywhere in the Control Panel, or send an email and carry the same conversation back into Statamic. Secretary acknowledges email requests immediately, replies in the sender's language, and links directly to the resulting draft. Nothing is published until an authorized human explicitly approves it.
 

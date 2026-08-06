@@ -17,7 +17,7 @@ php artisan vendor:publish --tag=statamic-secretary-config
     'sites' => [
         'default' => [
             'audience' => 'Editors evaluating Statamic add-ons.',
-            'terminology' => 'Always write Statamic Secretary in full.',
+            'terminology' => 'Use “Secretary for Statamic” on first mention, then “Secretary”.',
         ],
     ],
 ],

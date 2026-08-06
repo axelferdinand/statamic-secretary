@@ -137,6 +137,6 @@ final class RelayClient
     {
         $subject = Str::limit(preg_replace('/\s+/u', ' ', trim((string) data_get($metadata, 'subject'))) ?: '', 180, '');
 
-        return str_starts_with(mb_strtolower($subject), 're:') ? $subject : 'Re: '.($subject ?: 'Statamic Secretary');
+        return str_starts_with(mb_strtolower($subject), 're:') ? $subject : 'Re: '.($subject ?: 'Secretary');
     }
 }

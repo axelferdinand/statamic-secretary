@@ -54,7 +54,7 @@ final class HostedRelayApplication
             $this->report($exception);
 
             return $this->json(401, ['accepted' => false, 'status' => 'unauthorized'], [
-                'WWW-Authenticate' => 'Basic realm="Statamic Secretary relay"',
+                'WWW-Authenticate' => 'Basic realm="Secretary relay"',
             ]);
         }
 

@@ -40,6 +40,6 @@ try {
     exit(0);
 } catch (Throwable $exception) {
     SecurityEventReporter::report($exception);
-    fwrite(STDERR, "Statamic Secretary Postmark polling failed.\n");
+    fwrite(STDERR, "Secretary Postmark polling failed.\n");
     exit(1);
 }

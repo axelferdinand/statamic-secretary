@@ -1,6 +1,6 @@
 {
     "name": "axelferdinand/statamic-secretary",
-    "description": "A guarded content assistant for Statamic, available through the Control Panel and email.",
+    "description": "Secretary for Statamic is a guarded content assistant, available through the Control Panel and email.",
     "type": "statamic-addon",
     "license": "proprietary",
     "homepage": "https://secretary.statamic.no",

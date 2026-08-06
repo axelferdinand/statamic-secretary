@@ -10,7 +10,7 @@ final class InstallCommand extends Command
 {
     protected $signature = 'secretary:install';
 
-    protected $description = 'Prepare Statamic Secretary after Composer installation';
+    protected $description = 'Prepare Secretary after Composer installation';
 
     public function handle(SecretaryDatabase $database): int
     {
@@ -25,7 +25,7 @@ final class InstallCommand extends Command
             return self::FAILURE;
         }
 
-        $this->components->info('Statamic Secretary is ready. Open Secretary in the Control Panel to finish setup.');
+        $this->components->info('Secretary is ready. Open Secretary in the Control Panel to finish setup.');
 
         return self::SUCCESS;
     }
