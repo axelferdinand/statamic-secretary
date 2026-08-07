@@ -77,6 +77,7 @@
     "archive": {
         "exclude": [
             "/.secretary-deploy",
+            "/.playwright-mcp",
             "/.github",
             "/.gitattributes",
             "/.gitignore",

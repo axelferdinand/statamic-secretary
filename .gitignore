@@ -1,5 +1,6 @@
 /vendor/
 /node_modules/
+/.playwright-mcp/
 /.phpunit.cache/
 /sandbox/
 /.phpunit.result.cache
