@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretary\Tests\Unit;
 
+use AxelFerdinand\StatamicSecretaryRelay\Bootstrap\RelayFactory;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\HttpTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\HttpTransportResponse;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\PublicAliasProvisioner;
@@ -10,18 +11,69 @@ use AxelFerdinand\StatamicSecretaryRelay\Data\BillingCheckout;
 use AxelFerdinand\StatamicSecretaryRelay\Data\BillingUpdate;
 use AxelFerdinand\StatamicSecretaryRelay\Data\Installation;
 use AxelFerdinand\StatamicSecretaryRelay\Data\PairingOutcome;
+use AxelFerdinand\StatamicSecretaryRelay\HostedRelayApplication;
+use AxelFerdinand\StatamicSecretaryRelay\InboundRouter;
 use AxelFerdinand\StatamicSecretaryRelay\PairingService;
 use AxelFerdinand\StatamicSecretaryRelay\Persistence\SqliteRelayStore;
 use AxelFerdinand\StatamicSecretaryRelay\Persistence\SqliteSchema;
+use AxelFerdinand\StatamicSecretaryRelay\PostmarkInboundAdapter;
 use AxelFerdinand\StatamicSecretaryRelay\RelayAddress;
 use AxelFerdinand\StatamicSecretaryRelay\Security\PublicHttpsUrl;
 use AxelFerdinand\StatamicSecretaryRelay\StripeSubscriptionGateway;
 use AxelFerdinand\StatamicSecretaryRelay\SubscriptionService;
 use PDO;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 
 class HostedRelayBillingTest extends TestCase
 {
+    public function test_factory_wires_billing_without_shifting_postmark_limits(): void
+    {
+        $databasePath = tempnam(sys_get_temp_dir(), 'secretary-relay-factory-');
+        $this->assertIsString($databasePath);
+        $environment = [
+            'RELAY_DATABASE_PATH' => $databasePath,
+            'RELAY_DATABASE_KEY' => base64_encode(str_repeat('k', 32)),
+            'RELAY_POSTMARK_SERVER_TOKEN' => 'test-postmark-token',
+            'RELAY_POSTMARK_WEBHOOK_USER' => 'testuser1',
+            'RELAY_POSTMARK_WEBHOOK_PASSWORD' => str_repeat('p', 32),
+            'RELAY_FRIENDLY_ALIASES_ENABLED' => 'false',
+            'RELAY_STRIPE_SECRET_KEY' => 'sk_test_'.str_repeat('a', 32),
+            'RELAY_STRIPE_PRICE_ID' => 'price_'.str_repeat('b', 24),
+            'RELAY_STRIPE_WEBHOOK_SECRET' => 'whsec_'.str_repeat('c', 32),
+        ];
+
+        foreach ($environment as $key => $value) {
+            putenv($key.'='.$value);
+        }
+
+        try {
+            $application = (new RelayFactory)->application();
+            $this->assertInstanceOf(HostedRelayApplication::class, $application);
+
+            $inbound = (new ReflectionProperty($application, 'inbound'))->getValue($application);
+            $postmark = (new ReflectionProperty($application, 'postmark'))->getValue($application);
+
+            $this->assertInstanceOf(InboundRouter::class, $inbound);
+            $this->assertTrue((new ReflectionProperty($inbound, 'subscriptionRequired'))->getValue($inbound));
+            $this->assertInstanceOf(PostmarkInboundAdapter::class, $postmark);
+            $this->assertSame(20000, (new ReflectionProperty($postmark, 'maximumCharacters'))->getValue($postmark));
+            $this->assertSame(4, (new ReflectionProperty($postmark, 'maximumAttachments'))->getValue($postmark));
+            $this->assertSame(8_000_000, (new ReflectionProperty($postmark, 'maximumAttachmentBytes'))->getValue($postmark));
+            $this->assertSame(16_000_000, (new ReflectionProperty($postmark, 'maximumTotalAttachmentBytes'))->getValue($postmark));
+        } finally {
+            foreach (array_keys($environment) as $key) {
+                putenv($key);
+            }
+
+            foreach ([$databasePath, $databasePath.'-shm', $databasePath.'-wal'] as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+        }
+    }
+
     public function test_unpaid_pairing_returns_checkout_without_relay_credentials(): void
     {
         $store = $this->store();

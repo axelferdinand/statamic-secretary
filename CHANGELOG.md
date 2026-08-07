@@ -4,6 +4,10 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.4 - 2026-08-07
+
+- Correct the hosted Relay factory wiring so Stripe billing boots with the intended Postmark limits and inbound traffic enforces subscription entitlements.
+
 ## 0.1.3 - 2026-08-07
 
 - Update `league/commonmark` to 2.9.0 to include the upstream denial-of-service security fixes published on 2026-08-06.
