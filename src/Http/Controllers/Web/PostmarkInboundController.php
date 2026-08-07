@@ -104,7 +104,7 @@ final class PostmarkInboundController extends Controller
         abort_if($username === '' || $password === '', 503, 'Postmark webhook credentials are not configured.');
 
         if (! hash_equals($username, (string) $request->getUser()) || ! hash_equals($password, (string) $request->getPassword())) {
-            abort(401, 'Invalid webhook credentials', ['WWW-Authenticate' => 'Basic realm="Statamic Secretary"']);
+            abort(401, 'Invalid webhook credentials', ['WWW-Authenticate' => 'Basic realm="Secretary"']);
         }
     }
 

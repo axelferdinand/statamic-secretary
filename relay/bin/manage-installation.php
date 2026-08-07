@@ -11,31 +11,59 @@ $options = getopt('', ['action:', 'id:', 'sender:']);
 $action = is_string($options['action'] ?? null) ? trim($options['action']) : '';
 $installationId = is_string($options['id'] ?? null) ? trim($options['id']) : '';
 $sender = is_string($options['sender'] ?? null) ? trim($options['sender']) : '';
-$actions = ['status', 'enable', 'disable', 'add-sender', 'remove-sender'];
+$actions = [
+    'list',
+    'status',
+    'enable',
+    'disable',
+    'add-sender',
+    'remove-sender',
+    'billing-beta',
+    'billing-complimentary',
+    'billing-required',
+];
 
 if (! in_array($action, $actions, true)
-    || $installationId === ''
+    || ($action !== 'list' && $installationId === '')
+    || ($action === 'list' && ($installationId !== '' || $sender !== ''))
     || (in_array($action, ['add-sender', 'remove-sender'], true) && $sender === '')
     || (! in_array($action, ['add-sender', 'remove-sender'], true) && $sender !== '')) {
     fwrite(
         STDERR,
-        "Usage: php bin/manage-installation.php --action=status|enable|disable|add-sender|remove-sender --id=si_... [--sender=editor@example.com]\n",
+        "Usage: php bin/manage-installation.php --action=list OR --action=status|enable|disable|add-sender|remove-sender|billing-beta|billing-complimentary|billing-required --id=si_... [--sender=editor@example.com]\n",
     );
     exit(1);
 }
 
 try {
-    $manager = new InstallationManager((new RelayFactory)->store());
+    $store = (new RelayFactory)->store();
+    $manager = new InstallationManager($store);
+    $sharedAddress = trim((string) getenv('RELAY_SHARED_ADDRESS')) ?: 'secretary@statamic.no';
+    $address = new RelayAddress($sharedAddress);
+
+    if ($action === 'list') {
+        fwrite(STDOUT, json_encode(
+            array_map(
+                static fn (Installation $installation): array => publicInstallation($installation, $address),
+                $store->installations(),
+            ),
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+        )."\n");
+        exit(0);
+    }
+
     $installation = match ($action) {
         'status' => $manager->status($installationId),
         'enable' => $manager->setActive($installationId, true),
         'disable' => $manager->setActive($installationId, false),
         'add-sender' => $manager->addSender($installationId, $sender),
         'remove-sender' => $manager->removeSender($installationId, $sender),
+        'billing-beta' => $manager->setBillingStatus($installationId, 'beta'),
+        'billing-complimentary' => $manager->setBillingStatus($installationId, 'complimentary'),
+        'billing-required' => $manager->setBillingStatus($installationId, 'pending'),
     };
-    $sharedAddress = trim((string) getenv('RELAY_SHARED_ADDRESS')) ?: 'secretary@statamic.no';
     fwrite(STDOUT, json_encode(
-        publicInstallation($installation, new RelayAddress($sharedAddress)),
+        publicInstallation($installation, $address),
         JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
     )."\n");
     exit(0);
@@ -51,6 +79,14 @@ function publicInstallation(Installation $installation, RelayAddress $address): 
         'installation_id' => $installation->id,
         'label' => $installation->label,
         'active' => $installation->active,
+        'billing' => [
+            'status' => $installation->billingStatus,
+            'customer_id' => $installation->stripeCustomerId,
+            'subscription_id' => $installation->stripeSubscriptionId,
+            'period_end' => $installation->billingPeriodEnd === null
+                ? null
+                : gmdate('c', $installation->billingPeriodEnd),
+        ],
         'route_token' => $installation->routeToken,
         'address' => $installation->publicAlias
             ? $address->publicAddress($installation->publicAlias)

@@ -42,9 +42,14 @@ final class ChangeSetReviewService
             (array) $review['decisions'],
         );
 
-        $changeSet = $changeSet->resource_type === 'entry'
-            ? $this->entries->reviseDraft($changeSet, $patch, $user)
-            : $this->staged->reviseDraft($changeSet, $patch, $user);
+        // Accepting an untouched field changes review metadata only. Avoid
+        // rewriting the Statamic working copy when the effective patch did
+        // not change; this keeps rapid review clicks deterministic and cheap.
+        if (! $this->same((array) $changeSet->patch, $patch)) {
+            $changeSet = $changeSet->resource_type === 'entry'
+                ? $this->entries->reviseDraft($changeSet, $patch, $user)
+                : $this->staged->reviseDraft($changeSet, $patch, $user);
+        }
 
         $changeSet->update([
             'review' => [

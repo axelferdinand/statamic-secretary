@@ -1,19 +1,25 @@
 {
     "name": "axelferdinand/statamic-secretary",
-    "description": "A guarded content assistant for Statamic, available through the Control Panel and email.",
+    "description": "Secretary for Statamic is a guarded content assistant, available through the Control Panel and email.",
     "type": "statamic-addon",
     "license": "proprietary",
-    "homepage": "https://github.com/axelferdinand/statamic-secretary",
+    "homepage": "https://secretary.statamic.no",
     "keywords": [
         "statamic",
+        "statamic-addon",
         "cms",
         "ai",
-        "content assistant"
+        "openai",
+        "content-assistant",
+        "editorial-workflow",
+        "email"
     ],
     "authors": [
         {
             "name": "Axel Ferdinand",
-            "email": "kontakt@prototypen.no"
+            "email": "kontakt@prototypen.no",
+            "homepage": "https://prototypen.no",
+            "role": "Developer"
         }
     ],
     "support": {
@@ -77,13 +83,23 @@
             "/.phpunit.cache",
             "/.phpunit.result.cache",
             "/composer.lock",
+            "/docs/completion-matrix.md",
             "/docs/deployment.md",
+            "/docs/landing-page-qa.md",
+            "/docs/marketplace-listing.md",
+            "/docs/marketplace-media",
+            "/docs/assets/marketplace",
+            "/docs/release-and-marketplace-roadmap.md",
+            "/docs/release-checklist.md",
             "/docs/assets/statamic-secretary-icon-source.png",
+            "/docs/assets/statamic-secretary-icon-v2.png",
+            "/docs/assets/statamic-secretary-icon-v2.svg",
             "/node_modules",
             "/package-lock.json",
             "/package.json",
             "/phpunit.xml.dist",
             "/relay",
+            "/resources/img",
             "/sandbox",
             "/scripts",
             "/tests",

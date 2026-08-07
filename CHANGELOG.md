@@ -4,8 +4,48 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+- Add an in-Control-Panel live OpenAI check that verifies API-key access, the selected model, and available credits without exposing provider secrets.
+- Replace opaque OpenAI and background-job failures with safe, actionable editor messages while preserving detailed diagnostics for administrators.
+- Keep the contextual Secretary panel open through normal desktop navigation, label its close control, and make Escape reliably close the panel and restore keyboard focus on desktop and mobile.
+
+## 0.1.2 - 2026-08-06
+
+- Install the standalone hosted relay dependencies in every PHP CI job so its isolated autoload boundary is verified consistently across the supported PHP and Laravel matrix.
+
+## 0.1.1 - 2026-08-06
+
+- Rebuild the Marketplace and GitHub README around the product value, a three-step installation, the email-first workflow, new-page and structured-module creation, and concise links to the detailed technical documentation.
+
+## 0.1.0 - 2026-08-06
+
+- First stable release of Secretary for Statamic.
+- Link every completed email change directly to its native Statamic editor, including entries, taxonomy terms, globals, and navigation; multi-resource replies link every affected resource separately.
+- Keep setup, pairing, and one-time-code email in English by default while matching the language of each editor instruction in acknowledgements and completed-work replies.
+- Add Marketplace-ready documentation, product icons, a 1200×800 concept cover, and genuine Control Panel screenshots.
+- Ship the complete guarded email and Control Panel workflow proven through the `0.1.0` beta series: blueprint-aware drafts, new pages and structured modules, explicit publication, contextual chat, attachments, hosted relay, private storage, and native Statamic permissions.
+
+## 0.1.0-beta.6 - 2026-08-06
+
+- Restore hosted relay acknowledgements and replies by making the relay language layer fully standalone from the Composer addon.
+- Recover safely when the model attempts an entry or localized-content update before reading the exact resource, while preserving fingerprint and blueprint guards.
+- Load only the visible preview frame first, show explicit loading and retry states, and keep stale preview requests from updating a closed or changed context.
+- Add a clear “Publish this” action to both the Secretary draft and side-by-side preview views on desktop and mobile.
+- Avoid rewriting an unchanged Statamic working copy when an editor simply marks a field as kept during review.
+
+## 0.1.0-beta.5 - 2026-08-06
+
+- Rename the public addon from “Statamic Secretary” to “Secretary”, while keeping the Composer package and repository at `axelferdinand/statamic-secretary` and using “Secretary for Statamic” where explanatory context is useful.
+
+## 0.1.0-beta.4 - 2026-08-06
+
 - Reuse the original relay installation and domain address when the same public site and exact sender set complete onboarding again, while retaining collision-safe aliases for genuinely different installations.
 - Align the onboarding card with the Control Panel page heading and give success and error messages a dedicated, spaced notice area.
+- Send an immediate, lightly human acknowledgement when an inbound instruction is accepted, without duplicating acknowledgements on provider retries.
+- Keep system email in English while matching the sender's language in acknowledgements, results, publication messages, attachment labels, and relay replies.
+- Make suggested prompts more useful and playful, and submit them directly instead of copying them into the composer.
+- Replace implementation-oriented recovery copy with a clear “Edit and try again” action.
+- Give the relay pairing action a clear primary state only after a complete one-time code is present.
+- Increase the default inspection budget and return a safe, useful response or focused clarification when the tool budget is exhausted.
 
 ## 0.1.0-beta.3 - 2026-08-05
 

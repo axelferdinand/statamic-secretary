@@ -40,6 +40,11 @@ RELAY_CPANEL_USER=
 RELAY_CPANEL_TOKEN=
 RELAY_POSTMARK_INBOUND_ADDRESS=
 RELAY_GA_MEASUREMENT_ID=
+RELAY_STRIPE_SECRET_KEY=
+RELAY_STRIPE_PRICE_ID=
+RELAY_STRIPE_WEBHOOK_SECRET=
+RELAY_STRIPE_WEBHOOK_TOLERANCE=300
+RELAY_BILLING_RATE_LIMIT=300
 RELAY_REQUIRE_SENDER_AUTHENTICATION=false
 RELAY_MAXIMUM_REQUEST_BYTES=24000000
 RELAY_MAXIMUM_ATTACHMENTS=4
@@ -48,6 +53,11 @@ RELAY_MAXIMUM_TOTAL_ATTACHMENT_BYTES=16000000
 ```
 
 Never place the SQLite file, `.env`, backups, or logs inside `public/`.
+
+Stripe billing is optional during a controlled beta, but all three Stripe secret/price
+values are required together when paid Relay is enabled. Follow the migration and
+demo allowlisting order in [`../docs/relay-billing.md`](../docs/relay-billing.md)
+before adding them. A partial configuration fails closed.
 
 Friendly aliases give each site a readable address such as
 `customer.example@statamic.no`. The cPanel token must be restricted to the
@@ -101,7 +111,17 @@ its authorization boundary, so customers do not need to change SPF, DKIM, or DMA
 Set `RELAY_REQUIRE_SENDER_AUTHENTICATION=true` only if the operator deliberately
 wants to require author-domain DKIM from every customer domain.
 
-## 4. Customer addon
+## 4. Stripe Billing
+
+Create a USD 49 yearly recurring Stripe price and register
+`POST https://secretary.statamic.no/v1/billing/stripe-webhook` for the Checkout and
+subscription events listed in [`../docs/relay-billing.md`](../docs/relay-billing.md).
+Use test mode for the complete unpaid → payment → activation → cancellation proof.
+Configure Stripe's hosted customer portal and publish renewal, cancellation,
+refund, tax, privacy, and support terms before replacing test credentials with live
+credentials.
+
+## 5. Customer addon
 
 Each Statamic installation adds:
 
@@ -113,11 +133,11 @@ SECRETARY_RELAY_CACHE_STORE=redis
 
 An administrator then opens **Content → Secretary**, enters the email of an existing Statamic user with `use secretary`, requests the code, and pastes the received code. The addon stores the installation credentials encrypted. The customer does not need a `secretary@…` mailbox or a Postmark account for this hosted mode.
 
-## 5. Operations gate
+## 6. Operations gate
 
 Schedule `php bin/prune.php`, back up the database and encryption key separately, and configure uptime, 5xx, disk, and backup alerts. Complete the two-installation isolation exercise in [`../docs/shared-address-relay.md`](../docs/shared-address-relay.md) before describing the shared address as production-ready.
 
-## 6. Landing-site search setup
+## 7. Landing-site search setup
 
 After deployment:
 

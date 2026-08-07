@@ -4,6 +4,7 @@ namespace AxelFerdinand\StatamicSecretary\Jobs;
 
 use AxelFerdinand\StatamicSecretary\Agent\ConversationService;
 use AxelFerdinand\StatamicSecretary\Models\Message;
+use AxelFerdinand\StatamicSecretary\Support\PublicError;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -89,10 +90,10 @@ final class ProcessCpMessage implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         report($exception ?? new RuntimeException('Secretary CP processing failed.'));
-        $this->markFailed($this->messageId);
+        $this->markFailed($this->messageId, $exception);
     }
 
-    private function markFailed(string $messageId): void
+    private function markFailed(string $messageId, ?Throwable $exception = null): void
     {
         $message = Message::query()->find($messageId);
 
@@ -101,7 +102,10 @@ final class ProcessCpMessage implements ShouldQueue
                 'processed_at' => now(),
                 'metadata' => [
                     ...(array) $message->metadata,
-                    'processing_error' => 'Secretary could not process the message. Check the application log and try again.',
+                    'processing_error' => PublicError::message(
+                        $exception ?? new RuntimeException('Secretary CP processing failed.'),
+                        'Secretary hit a temporary problem. Your request is safe—edit it if needed, then try again. If it keeps happening, ask an administrator to run Secretary’s system checks.',
+                    ),
                 ],
             ]);
         }
@@ -135,7 +139,7 @@ final class ProcessCpMessage implements ShouldQueue
                 $conversations->respondTo($next, $user);
             } catch (Throwable $exception) {
                 report($exception);
-                $this->markFailed($next->id);
+                $this->markFailed($next->id, $exception);
             }
         }
     }

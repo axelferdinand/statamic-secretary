@@ -2,12 +2,14 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay\Persistence;
 
+use AxelFerdinand\StatamicSecretaryRelay\Contracts\BillingStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\InstallationAdminStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\PairingStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\PostmarkPollStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\RateLimitStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\RelayStore;
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\SelectionStore;
+use AxelFerdinand\StatamicSecretaryRelay\Data\BillingCheckout;
 use AxelFerdinand\StatamicSecretaryRelay\Data\ClaimState;
 use AxelFerdinand\StatamicSecretaryRelay\Data\ConversationRoute;
 use AxelFerdinand\StatamicSecretaryRelay\Data\InboundDelivery;
@@ -25,7 +27,7 @@ use JsonException;
 use PDO;
 use Throwable;
 
-final class SqliteRelayStore implements InstallationAdminStore, PairingStore, PostmarkPollStore, RateLimitStore, RelayStore, SelectionStore
+final class SqliteRelayStore implements BillingStore, InstallationAdminStore, PairingStore, PostmarkPollStore, RateLimitStore, RelayStore, SelectionStore
 {
     private const ENCRYPTION_KEY_BYTES = 32;
 
@@ -79,6 +81,138 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
     public function saveInstallation(Installation $installation): void
     {
         $this->immediate(fn () => $this->saveInstallationRecord($installation, true));
+    }
+
+    public function saveBillingCheckout(string $installationId, BillingCheckout $checkout): void
+    {
+        $this->immediate(function () use ($installationId, $checkout): void {
+            $statement = $this->pdo->prepare(
+                <<<'SQL'
+                    UPDATE relay_installations
+                    SET billing_status = 'pending',
+                        checkout_id = :checkout_id,
+                        checkout_url = :checkout_url,
+                        checkout_expires_at = :checkout_expires_at,
+                        updated_at = :updated_at
+                    WHERE id = :id
+                    SQL,
+            );
+            $statement->execute([
+                'checkout_id' => $checkout->id,
+                'checkout_url' => $checkout->url,
+                'checkout_expires_at' => $checkout->expiresAt,
+                'updated_at' => $this->now(),
+                'id' => $installationId,
+            ]);
+
+            if ($statement->rowCount() !== 1) {
+                throw new RelayRejected('Subscription checkout could not be saved.');
+            }
+        });
+    }
+
+    public function applyBillingEvent(
+        string $eventId,
+        ?string $installationId,
+        ?string $subscriptionId,
+        ?string $customerId,
+        string $status,
+        ?int $periodEnd,
+    ): bool {
+        return $this->immediate(function () use (
+            $eventId,
+            $installationId,
+            $subscriptionId,
+            $customerId,
+            $status,
+            $periodEnd,
+        ): bool {
+            $existingEvent = $this->pdo->prepare(
+                'SELECT event_id FROM relay_billing_events WHERE event_id = :event_id LIMIT 1',
+            );
+            $existingEvent->execute(['event_id' => $eventId]);
+
+            if ($existingEvent->fetchColumn() !== false) {
+                return false;
+            }
+
+            $installation = $installationId !== null
+                ? $this->installationById($installationId)
+                : null;
+            $subscriptionInstallation = $subscriptionId !== null
+                ? $this->installation('stripe_subscription_id = :value', $subscriptionId)
+                : null;
+
+            if ($installation !== null
+                && $subscriptionInstallation !== null
+                && ! hash_equals($installation->id, $subscriptionInstallation->id)) {
+                throw new RelayRejected('Stripe subscription does not match the installation.');
+            }
+
+            $installation ??= $subscriptionInstallation;
+
+            if ($installation === null) {
+                throw new RelayRejected('Stripe subscription installation was not found.');
+            }
+
+            if ($installation->stripeSubscriptionId !== null
+                && $subscriptionId !== null
+                && ! hash_equals($installation->stripeSubscriptionId, $subscriptionId)) {
+                throw new RelayRejected('Stripe subscription identity changed unexpectedly.');
+            }
+
+            if ($installation->stripeCustomerId !== null
+                && $customerId !== null
+                && ! hash_equals($installation->stripeCustomerId, $customerId)) {
+                throw new RelayRejected('Stripe customer identity changed unexpectedly.');
+            }
+
+            $now = $this->now();
+            $update = $this->pdo->prepare(
+                <<<'SQL'
+                    UPDATE relay_installations
+                    SET billing_status = :billing_status,
+                        stripe_subscription_id = COALESCE(:stripe_subscription_id, stripe_subscription_id),
+                        stripe_customer_id = COALESCE(:stripe_customer_id, stripe_customer_id),
+                        billing_period_end = COALESCE(:billing_period_end, billing_period_end),
+                        checkout_id = NULL,
+                        checkout_url = NULL,
+                        checkout_expires_at = NULL,
+                        updated_at = :updated_at
+                    WHERE id = :id
+                    SQL,
+            );
+            $update->execute([
+                'billing_status' => $status,
+                'stripe_subscription_id' => $subscriptionId,
+                'stripe_customer_id' => $customerId,
+                'billing_period_end' => $periodEnd,
+                'updated_at' => $now,
+                'id' => $installation->id,
+            ]);
+
+            if ($update->rowCount() !== 1) {
+                throw new RelayRejected('Stripe subscription status could not be saved.');
+            }
+
+            $insert = $this->pdo->prepare(
+                <<<'SQL'
+                    INSERT INTO relay_billing_events (
+                        event_id, installation_id, status, created_at
+                    ) VALUES (
+                        :event_id, :installation_id, :status, :created_at
+                    )
+                    SQL,
+            );
+            $insert->execute([
+                'event_id' => $eventId,
+                'installation_id' => $installation->id,
+                'status' => $status,
+                'created_at' => $now,
+            ]);
+
+            return true;
+        });
     }
 
     public function consumeRateLimit(
@@ -527,6 +661,7 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
         string $codeDigest,
         string $claimFingerprint,
         string $webhookUrl,
+        bool $requiresPayment = false,
     ): PairingOutcome {
         if (preg_match('/^[a-f0-9]{64}$/D', $codeDigest) !== 1
             || preg_match('/^[a-f0-9]{64}$/D', $claimFingerprint) !== 1) {
@@ -537,6 +672,7 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
             $codeDigest,
             $claimFingerprint,
             $webhookUrl,
+            $requiresPayment,
         ): PairingOutcome {
             $statement = $this->pdo->prepare(
                 'SELECT * FROM relay_pairing_codes WHERE code_digest = :code_digest LIMIT 1',
@@ -593,6 +729,7 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
                     true,
                     $definition->label,
                     publicAlias: $this->availablePublicAlias($webhookUrl, $routeToken),
+                    billingStatus: $requiresPayment ? 'pending' : 'beta',
                 );
                 $this->saveInstallationRecord($installation, false);
             }
@@ -1242,6 +1379,13 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
                     pending_route_rotation_id = excluded.pending_route_rotation_id,
                     last_route_rotation_id = excluded.last_route_rotation_id,
                     route_rotation_available_at = excluded.route_rotation_available_at,
+                    billing_status = excluded.billing_status,
+                    stripe_customer_id = excluded.stripe_customer_id,
+                    stripe_subscription_id = excluded.stripe_subscription_id,
+                    billing_period_end = excluded.billing_period_end,
+                    checkout_id = excluded.checkout_id,
+                    checkout_url = excluded.checkout_url,
+                    checkout_expires_at = excluded.checkout_expires_at,
                     active = excluded.active,
                     label = excluded.label,
                     updated_at = excluded.updated_at
@@ -1255,14 +1399,20 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
                     previous_secret_expires_at, pending_rotation_id, last_rotation_id,
                     pending_route_token, pending_route_rotation_id,
                     last_route_rotation_id, route_rotation_available_at,
-                    public_alias, active, label, created_at, updated_at
+                    public_alias, billing_status, stripe_customer_id,
+                    stripe_subscription_id, billing_period_end, checkout_id,
+                    checkout_url, checkout_expires_at,
+                    active, label, created_at, updated_at
                 ) VALUES (
                     :id, :route_token, :webhook_url, :signing_secret_ciphertext,
                     :pending_signing_secret_ciphertext, :previous_signing_secret_ciphertext,
                     :previous_secret_expires_at, :pending_rotation_id, :last_rotation_id,
                     :pending_route_token, :pending_route_rotation_id,
                     :last_route_rotation_id, :route_rotation_available_at,
-                    :public_alias, :active, :label, :created_at, :updated_at
+                    :public_alias, :billing_status, :stripe_customer_id,
+                    :stripe_subscription_id, :billing_period_end, :checkout_id,
+                    :checkout_url, :checkout_expires_at,
+                    :active, :label, :created_at, :updated_at
                 )
                 {$update}
                 SQL,
@@ -1286,6 +1436,13 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
             'last_route_rotation_id' => $installation->lastRouteRotationId,
             'route_rotation_available_at' => $installation->routeRotationAvailableAt,
             'public_alias' => $installation->publicAlias,
+            'billing_status' => $installation->billingStatus,
+            'stripe_customer_id' => $installation->stripeCustomerId,
+            'stripe_subscription_id' => $installation->stripeSubscriptionId,
+            'billing_period_end' => $installation->billingPeriodEnd,
+            'checkout_id' => $installation->checkoutId,
+            'checkout_url' => $installation->checkoutUrl,
+            'checkout_expires_at' => $installation->checkoutExpiresAt,
             'active' => $installation->active ? 1 : 0,
             'label' => $installation->label,
             'created_at' => $now,
@@ -1353,6 +1510,13 @@ final class SqliteRelayStore implements InstallationAdminStore, PairingStore, Po
                 ? (int) $row['route_rotation_available_at']
                 : null,
             is_string($row['public_alias'] ?? null) ? $row['public_alias'] : null,
+            is_string($row['billing_status'] ?? null) ? $row['billing_status'] : 'beta',
+            is_string($row['stripe_customer_id'] ?? null) ? $row['stripe_customer_id'] : null,
+            is_string($row['stripe_subscription_id'] ?? null) ? $row['stripe_subscription_id'] : null,
+            isset($row['billing_period_end']) ? (int) $row['billing_period_end'] : null,
+            is_string($row['checkout_id'] ?? null) ? $row['checkout_id'] : null,
+            is_string($row['checkout_url'] ?? null) ? $row['checkout_url'] : null,
+            isset($row['checkout_expires_at']) ? (int) $row['checkout_expires_at'] : null,
         );
     }
 

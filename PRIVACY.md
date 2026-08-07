@@ -1,6 +1,6 @@
 # Privacy
 
-Statamic Secretary is self-hosted. The site operator controls the Statamic installation, database, mail transport, OpenAI project, retention policy, and who may use the addon.
+Secretary for Statamic is self-hosted. The site operator controls the Statamic installation, database, mail transport, OpenAI project, retention policy, and who may use the addon.
 
 ## Data processed
 

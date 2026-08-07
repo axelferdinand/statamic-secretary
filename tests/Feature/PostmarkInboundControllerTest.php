@@ -10,6 +10,7 @@ use AxelFerdinand\StatamicSecretary\Data\AgentRequest;
 use AxelFerdinand\StatamicSecretary\Data\AgentResponse;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessCpMessage;
 use AxelFerdinand\StatamicSecretary\Jobs\ProcessInboundEmail;
+use AxelFerdinand\StatamicSecretary\Mail\SecretaryAcknowledgement;
 use AxelFerdinand\StatamicSecretary\Mail\SecretaryReply;
 use AxelFerdinand\StatamicSecretary\Models\Conversation;
 use AxelFerdinand\StatamicSecretary\Models\Message;
@@ -25,6 +26,10 @@ use Statamic\Facades\Asset;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
+use Statamic\Facades\Taxonomy;
+use Statamic\Facades\Term;
 use Statamic\Facades\User;
 
 class PostmarkInboundControllerTest extends TestCase
@@ -91,7 +96,7 @@ class PostmarkInboundControllerTest extends TestCase
         ])->assertOk();
 
         $this->assertSame(
-            'Vedlagt bilde: photo.png',
+            'Attached image: photo.png',
             Message::where('provider_message_id', 'postmark-image-only')->firstOrFail()->body,
         );
 
@@ -259,6 +264,7 @@ class PostmarkInboundControllerTest extends TestCase
         $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
         $user->save();
         Bus::fake();
+        Mail::fake();
 
         $response = $this->withBasicAuth('postmark', 'webhook-secret')->postJson('/_secretary/webhooks/postmark/inbound', [
             'MessageID' => 'postmark-message-1',
@@ -278,7 +284,18 @@ class PostmarkInboundControllerTest extends TestCase
         $inbound = Message::where('provider_message_id', 'postmark-message-1')->first();
         $this->assertSame('Bytt tittel på forsiden.', $inbound->body);
         $this->assertSame('<inbound-1@example.com>', data_get($inbound->metadata, 'rfc_message_id'));
+        $this->assertNotNull(data_get($inbound->metadata, 'acknowledgement_sent_at'));
         Bus::assertDispatched(ProcessInboundEmail::class);
+        Mail::assertSent(SecretaryAcknowledgement::class, function (SecretaryAcknowledgement $mail) use ($inbound): bool {
+            $mail->assertSeeInText('Mottatt — jeg er på saken.')
+                ->assertSeeInText('ingen kaffepause nødvendig');
+            $headers = $mail->headers();
+
+            return $mail->inbound->is($inbound)
+                && $mail->envelope()->subject === 'Re: Endre forsiden'
+                && $headers->references === ['<inbound-1@example.com>']
+                && $headers->text['In-Reply-To'] === '<inbound-1@example.com>';
+        });
 
         $this->withBasicAuth('postmark', 'webhook-secret')
             ->postJson('/_secretary/webhooks/postmark/inbound', [
@@ -289,6 +306,7 @@ class PostmarkInboundControllerTest extends TestCase
             ->assertJson(['duplicate' => true]);
 
         Bus::assertDispatchedAfterResponseTimes(ProcessInboundEmail::class, 2);
+        Mail::assertSentCount(1);
     }
 
     public function test_ambiguous_rfc_message_ids_are_not_reflected_into_replies(): void
@@ -667,24 +685,139 @@ class PostmarkInboundControllerTest extends TestCase
         $mail = new SecretaryReply($conversation, $reply);
         $draftUrl = Entry::find('home')->editUrl();
         $publicUrl = Entry::find('home')->absoluteUrl();
-        $conversationUrl = $draftUrl.'?secretary='.$conversation->id;
+        $draftContextUrl = $draftUrl.'?secretary='.$conversation->id;
+        $conversationUrl = cp_route('secretary.show', $conversation);
 
         $mail->assertSeeInText('Åpne utkastet i Statamic:')
+            ->assertSeeInText($draftContextUrl)
             ->assertSeeInText($conversationUrl)
             ->assertSeeInText('Berørt side: Forsiden — '.$publicUrl)
-            ->assertDontSeeInText('Fortsett samtalen i Secretary:')
+            ->assertSeeInText('Fortsett samtalen i Secretary:')
             ->assertDontSeeInText('Endringer i denne meldingen')
             ->assertDontSeeInText('Klargjorte endringer')
             ->assertDontSeeInText('Berørt side: Forsiden (`/`)');
         $rendered = $mail->render();
         $this->assertStringNotContainsString('href="'.$draftUrl.'"', $rendered);
         $this->assertStringContainsString('href="'.$publicUrl.'"', $rendered);
+        $this->assertStringContainsString('href="'.$draftContextUrl.'"', $rendered);
         $this->assertStringContainsString('href="'.$conversationUrl.'"', $rendered);
-        $this->assertStringNotContainsString('Fortsett samtalen i Secretary', $rendered);
+        $this->assertStringContainsString('Fortsett samtalen i Secretary', $rendered);
         $this->assertLessThan(
             strpos($rendered, 'Status: Klar som utkast'),
             strpos($rendered, 'Berørt side:'),
         );
+    }
+
+    public function test_email_replies_link_every_changed_resource_to_its_native_statamic_editor(): void
+    {
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()
+            ->id('about')
+            ->collection($collection)
+            ->slug('about')
+            ->data(['title' => 'About'])
+            ->save();
+        $taxonomy = Taxonomy::make('topics')->title('Topics');
+        $taxonomy->save();
+        Term::make()
+            ->taxonomy($taxonomy)
+            ->in('default')
+            ->data(['title' => 'News'])
+            ->slug('news')
+            ->save();
+        $global = GlobalSet::make('company')->title('Company');
+        $global->save();
+        $global->in('default')->data(['phone' => '11 11 11 11'])->save();
+        $navigation = Nav::make('main')->title('Main');
+        $navigation->save();
+        $navigation->makeTree('default', [['title' => 'Home', 'url' => '/']])->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = app(ConversationService::class)->start(
+            'email',
+            $user,
+            'editor@example.com',
+            'native-resource-links',
+        );
+        $changes = collect([
+            ['entry', 'about', 'pages', 'Updated About'],
+            ['term', 'topics::news', 'topics', 'Updated News term'],
+            ['global', 'company::default', 'company', 'Updated Company globals'],
+            ['navigation', 'main::default', 'main', 'Updated Main navigation'],
+        ])->map(fn (array $change) => $conversation->changeSets()->create([
+            'status' => 'draft',
+            'operation' => 'update',
+            'resource_type' => $change[0],
+            'resource_id' => $change[1],
+            'collection' => $change[2],
+            'site' => 'default',
+            'summary' => $change[3],
+        ]));
+        $reply = $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'email',
+            'role' => 'assistant',
+            'body' => 'Done. Four content resources are ready for review.',
+            'metadata' => ['change_set_ids' => $changes->pluck('id')->all()],
+            'processed_at' => now(),
+        ]);
+        $mail = new SecretaryReply($conversation, $reply);
+        $entryUrl = Entry::find('about')->editUrl().'?secretary='.$conversation->id;
+        $termUrl = Term::find('topics::news')->in('default')->editUrl();
+        $globalUrl = GlobalSet::findByHandle('company')->in('default')->editUrl();
+        $navigationUrl = Nav::findByHandle('main')->in('default')->editUrl();
+
+        $mail->assertSeeInText($entryUrl)
+            ->assertSeeInText($termUrl)
+            ->assertSeeInText($globalUrl)
+            ->assertSeeInText($navigationUrl)
+            ->assertSeeInText(cp_route('secretary.show', $conversation));
+
+        $rendered = $mail->render();
+
+        foreach ([$entryUrl, $termUrl, $globalUrl, $navigationUrl] as $url) {
+            $this->assertStringContainsString('href="'.$url.'"', $rendered);
+        }
+    }
+
+    public function test_an_english_instruction_receives_english_email_chrome(): void
+    {
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = app(ConversationService::class)->start(
+            'email',
+            $user,
+            'editor@example.com',
+            'english-email-thread',
+        );
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Please make the homepage title shorter.',
+            'metadata' => ['subject' => 'Homepage'],
+        ]);
+        $reply = $conversation->messages()->create([
+            'direction' => 'outbound',
+            'channel' => 'email',
+            'role' => 'assistant',
+            'body' => 'Done.',
+            'reply_to_message_id' => $inbound->id,
+            'metadata' => ['reply_to_message_id' => $inbound->id],
+            'processed_at' => now(),
+        ]);
+        $mail = new SecretaryReply($conversation, $reply);
+        $acknowledgement = new SecretaryAcknowledgement($inbound);
+
+        $mail->assertSeeInText('Open the conversation in Secretary:')
+            ->assertSeeInText('Reply to this email to continue the same conversation.')
+            ->assertDontSeeInText('Åpne samtalen i Secretary');
+        $this->assertStringContainsString('<html lang="en">', $mail->render());
+        $acknowledgement->assertSeeInText('Received — I’m on it.')
+            ->assertSeeInText('no coffee break required')
+            ->assertDontSeeInText('Mottatt — jeg er på saken.');
+        $this->assertStringContainsString('<html lang="en">', $acknowledgement->render());
     }
 
     public function test_the_email_job_reuses_a_stored_reply_after_a_mail_failure_without_calling_the_agent_again(): void
@@ -769,7 +902,7 @@ class PostmarkInboundControllerTest extends TestCase
         $message->refresh();
         $this->assertNotNull($message->processed_at);
         $this->assertSame(
-            'Secretary kunne ikke behandle e-posten. Kontroller loggen og prøv igjen.',
+            'Secretary traff et midlertidig problem. Forespørselen din er trygg — prøv igjen når problemet er løst.',
             data_get($message->metadata, 'processing_error'),
         );
         $this->assertStringNotContainsString('secret details', json_encode($message->metadata));

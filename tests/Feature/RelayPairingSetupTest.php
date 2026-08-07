@@ -239,6 +239,50 @@ class RelayPairingSetupTest extends TestCase
         $this->assertSame($pending['pending_claim_id'], $claimIds[1]);
     }
 
+    public function test_paid_relay_checkout_is_shown_without_storing_delivery_credentials(): void
+    {
+        Http::fake([
+            'https://secretary.statamic.no/v1/pairings/claim' => Http::response([
+                'accepted' => true,
+                'status' => 'payment_required',
+                'installation_id' => self::INSTALLATION_ID,
+                'billing_status' => 'pending',
+                'checkout_url' => 'https://checkout.stripe.com/c/pay/cs_test_'.str_repeat('a', 24),
+                'checkout_expires_at' => now()->addMinutes(30)->getTimestamp(),
+                'price' => [
+                    'amount' => 4900,
+                    'currency' => 'usd',
+                    'interval' => 'year',
+                ],
+            ], 201),
+        ]);
+        $owner = $this->owner();
+
+        $this->actingAs($owner)
+            ->post('/cp/secretary/setup/relay', [
+                'pairing_code' => self::PAIRING_CODE,
+                'public_url' => 'https://site.example.com',
+            ])
+            ->assertRedirect('/cp/secretary')
+            ->assertSessionHas('secretary_success');
+
+        $settings = Setting::query()->findOrFail('relay')->value;
+        $this->assertFalse($settings['enabled']);
+        $this->assertSame('pending', $settings['billing_status']);
+        $this->assertSame(4900, $settings['price']['amount']);
+        $this->assertArrayNotHasKey('signing_secret', $settings);
+        $this->assertArrayNotHasKey('route_token', $settings);
+
+        $this->actingAs($owner)
+            ->get('/cp/secretary')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('relay_setup.connected', false)
+                ->where('relay_setup.payment_required', true)
+                ->where('relay_setup.billing_status', 'pending')
+                ->where('relay_setup.price.amount', 4900));
+    }
+
     public function test_pairing_rejects_local_urls_and_unauthorized_users_before_network_io(): void
     {
         Http::fake();

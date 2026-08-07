@@ -21,6 +21,8 @@ use AxelFerdinand\StatamicSecretaryRelay\Security\BasicAuth;
 use AxelFerdinand\StatamicSecretaryRelay\Security\PublicHttpsUrl;
 use AxelFerdinand\StatamicSecretaryRelay\SelectionService;
 use AxelFerdinand\StatamicSecretaryRelay\SignedSiteTransport;
+use AxelFerdinand\StatamicSecretaryRelay\StripeSubscriptionGateway;
+use AxelFerdinand\StatamicSecretaryRelay\SubscriptionService;
 use PDO;
 
 final class RelayFactory
@@ -33,9 +35,12 @@ final class RelayFactory
         $http = new CurlHttpTransport;
         $postmarkToken = $this->required('RELAY_POSTMARK_SERVER_TOKEN');
         $fromAddress = $this->optional('RELAY_FROM_ADDRESS', $sharedAddress);
-        $fromName = $this->optional('RELAY_FROM_NAME', 'Statamic Secretary');
+        $fromName = $this->optional('RELAY_FROM_NAME', 'Secretary');
+        $fromName = $fromName === 'Statamic Secretary' ? 'Secretary' : $fromName;
         $messageStream = $this->optional('RELAY_POSTMARK_MESSAGE_STREAM', 'outbound');
         $aliases = $this->publicAliasProvisioner($address);
+        $subscriptions = $this->subscriptionService($store, $http);
+        $subscriptionRequired = $subscriptions !== null;
         $postmark = new PostmarkMailTransport(
             $http,
             $postmarkToken,
@@ -76,6 +81,12 @@ final class RelayFactory
                     1,
                     100000,
                 ),
+                'billing_source' => $this->integer(
+                    'RELAY_BILLING_RATE_LIMIT',
+                    300,
+                    1,
+                    100000,
+                ),
             ],
             $this->integer('RELAY_RATE_LIMIT_WINDOW_SECONDS', 60, 10, 3600),
         );
@@ -89,6 +100,7 @@ final class RelayFactory
                 $sharedAddress,
                 $this->boolean('RELAY_REQUIRE_SENDER_AUTHENTICATION', true),
                 $this->float('RELAY_MAXIMUM_SPAM_SCORE', 5.0, -100.0, 100.0),
+                $subscriptionRequired,
                 $this->integer('RELAY_MAXIMUM_MESSAGE_CHARACTERS', 20000, 1000, 20000),
                 $this->integer('RELAY_MAXIMUM_ATTACHMENTS', 4, 1, 10),
                 $this->integer('RELAY_MAXIMUM_ATTACHMENT_BYTES', 8_000_000, 100_000, 20_000_000),
@@ -106,6 +118,7 @@ final class RelayFactory
                 $postmark,
                 $address,
                 $this->integer('RELAY_MAXIMUM_CLOCK_SKEW', 300, 30, 900),
+                $subscriptionRequired,
             ),
             new SelectionService(
                 $store,
@@ -119,8 +132,9 @@ final class RelayFactory
                 ),
                 $address,
                 $aliases !== null,
+                $subscriptionRequired,
             ),
-            new PairingService($store, $address, new PublicHttpsUrl, $aliases),
+            new PairingService($store, $address, new PublicHttpsUrl, $aliases, $subscriptions),
             new PostmarkPairingCodeTransport(
                 $http,
                 $postmarkToken,
@@ -136,6 +150,7 @@ final class RelayFactory
                 32_000_000,
             ),
             rateLimiter: $rateLimiter,
+            subscriptions: $subscriptions,
         );
     }
 
@@ -188,6 +203,37 @@ final class RelayFactory
             $this->required('RELAY_CPANEL_USER'),
             $this->required('RELAY_CPANEL_TOKEN'),
             $this->required('RELAY_POSTMARK_INBOUND_ADDRESS'),
+        );
+    }
+
+    private function subscriptionService(
+        SqliteRelayStore $store,
+        CurlHttpTransport $http,
+    ): ?SubscriptionService {
+        $configuration = [
+            'RELAY_STRIPE_SECRET_KEY' => trim((string) getenv('RELAY_STRIPE_SECRET_KEY')),
+            'RELAY_STRIPE_PRICE_ID' => trim((string) getenv('RELAY_STRIPE_PRICE_ID')),
+            'RELAY_STRIPE_WEBHOOK_SECRET' => trim((string) getenv('RELAY_STRIPE_WEBHOOK_SECRET')),
+        ];
+        $configured = array_filter($configuration, static fn (string $value): bool => $value !== '');
+
+        if ($configured === []) {
+            return null;
+        }
+
+        if (count($configured) !== count($configuration)) {
+            throw new RelayRejected('Stripe relay billing configuration is incomplete.');
+        }
+
+        return new SubscriptionService(
+            $store,
+            new StripeSubscriptionGateway(
+                $http,
+                $configuration['RELAY_STRIPE_SECRET_KEY'],
+                $configuration['RELAY_STRIPE_PRICE_ID'],
+                $configuration['RELAY_STRIPE_WEBHOOK_SECRET'],
+                $this->integer('RELAY_STRIPE_WEBHOOK_TOLERANCE', 300, 30, 900),
+            ),
         );
     }
 

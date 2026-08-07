@@ -11,6 +11,9 @@ The shared-address relay is a separate security boundary. It must not run inside
 - Apply an IP rate limit at the public reverse proxy. The application also enforces atomic endpoint limits from `REMOTE_ADDR`; it intentionally ignores spoofable forwarding headers. If a trusted proxy is the direct peer, its bucket is a service-wide safety cap rather than a per-customer limit.
 - Run more than one PHP worker only on a local filesystem that correctly supports SQLite WAL and locks. Do not place SQLite on NFS.
 - Run `php bin/migrate.php` before serving traffic.
+- Before enabling Stripe, list every installation, mark only the public demo
+  `billing-complimentary`, and move every non-demo beta installation to
+  `billing-required`. Follow [`../docs/relay-billing.md`](../docs/relay-billing.md).
 - Run `php bin/configure-postmark.php` after the permanent TLS URL resolves. It registers the Basic Auth-protected inbound endpoint without printing the credentials.
 - If the hosting firewall cannot allow Postmark's webhook IPs, schedule `php bin/poll-postmark.php` every minute as an outbound-only fallback. Keep the webhook configured so either path can win safely through the same durable idempotency checks.
 - Require a successful `GET /health` after each release.
@@ -30,6 +33,7 @@ RELAY_REPLY_RATE_LIMIT=300
 RELAY_PAIRING_RATE_LIMIT=60
 RELAY_PAIRING_REQUEST_RATE_LIMIT=10
 RELAY_PAIRING_RECIPIENT_RATE_LIMIT=3
+RELAY_BILLING_RATE_LIMIT=300
 ```
 
 Each endpoint and direct socket peer receives an independent fixed-window bucket. Updates use `BEGIN IMMEDIATE`, so multiple PHP workers cannot exceed a bucket through races. The database stores only `HMAC-SHA-256(peer, RELAY_DATABASE_KEY)` and prunes expired buckets with the normal retention command. A rejected request receives `429`, `Retry-After`, `Cache-Control: no-store`, and no customer identifier.
@@ -75,13 +79,29 @@ Use one exact action per command. Output contains the route, webhook, status, la
 
 ```bash
 php bin/manage-installation.php --action=status --id=si_...
+php bin/manage-installation.php --action=list
 php bin/manage-installation.php --action=disable --id=si_...
 php bin/manage-installation.php --action=enable --id=si_...
 php bin/manage-installation.php --action=add-sender --id=si_... --sender=editor@example.com
 php bin/manage-installation.php --action=remove-sender --id=si_... --sender=editor@example.com
+php bin/manage-installation.php --action=billing-complimentary --id=si_...
+php bin/manage-installation.php --action=billing-required --id=si_...
 ```
 
-All actions are retry-safe. Disabling takes effect before the next route decision and preserves installation identity, encrypted signing secret, conversations, and delivery metadata. Removing every sender leaves the installation unreachable by email without deleting its history. Restore at least one authorized sender before enabling normal use.
+All actions are retry-safe. Disabling takes effect before the next route decision and preserves installation identity, encrypted signing secret, conversations, and delivery metadata. Removing every sender leaves the installation unreachable by email without deleting its history. Restore at least one authorized sender before enabling normal use. `billing-complimentary` bypasses payment and is reserved for the public demo or a deliberate comp. `billing-required` moves a legacy beta installation to the paywall; never apply it to an installation that already owns a real Stripe subscription.
+
+## Billing incidents
+
+- Stripe is the source of truth for paid subscriptions; never grant access from an
+  email receipt, browser redirect, or customer claim.
+- Webhook signatures are checked against the exact raw body and events are applied
+  once by Stripe event ID.
+- If Stripe delivery is delayed, leave the installation pending. Retry the webhook
+  from Stripe rather than editing a row by hand.
+- If an entitled site must be stopped immediately, disable the installation. Do not
+  delete its billing identity or routing history.
+- Reconcile active Stripe subscriptions against `manage-installation.php --action=list`
+  after restore and during the first production weeks.
 
 ## Signing-secret rotation
 

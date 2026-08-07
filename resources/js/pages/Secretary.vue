@@ -36,6 +36,8 @@ const conversationMenuOpen = ref(false);
 const busy = ref(false);
 const setupBusy = ref(false);
 const diagnosticsBusy = ref(false);
+const diagnosticChecks = ref(props.diagnostics.checks ?? []);
+const diagnosticsNotice = ref(null);
 const safeDraftingBusy = ref(false);
 const copiedPostmarkAddress = ref(false);
 const copiedActiveEmailAddress = ref(false);
@@ -46,6 +48,7 @@ const previewOpen = ref(false);
 const previewLoading = ref(false);
 const previewData = ref(null);
 const previewError = ref(null);
+const previewChange = ref(null);
 const guideBusy = ref(false);
 const guideSite = ref(props.style_guides.sites?.[0]?.handle ?? '');
 const guideForm = ref({
@@ -54,6 +57,7 @@ const guideForm = ref({
     terminology: '',
     avoid: '',
 });
+let previewRequest = 0;
 const emailConnected = computed(() => props.email_setup.connected || props.relay_setup.connected);
 const activeEmailAddress = computed(() => {
     if (props.relay_setup.connected && props.relay_setup.address) {
@@ -107,6 +111,7 @@ const sharedAddressPreview = computed(() => {
     return null;
 });
 const actionError = ref(null);
+const sendingSuggestion = ref(null);
 const postmarkForwardingRequired = computed(() => props.email_setup.connected
     && props.email_setup.forwarding_confirmation_required);
 const safeDraftingRequired = computed(() => props.configured
@@ -156,7 +161,7 @@ const filteredConversations = computed(() => {
     ].some(value => String(value ?? '').toLocaleLowerCase('en').includes(query)));
 });
 const diagnosticSummary = computed(() => {
-    const checks = props.diagnostics.checks ?? [];
+    const checks = diagnosticChecks.value;
     const blockers = checks.filter(check => check.required && !check.passed).length;
     const warnings = checks.filter(check => !check.required && !check.passed).length;
 
@@ -173,42 +178,49 @@ function enableSafeDrafting() {
     });
 }
 
-function runDiagnostics() {
-    if (diagnosticsBusy.value || !props.diagnostics.run_url) return;
+async function runDiagnostics() {
+    if (diagnosticsBusy.value || !props.diagnostics.run_url || !axios) return;
 
-    router.post(props.diagnostics.run_url, {}, {
-        preserveScroll: true,
-        onStart: () => diagnosticsBusy.value = true,
-        onFinish: () => diagnosticsBusy.value = false,
-    });
+    diagnosticsBusy.value = true;
+    diagnosticsNotice.value = null;
+
+    try {
+        const response = await axios.post(props.diagnostics.run_url);
+        diagnosticChecks.value = response.data.checks ?? diagnosticChecks.value;
+        diagnosticsNotice.value = response.data.message ?? 'Checks completed.';
+    } catch (exception) {
+        diagnosticsNotice.value = responseError(exception, 'Secretary could not run the checks. Try again.');
+    } finally {
+        diagnosticsBusy.value = false;
+    }
 }
 const promptSuggestions = computed(() => {
     const field = props.conversation?.context?.field;
 
     if (field?.type === 'bard' || field?.type === 'replicator') {
         return [
-            `Improve the copy in the ${field.set_type ? `${field.set_type} module` : field.display}.`,
-            'Make this module shorter without changing the rest of the page.',
-            'Suggest a better order for the content modules.',
+            `Make the ${field.set_type ? `${field.set_type} module` : field.display} clearer and more engaging.`,
+            'Trim this module until every sentence earns its keep.',
+            'Reorder these modules so the story stops doing parkour.',
         ];
     }
 
     if (field) {
         return [
             `Make the “${field.display}” field clearer.`,
-            `Proofread only “${field.display}”.`,
-            `Write three alternatives for “${field.display}”.`,
+            `Proofread only “${field.display}” — hunt typos, spare everything else.`,
+            `Write three alternatives for “${field.display}”: safe, bold, and slightly cheeky.`,
         ];
     }
 
     return props.conversation?.context ? [
-        'Make the introduction clearer and shorter.',
-        'Find language issues on this page.',
-        'Suggest a better page title.',
+        'Make the introduction clearer, shorter, and less corporate.',
+        'Hunt down awkward language and suspicious commas.',
+        'Give this page a title people might actually remember.',
     ] : [
-        'Make the homepage introduction clearer.',
-        'Find the “About us” page and suggest a better title.',
-        'Draft a new contact page.',
+        'Make the homepage introduction sound more human.',
+        'Find the “About us” page and rescue its title.',
+        'Draft a contact page that doesn’t feel like paperwork.',
     ];
 });
 const { start: startPolling, stop: stopPolling } = usePoll(2000, {
@@ -246,13 +258,24 @@ function connectRelay() {
     }, {
         preserveScroll: true,
         onStart: () => setupBusy.value = true,
-        onSuccess: () => {
-            pairingCode.value = '';
-            showSetup.value = false;
+        onSuccess: page => {
+            if (page.props?.relay_setup?.connected) {
+                pairingCode.value = '';
+                showSetup.value = false;
+            }
         },
         onFinish: () => setupBusy.value = false,
     });
 }
+
+function openRelayCheckout() {
+    if (!props.relay_setup.checkout_url) return;
+
+    window.open(props.relay_setup.checkout_url, '_blank', 'noopener,noreferrer');
+}
+
+const pairingCodeReady = computed(() => /^pc_[A-Za-z0-9_-]{43}$/.test(pairingCode.value.trim())
+    && Boolean(relayPublicUrl.value.trim()));
 
 function requestRelayCode() {
     if (!props.relay_setup.pairing_available || !relayPublicUrl.value.trim() || !relayEmail.value.trim() || setupBusy.value) return;
@@ -290,15 +313,30 @@ async function copyActiveEmailAddress() {
     }
 }
 
-function send() {
-    if (!props.conversation || !message.value.trim() || busy.value || !props.configured) return;
+function submitMessage(text, suggestion = null) {
+    if (!props.conversation || !text || busy.value || !props.configured) return;
 
-    router.post(props.conversation.send_url, { message: message.value.trim() }, {
+    sendingSuggestion.value = suggestion;
+
+    router.post(props.conversation.send_url, { message: text }, {
         preserveScroll: true,
         onStart: () => busy.value = true,
-        onSuccess: () => message.value = '',
-        onFinish: () => busy.value = false,
+        onSuccess: () => {
+            if (!suggestion) message.value = '';
+        },
+        onFinish: () => {
+            busy.value = false;
+            sendingSuggestion.value = null;
+        },
     });
+}
+
+function send() {
+    submitMessage(message.value.trim());
+}
+
+function sendSuggestion(suggestion) {
+    submitMessage(suggestion, suggestion);
 }
 
 function requestPublish(change) {
@@ -416,25 +454,43 @@ async function review(change, target, decision) {
 async function openPreview(change) {
     if (!axios || !change?.preview_url || previewLoading.value) return;
 
+    const requestId = ++previewRequest;
+
     previewOpen.value = true;
     previewLoading.value = true;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = change;
 
     try {
         const response = await axios.get(change.preview_url);
-        previewData.value = response.data;
+
+        if (requestId === previewRequest) previewData.value = response.data;
     } catch (exception) {
-        previewError.value = responseError(exception, 'The preview could not be opened.');
+        if (requestId === previewRequest) {
+            previewError.value = responseError(exception, 'The preview could not be opened.');
+        }
     } finally {
-        previewLoading.value = false;
+        if (requestId === previewRequest) previewLoading.value = false;
     }
 }
 
 function closePreview() {
+    previewRequest += 1;
     previewOpen.value = false;
+    previewLoading.value = false;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = null;
+}
+
+function requestPreviewPublish() {
+    const change = previewChange.value;
+
+    if (!change) return;
+
+    closePreview();
+    requestPublish(change);
 }
 
 function loadGuide() {
@@ -458,11 +514,6 @@ function saveGuide() {
         onStart: () => guideBusy.value = true,
         onFinish: () => guideBusy.value = false,
     });
-}
-
-function useSuggestion(suggestion) {
-    message.value = suggestion;
-    nextTick(() => document.getElementById('secretary-message')?.focus());
 }
 
 function onComposerKeydown(event) {
@@ -567,30 +618,44 @@ watch(guideSite, loadGuide);
 <template>
     <Head title="Secretary" />
 
-    <ui-header title="Secretary">
-        <template #actions>
-            <ui-button v-if="!onboardingActive" icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
-                New conversation
-            </ui-button>
-        </template>
-    </ui-header>
+    <div class="secretary-admin">
+        <ui-header title="Secretary">
+            <template #actions>
+                <ui-button v-if="!onboardingActive" icon="plus" :loading="busy" :disabled="busy" @click="newConversation">
+                    New conversation
+                </ui-button>
+            </template>
+        </ui-header>
 
-    <p v-if="!onboardingActive" class="secretary-page-lead">
-        Ask for a change. Secretary prepares the draft; you review and publish.
-    </p>
+        <section v-if="!onboardingActive" class="secretary-admin-intro" aria-label="Secretary workflow">
+            <div class="secretary-admin-intro-copy">
+                <span class="secretary-admin-mark" aria-hidden="true">
+                    <ui-icon name="ai-chat-spark" />
+                </span>
+                <p class="secretary-page-lead">
+                    <span>Content desk</span>
+                    Ask for a change. Secretary prepares the draft; you review and publish.
+                </p>
+            </div>
+            <ul class="secretary-admin-principles" aria-label="How Secretary works">
+                <li><span aria-hidden="true" />Blueprint aware</li>
+                <li><span aria-hidden="true" />Draft first</li>
+                <li><span aria-hidden="true" />You publish</li>
+            </ul>
+        </section>
 
-    <SecretaryOnboarding
-        v-if="onboardingActive"
-        :configured="configured"
-        :openai="openai_setup"
-        :email="email_setup"
-        :relay="relay_setup"
-        :onboarding="onboarding"
-        :errors="errors"
-        :success="success"
-    />
+        <SecretaryOnboarding
+            v-if="onboardingActive"
+            :configured="configured"
+            :openai="openai_setup"
+            :email="email_setup"
+            :relay="relay_setup"
+            :onboarding="onboarding"
+            :errors="errors"
+            :success="success"
+        />
 
-    <div v-else class="space-y-4">
+        <div v-else class="space-y-4">
         <ui-alert
             v-if="!configured"
             variant="warning"
@@ -759,6 +824,7 @@ watch(guideSite, loadGuide);
                 <div v-if="setupMode === 'relay' && relay_setup.pairing_available" class="space-y-5">
                     <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
                         Start with the live site address. Secretary uses its domain to create your unique <code>@statamic.no</code> address.
+                        Try it free on the Secretary demo; relay for a live site is $49/year. Control Panel chat is included with the addon.
                     </p>
 
                     <form class="space-y-4 rounded-lg border p-4 dark:border-gray-700" @submit.prevent="requestRelayCode">
@@ -812,6 +878,17 @@ watch(guideSite, loadGuide);
                         </div>
                     </form>
 
+                    <div v-if="relay_setup.payment_required" class="secretary-relay-checkout" role="status">
+                        <div>
+                            <strong>Verification complete. Activate email relay.</strong>
+                            <p>Checkout opens securely at Stripe. Your live site’s relay subscription is $49/year.</p>
+                        </div>
+                        <ui-button type="button" variant="primary" icon="credit-card" @click="openRelayCheckout">
+                            Start relay — $49/year
+                        </ui-button>
+                        <p>After payment, come back and press <strong>Finish connection</strong> below.</p>
+                    </div>
+
                     <form v-if="relay_setup.pending_sender" class="space-y-4" @submit.prevent="connectRelay">
                         <div>
                             <label for="secretary-pairing-code" class="mb-1.5 block text-sm font-semibold">One-time code</label>
@@ -832,8 +909,12 @@ watch(guideSite, loadGuide);
                         </div>
 
                         <div class="flex flex-wrap items-center gap-3">
-                            <ui-button type="submit" :disabled="setupBusy || !pairingCode.trim() || !relayPublicUrl.trim()">
-                                {{ setupBusy ? 'Connecting …' : 'Connect shared address' }}
+                            <ui-button
+                                type="submit"
+                                :variant="pairingCodeReady ? 'primary' : 'default'"
+                                :disabled="setupBusy || !pairingCodeReady"
+                            >
+                                {{ setupBusy ? 'Connecting …' : (relay_setup.payment_required ? 'Finish connection' : 'Connect shared address') }}
                             </ui-button>
                             <ui-button
                                 v-if="emailConnected"
@@ -1041,8 +1122,8 @@ watch(guideSite, loadGuide);
                     </summary>
 
                     <div class="secretary-tools-panel-content">
-                        <ul class="secretary-diagnostics">
-                            <li v-for="check in diagnostics.checks" :key="check.key">
+                        <ul class="secretary-diagnostics" :aria-busy="diagnosticsBusy">
+                            <li v-for="check in diagnosticChecks" :key="check.key">
                                 <span class="secretary-diagnostic-icon" :class="check.passed ? 'is-ok' : check.required ? 'is-error' : 'is-warning'">
                                     <ui-icon :name="check.passed ? 'checkmark' : check.required ? 'x' : 'warning-diamond'" aria-hidden="true" />
                                 </span>
@@ -1070,9 +1151,15 @@ watch(guideSite, loadGuide);
                                 :disabled="diagnosticsBusy"
                                 @click="runDiagnostics"
                             >
-                                Run checks again
+                                {{ diagnosticsBusy ? 'Running live checks…' : 'Run checks again' }}
                             </ui-button>
-                            <small>Checks run here in the Control Panel. No terminal required.</small>
+                            <small v-if="diagnosticsBusy" role="status" aria-live="polite">
+                                Testing OpenAI access and credits, safe drafts, email, storage, and content access. This can take a few seconds.
+                            </small>
+                            <small v-else-if="diagnosticsNotice" role="status" aria-live="polite">
+                                {{ diagnosticsNotice }}
+                            </small>
+                            <small v-else>Runs a tiny live OpenAI request and the remaining checks here in the Control Panel. No terminal required.</small>
                         </div>
                     </div>
                 </details>
@@ -1204,7 +1291,7 @@ watch(guideSite, loadGuide);
                     </Link>
 
                     <div v-if="conversation.processing_error" class="secretary-action-error m-4 mb-0" role="alert">
-                        <div class="font-semibold">Secretary stopped</div>
+                        <div class="font-semibold">Secretary couldn’t finish this request</div>
                         <div class="mt-1">{{ conversation.processing_error }}</div>
                         <button
                             v-if="conversation.failed_message_body"
@@ -1212,7 +1299,7 @@ watch(guideSite, loadGuide);
                             class="secretary-error-action"
                             @click="reuseFailedMessage"
                         >
-                            Put the request back in the composer
+                            Edit and try again
                         </button>
                     </div>
 
@@ -1231,9 +1318,11 @@ watch(guideSite, loadGuide);
                                     :key="suggestion"
                                     type="button"
                                     class="secretary-prompt-suggestion"
-                                    @click="useSuggestion(suggestion)"
+                                    :aria-label="`Send: ${suggestion}`"
+                                    :disabled="busy || !configured"
+                                    @click="sendSuggestion(suggestion)"
                                 >
-                                    <span>{{ suggestion }}</span>
+                                    <span>{{ sendingSuggestion === suggestion ? 'Sending …' : suggestion }}</span>
                                     <ui-icon name="arrow-right" class="size-4 shrink-0" aria-hidden="true" />
                                 </button>
                             </div>
@@ -1459,31 +1548,35 @@ watch(guideSite, loadGuide);
                 </div>
             </ui-panel>
         </div>
+        </div>
+
+        <ui-modal
+            :open="Boolean(publishCandidate)"
+            title="Publish this change?"
+            icon="checkmark"
+            @update:open="value => { if (!value && !busy) publishCandidate = null }"
+        >
+            <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
+                <strong class="text-gray-950 dark:text-white">{{ publishCandidate?.summary }}</strong>
+                will become visible on the site. This is the only action here that affects published content.
+            </p>
+            <template #footer>
+                <div class="flex w-full justify-end gap-2">
+                    <ui-button variant="ghost" :disabled="busy" @click="publishCandidate = null">Not yet</ui-button>
+                    <ui-button variant="primary" :loading="busy" :disabled="busy" @click="publish">Publish</ui-button>
+                </div>
+            </template>
+        </ui-modal>
+
+        <ChangePreviewModal
+            :open="previewOpen"
+            :preview="previewData"
+            :loading="previewLoading"
+            :error="previewError"
+            :can-publish="can_publish"
+            :publishing="busy && publishCandidate?.id === previewChange?.id"
+            @close="closePreview"
+            @publish="requestPreviewPublish"
+        />
     </div>
-
-    <ui-modal
-        :open="Boolean(publishCandidate)"
-        title="Publish this change?"
-        icon="checkmark"
-        @update:open="value => { if (!value && !busy) publishCandidate = null }"
-    >
-        <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
-            <strong class="text-gray-950 dark:text-white">{{ publishCandidate?.summary }}</strong>
-            will become visible on the site. This is the only action here that affects published content.
-        </p>
-        <template #footer>
-            <div class="flex w-full justify-end gap-2">
-                <ui-button variant="ghost" :disabled="busy" @click="publishCandidate = null">Not yet</ui-button>
-                <ui-button variant="primary" :loading="busy" :disabled="busy" @click="publish">Publish</ui-button>
-            </div>
-        </template>
-    </ui-modal>
-
-    <ChangePreviewModal
-        :open="previewOpen"
-        :preview="previewData"
-        :loading="previewLoading"
-        :error="previewError"
-        @close="closePreview"
-    />
 </template>

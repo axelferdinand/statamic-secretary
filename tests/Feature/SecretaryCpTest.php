@@ -16,6 +16,7 @@ use AxelFerdinand\StatamicSecretary\Tests\TestCase;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Mockery;
 use RuntimeException;
@@ -56,11 +57,22 @@ class SecretaryCpTest extends TestCase
     {
         $user = User::make()->id('owner@example.com')->email('owner@example.com')->makeSuper();
         $user->save();
+        Http::fake([
+            'api.openai.com/v1/responses' => Http::response([
+                'id' => 'resp_health',
+                'status' => 'completed',
+                'output' => [],
+            ]),
+        ]);
 
         $this->actingAs($user)
             ->post('/cp/secretary/diagnostics/run')
-            ->assertRedirect()
-            ->assertSessionHas('secretary_success');
+            ->assertOk()
+            ->assertJsonPath('checks.2.key', 'openai_access')
+            ->assertJsonPath('checks.2.passed', true)
+            ->assertJson(fn ($json) => $json
+                ->whereType('message', 'string')
+                ->has('checks'));
     }
 
     public function test_an_administrator_can_finish_openai_setup_without_editing_the_environment(): void
@@ -790,7 +802,7 @@ class SecretaryCpTest extends TestCase
             ->with(Mockery::type(ProcessCpMessage::class))
             ->andThrow(new RuntimeException('redis://username:secret@internal.example'));
         $this->app->instance(Dispatcher::class, $bus);
-        $publicError = 'Secretary could not start processing. Check the application log and try again.';
+        $publicError = 'Secretary hit a temporary problem before the work could start. Your request is safe—try again.';
 
         $this->from('/cp/secretary/'.$conversation->id)
             ->actingAs($user)
@@ -946,7 +958,7 @@ class SecretaryCpTest extends TestCase
         $message->refresh();
         $this->assertNotNull($message->processed_at);
         $this->assertSame(
-            'Secretary could not process the message. Check the application log and try again.',
+            'Secretary hit a temporary problem. Your request is safe—edit it if needed, then try again. If it keeps happening, ask an administrator to run Secretary’s system checks.',
             data_get($message->metadata, 'processing_error'),
         );
         $this->assertStringNotContainsString('secret details', json_encode($message->metadata));

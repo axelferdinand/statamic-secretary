@@ -237,7 +237,7 @@ final class EntryChangeService
      *
      * @param  array<string, mixed>  $patch
      */
-    public function reviseDraft(ChangeSet $changeSet, array $patch, User $user): ChangeSet
+    public function reviseDraft(ChangeSet $changeSet, array $patch, User $user, ?string $summary = null): ChangeSet
     {
         if ($changeSet->resource_type !== 'entry'
             || ! in_array($changeSet->operation, ['create', 'update'], true)
@@ -279,6 +279,7 @@ final class EntryChangeService
             'patch' => $patch,
             'after' => $draft,
             'draft_fingerprint' => $this->snapshotter->fingerprint($draft),
+            'summary' => $summary ?? $changeSet->summary,
             'failure' => null,
         ]);
 

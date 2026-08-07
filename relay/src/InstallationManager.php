@@ -69,11 +69,27 @@ final readonly class InstallationManager
         );
     }
 
+    public function setBillingStatus(string $installationId, string $status): Installation
+    {
+        if (! in_array($status, ['beta', 'complimentary', 'pending'], true)) {
+            throw new RelayRejected('Operator billing status is invalid.');
+        }
+
+        $installation = $this->status($installationId);
+
+        if ($installation->billingStatus === $status) {
+            return $installation;
+        }
+
+        return $this->save($installation, billingStatus: $status);
+    }
+
     /** @param  array<int, string>|null  $senders */
     private function save(
         Installation $installation,
         ?array $senders = null,
         ?bool $active = null,
+        ?string $billingStatus = null,
     ): Installation {
         $updated = new Installation(
             $installation->id,
@@ -93,6 +109,13 @@ final readonly class InstallationManager
             $installation->lastRouteRotationId,
             $installation->routeRotationAvailableAt,
             $installation->publicAlias,
+            $billingStatus ?? $installation->billingStatus,
+            $installation->stripeCustomerId,
+            $installation->stripeSubscriptionId,
+            $installation->billingPeriodEnd,
+            $installation->checkoutId,
+            $installation->checkoutUrl,
+            $installation->checkoutExpiresAt,
         );
         $this->store->saveInstallation($updated);
 

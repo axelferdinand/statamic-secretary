@@ -3,6 +3,7 @@
 namespace AxelFerdinand\StatamicSecretary\Agent;
 
 use AxelFerdinand\StatamicSecretary\Content\ChangeSetPublisher;
+use AxelFerdinand\StatamicSecretary\Email\ReplyLanguage;
 use AxelFerdinand\StatamicSecretary\Events\ChangeSetPublished;
 use AxelFerdinand\StatamicSecretary\Events\MessageReceived;
 use AxelFerdinand\StatamicSecretary\Exceptions\ContentOperationDenied;
@@ -19,6 +20,7 @@ final class ConversationService
         private readonly AgentOrchestrator $agent,
         private readonly ChangeSetPublisher $changes,
         private readonly PublicationIntentDetector $publicationIntent,
+        private readonly ReplyLanguage $replyLanguage,
     ) {}
 
     /** @param  array<string, mixed>  $context */
@@ -112,6 +114,10 @@ final class ConversationService
 
     public function publishLatestDraft(Conversation $conversation, Message $message, User $user): Message
     {
+        $copy = $this->replyLanguage->copy($message->channel === 'email'
+            ? $this->replyLanguage->forMessage($message)
+            : ReplyLanguage::ENGLISH);
+
         if (! $user->can('publish with secretary')) {
             throw new ContentOperationDenied('Du har ikke tilgang til å publisere med Secretary.');
         }
@@ -125,7 +131,7 @@ final class ConversationService
                 return $this->assistantMessage(
                     $conversation,
                     $message,
-                    'Publisert: '.($recorded->first()->summary ?: $recorded->first()->resource_id),
+                    $copy['published_prefix'].': '.($recorded->first()->summary ?: $recorded->first()->resource_id),
                     [
                         'change_set_ids' => [$recorded->first()->id],
                         'system_event' => 'published',
@@ -142,7 +148,7 @@ final class ConversationService
         }
 
         if ($drafts->isEmpty()) {
-            return $this->assistantMessage($conversation, $message, 'Jeg finner ikke noe upublisert Secretary-utkast i denne samtalen.');
+            return $this->assistantMessage($conversation, $message, $copy['nothing_to_publish']);
         }
 
         if ($drafts->count() > 1) {
@@ -153,7 +159,7 @@ final class ConversationService
             return $this->assistantMessage(
                 $conversation,
                 $message,
-                "Denne samtalen har flere utkast. Velg «Publiser» på riktig endringskort i kontrollpanelet, eller svar «Publiser ID»:\n{$choices}",
+                $copy['multiple_drafts']."\n{$choices}",
             );
         }
 
@@ -163,13 +169,13 @@ final class ConversationService
             'explicit_publish_action' => true,
         ]]);
 
-        $changeSet = $this->changes->publish($drafts->first(), $user, 'Published via Statamic Secretary');
+        $changeSet = $this->changes->publish($drafts->first(), $user, 'Published via Secretary');
         ChangeSetPublished::dispatch($changeSet);
 
         return $this->assistantMessage(
             $conversation,
             $message,
-            'Publisert: '.($changeSet->summary ?: $changeSet->resource_id),
+            $copy['published_prefix'].': '.($changeSet->summary ?: $changeSet->resource_id),
             [
                 'change_set_ids' => [$changeSet->id],
                 'system_event' => 'published',
@@ -202,7 +208,7 @@ final class ConversationService
         ]);
 
         try {
-            $published = $this->changes->publish($changeSet, $user, 'Published via Statamic Secretary');
+            $published = $this->changes->publish($changeSet, $user, 'Published via Secretary');
             ChangeSetPublished::dispatch($published);
         } catch (Throwable $exception) {
             $inbound->update([
@@ -211,7 +217,7 @@ final class ConversationService
                     ...(array) $inbound->metadata,
                     'processing_error' => PublicError::message(
                         $exception,
-                        'Secretary kunne ikke publisere endringen. Kontroller loggen og prøv igjen.',
+                        'Secretary kunne ikke publisere endringen. Ingenting ble publisert. Prøv igjen.',
                     ),
                 ],
             ]);

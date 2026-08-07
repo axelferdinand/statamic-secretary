@@ -27,6 +27,7 @@ jobs:
           coverage: none
       - run: composer validate --strict
       - run: composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --with-all-dependencies --no-interaction --prefer-dist
+      - run: composer --working-dir=relay install --no-interaction --prefer-dist --no-dev
       - run: composer lint
       - run: composer test
       - run: composer audit --locked
@@ -49,6 +50,23 @@ jobs:
       - run: npm run build
       - run: git diff --exit-code -- resources/dist
 
+  deploy-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the least-privilege deployment boundary
+        run: |
+          bash -n scripts/deploy.sh
+          grep -Fx 'REMOTE_HOST="prototypen.sircon.net"' scripts/deploy.sh
+          grep -Fx 'REMOTE_USER="statamic"' scripts/deploy.sh
+          grep -F 'EXPECTED_DEPLOY_KEY_FINGERPRINT="SHA256:/LdBGJm+IghdraK0pGKf61bgmIlrhq4GualHCyH5pt4"' scripts/deploy.sh
+          grep -F 'EXPECTED_HOST_KEY_FINGERPRINT="SHA256:E7FT1LJWhFOOWTrQVZi0Pq38DqNDdpACCt4DEm2pPRE"' scripts/deploy.sh
+          grep -F -- '-o PreferredAuthentications=publickey' scripts/deploy.sh
+          grep -F -- '-o PasswordAuthentication=no' scripts/deploy.sh
+          grep -F -- '-o StrictHostKeyChecking=yes' scripts/deploy.sh
+          ! grep -E 'root@|/root/|REMOTE_USER="root"|SECRETARY_DEPLOY_HOST' scripts/deploy.sh
+          test "$(ssh-keygen -lf scripts/deploy-known-hosts | awk '{ print $2 }')" = 'SHA256:E7FT1LJWhFOOWTrQVZi0Pq38DqNDdpACCt4DEm2pPRE'
+
   package:
     runs-on: ubuntu-latest
     steps:
@@ -65,7 +83,10 @@ jobs:
         run: |
           for archive in /tmp/statamic-secretary.zip /tmp/statamic-secretary-git.zip; do
             unzip -Z1 "$archive" > /tmp/archive-files.txt
-            ! grep -E '(^|/)(\.secretary-deploy|node_modules|vendor|sandbox|tests|relay)(/|$)|(^|/)\.env$|\.phpunit' /tmp/archive-files.txt
+            ! grep -E '(^|/)(\.secretary-deploy|node_modules|vendor|sandbox|tests|relay|scripts)(/|$)|(^|/)\.env$|\.phpunit|(^|/)docs/(completion-matrix|deployment|landing-page-qa|marketplace-listing|release-and-marketplace-roadmap|release-checklist)\.md$' /tmp/archive-files.txt
+            for required in README.md CHANGELOG.md LICENSE.md PRIVACY.md SECURITY.md SUPPORT.md composer.json; do
+              grep -E "(^|/)${required}$" /tmp/archive-files.txt
+            done
             grep -E '(^|/)resources/dist/build/manifest.json$' /tmp/archive-files.txt
             grep -E '(^|/)database/migrations/2026_07_21_000006_create_secretary_settings_table.php$' /tmp/archive-files.txt
             grep -E '(^|/)src/Http/Controllers/Web/RelayInboundController.php$' /tmp/archive-files.txt

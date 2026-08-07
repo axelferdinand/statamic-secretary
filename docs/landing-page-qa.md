@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-29
 
-This document records the design, UX, copy, accessibility, and conversion review of the Statamic Secretary landing page. The landing page work is intentionally postponed while the product UX is improved.
+This document records the design, UX, copy, accessibility, and conversion review of the Secretary for Statamic landing page. The landing page work is intentionally postponed while the product UX is improved.
 
 ## Overall assessment
 

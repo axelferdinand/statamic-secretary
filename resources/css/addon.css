@@ -687,6 +687,10 @@
         margin-bottom: 0.75rem;
     }
 
+    .secretary-preview-publish {
+        margin-left: auto;
+    }
+
     .secretary-preview-toolbar-label {
         color: var(--color-gray-500);
         font-size: 0.6875rem;
@@ -751,7 +755,53 @@
         font-weight: 650;
     }
 
-    .secretary-preview-grid iframe {
+    .secretary-preview-frame {
+        position: relative;
+        display: flex;
+        min-height: 0;
+        flex: 1;
+        overflow: hidden;
+        background: white;
+    }
+
+    .secretary-preview-frame-loading {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.65rem;
+        background: var(--color-body-bg);
+        color: var(--color-gray-600);
+        font-size: 0.8125rem;
+    }
+
+    .secretary-preview-frame-loading button {
+        border: 1px solid var(--color-content-border);
+        border-radius: 0.45rem;
+        background: var(--color-content-bg);
+        padding: 0.3rem 0.55rem;
+        color: var(--color-primary);
+        font-size: 0.75rem;
+        font-weight: 650;
+    }
+
+    .secretary-preview-spinner {
+        width: 1rem;
+        height: 1rem;
+        flex: none;
+        border: 2px solid var(--color-gray-300);
+        border-top-color: var(--color-primary);
+        border-radius: 9999px;
+        animation: secretary-preview-spin 0.75s linear infinite;
+    }
+
+    @keyframes secretary-preview-spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .secretary-preview-frame iframe {
         display: block;
         width: 100%;
         min-height: 0;
@@ -777,6 +827,12 @@
         z-index: 2;
         top: 0.75rem;
         right: 0.75rem;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .secretary-preview-spinner {
+            animation-duration: 1.5s;
+        }
     }
 
     .secretary-developer-trace {
@@ -1649,6 +1705,46 @@
         font-size: 0.8125rem;
         font-style: normal;
         line-height: 1.35;
+    }
+
+    .secretary-relay-checkout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.8rem 1rem;
+        margin-top: 1rem;
+        border: 1px solid color-mix(in oklch, var(--color-primary) 28%, var(--color-content-border));
+        border-radius: 0.75rem;
+        background: color-mix(in oklch, var(--color-primary) 7%, var(--color-content-bg));
+        padding: 1rem;
+    }
+
+    .secretary-relay-checkout strong {
+        display: block;
+        color: var(--color-gray-950);
+        font-size: 0.875rem;
+    }
+
+    .secretary-relay-checkout p {
+        margin-top: 0.3rem;
+        color: var(--color-gray-600);
+        font-size: 0.75rem;
+        line-height: 1.25rem;
+    }
+
+    .secretary-relay-checkout > p {
+        grid-column: 1 / -1;
+        margin-top: 0;
+    }
+
+    @media (max-width: 39.999rem) {
+        .secretary-relay-checkout {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .secretary-relay-checkout > p {
+            grid-column: auto;
+        }
     }
 
     .secretary-forwarding-route {
@@ -2876,6 +2972,12 @@
         min-width: 0;
     }
 
+    .secretary-preview-publish {
+        width: 100%;
+        margin-left: 0;
+        justify-content: center;
+    }
+
     .secretary-panel-launcher {
         width: 3.25rem;
         height: 3.25rem;
@@ -2914,5 +3016,819 @@
     .secretary-working-dots i,
     .secretary-panel-launcher-status {
         animation: none;
+    }
+}
+
+/*
+ * Secretary brand layer.
+ *
+ * The Control Panel keeps Statamic's component behavior and spacing model,
+ * while borrowing the warmer paper, ink, mint and coral language from the
+ * public Secretary site.
+ */
+.secretary-admin,
+.secretary-panel-shell,
+.secretary-panel-launcher,
+.stack-content:has(.secretary-panel-shell),
+[data-ui-modal-content].secretary-preview-modal {
+    --secretary-ink: #082f3d;
+    --secretary-ink-deep: #041f29;
+    --secretary-ink-soft: #345764;
+    --secretary-paper: #f4f0e7;
+    --secretary-paper-deep: #e7e0d3;
+    --secretary-surface: #fffdf9;
+    --secretary-mint: #08efad;
+    --secretary-mint-bright: #31ffc2;
+    --secretary-mint-soft: #c8f8e8;
+    --secretary-coral: #ff654f;
+    --secretary-yellow: #f8d95c;
+    --secretary-text: #082f3d;
+    --secretary-muted: #4e6a74;
+    --secretary-line: rgb(8 47 61 / 18%);
+    --secretary-shadow: 0 22px 60px -34px rgb(4 31 41 / 55%);
+    --secretary-shadow-small: 0 10px 26px -18px rgb(4 31 41 / 48%);
+}
+
+.dark .secretary-admin,
+.dark .secretary-panel-shell,
+.dark .stack-content:has(.secretary-panel-shell),
+.dark [data-ui-modal-content].secretary-preview-modal {
+    --secretary-paper: #041f29;
+    --secretary-paper-deep: #082f3d;
+    --secretary-surface: #0b3541;
+    --secretary-mint-soft: #124d43;
+    --secretary-text: #effcf8;
+    --secretary-muted: #abc8c1;
+    --secretary-line: rgb(200 248 232 / 18%);
+    --secretary-shadow: 0 24px 70px -32px rgb(0 0 0 / 75%);
+    --secretary-shadow-small: 0 12px 30px -18px rgb(0 0 0 / 65%);
+}
+
+.secretary-admin {
+    color: var(--secretary-text);
+}
+
+.secretary-admin-intro {
+    position: relative;
+    display: flex;
+    overflow: hidden;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem 2rem;
+    margin: -0.75rem 0 1rem;
+    border: 1px solid rgb(49 255 194 / 24%);
+    border-radius: 1.1rem;
+    background:
+        radial-gradient(circle at 82% -35%, rgb(49 255 194 / 22%), transparent 15rem),
+        radial-gradient(circle at 2% 145%, rgb(255 101 79 / 17%), transparent 12rem),
+        var(--secretary-ink-deep);
+    padding: 1rem 1.125rem;
+    color: #fffdf9;
+    box-shadow: var(--secretary-shadow-small);
+}
+
+.secretary-admin-intro::after {
+    position: absolute;
+    top: -2.2rem;
+    right: 12%;
+    width: 6rem;
+    height: 6rem;
+    border: 1px solid rgb(49 255 194 / 28%);
+    border-radius: 9999px;
+    content: "";
+    pointer-events: none;
+}
+
+.secretary-admin-intro-copy {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.875rem;
+}
+
+.secretary-admin-mark {
+    display: grid;
+    width: 2.9rem;
+    height: 2.9rem;
+    flex: none;
+    place-items: center;
+    border: 1px solid rgb(8 239 173 / 65%);
+    border-radius: 0.8rem;
+    background: var(--secretary-mint);
+    color: var(--secretary-ink-deep);
+    box-shadow: 0 5px 0 rgb(0 0 0 / 22%);
+    transform: rotate(-2deg);
+}
+
+.secretary-admin-mark svg {
+    width: 1.4rem;
+    height: 1.4rem;
+}
+
+.secretary-admin .secretary-page-lead {
+    max-width: 38rem;
+    margin: 0;
+    padding: 0;
+    color: rgb(255 253 249 / 82%);
+    font-size: 0.875rem;
+    line-height: 1.4rem;
+}
+
+.secretary-admin .secretary-page-lead > span {
+    display: block;
+    margin-bottom: 0.15rem;
+    color: var(--secretary-mint-bright);
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.secretary-admin-principles {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem 0.85rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.1rem;
+}
+
+.secretary-admin-principles li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+}
+
+.secretary-admin-principles li > span {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 9999px;
+    background: var(--secretary-mint);
+    box-shadow: 0 0 0 3px rgb(8 239 173 / 12%);
+}
+
+.secretary-admin-principles li:nth-child(2) > span {
+    background: var(--secretary-yellow);
+    box-shadow: 0 0 0 3px rgb(248 217 92 / 12%);
+}
+
+.secretary-admin-principles li:nth-child(3) > span {
+    background: var(--secretary-coral);
+    box-shadow: 0 0 0 3px rgb(255 101 79 / 12%);
+}
+
+.secretary-admin .secretary-page-settings,
+.secretary-admin .secretary-settings-card,
+.secretary-admin .secretary-settings-disclosure {
+    border-color: var(--secretary-line);
+    background: var(--secretary-surface);
+    box-shadow: var(--secretary-shadow-small);
+}
+
+.secretary-admin .secretary-page-settings > details > summary,
+.secretary-admin .secretary-tools-panel > summary {
+    background: var(--secretary-surface);
+}
+
+.secretary-admin .secretary-page-settings > details > summary:hover,
+.secretary-admin .secretary-tools-panel > summary:hover {
+    background: color-mix(in srgb, var(--secretary-mint-soft) 34%, var(--secretary-surface));
+    box-shadow: inset 4px 0 0 var(--secretary-mint);
+}
+
+.secretary-admin .secretary-tools-panel-icon {
+    border: 1px solid rgb(8 47 61 / 12%);
+    background: var(--secretary-mint-soft);
+    color: var(--secretary-ink);
+    box-shadow: 0 3px 0 rgb(4 31 41 / 12%);
+}
+
+.secretary-admin .secretary-settings-summary-action,
+.secretary-admin .secretary-disclosure-action {
+    border-color: rgb(8 47 61 / 22%);
+    background: var(--secretary-surface);
+    color: var(--secretary-ink);
+}
+
+.secretary-admin .secretary-page-settings-content,
+.secretary-admin .secretary-tools-panel-content {
+    border-color: var(--secretary-line);
+    background:
+        linear-gradient(rgb(255 253 249 / 34%), rgb(255 253 249 / 34%)),
+        var(--secretary-paper);
+}
+
+.secretary-admin .secretary-email-example,
+.secretary-admin .secretary-first-email-address,
+.secretary-admin .secretary-forwarding-step,
+.secretary-admin .secretary-safe-drafting-flow {
+    border-color: rgb(8 47 61 / 22%);
+    background: color-mix(in srgb, var(--secretary-mint-soft) 42%, var(--secretary-surface));
+}
+
+.secretary-admin .secretary-settings-input,
+.secretary-admin .secretary-active-input,
+.secretary-panel-shell .secretary-active-input,
+.secretary-panel-shell .secretary-conversation-select {
+    border-color: rgb(8 47 61 / 28%);
+    background: var(--secretary-surface);
+    color: var(--secretary-text);
+}
+
+.secretary-admin .secretary-settings-input:focus,
+.secretary-admin .secretary-active-input:focus,
+.secretary-panel-shell .secretary-active-input:focus,
+.secretary-panel-shell .secretary-conversation-select:focus-visible {
+    border-color: var(--secretary-ink);
+    box-shadow: 0 0 0 3px rgb(8 239 173 / 28%);
+}
+
+.secretary-workspace {
+    gap: 1.125rem;
+}
+
+.secretary-workspace .secretary-conversation-panel,
+.secretary-workspace .secretary-main-panel {
+    overflow: hidden;
+    border: 1px solid var(--secretary-ink-deep) !important;
+    border-radius: 1.1rem !important;
+    background: var(--secretary-ink-deep) !important;
+    padding: 0.35rem !important;
+    box-shadow: var(--secretary-shadow) !important;
+}
+
+.secretary-conversation-panel-header,
+.secretary-main-header {
+    border-color: rgb(255 255 255 / 12%);
+    background: var(--secretary-ink-deep);
+    color: #fffdf9;
+}
+
+.secretary-conversation-panel-header .text-gray-500,
+.secretary-conversation-panel-header .dark\:text-gray-400,
+.secretary-main-header .text-gray-500,
+.secretary-main-header .dark\:text-gray-400 {
+    color: rgb(255 253 249 / 64%) !important;
+}
+
+.secretary-main-header h2 {
+    color: #fffdf9;
+}
+
+.secretary-status-pill.is-ready {
+    background: var(--secretary-mint);
+    color: var(--secretary-ink-deep);
+}
+
+.secretary-status-pill.is-processing {
+    background: var(--secretary-yellow);
+    color: var(--secretary-ink-deep);
+}
+
+.secretary-workspace .secretary-conversation-search {
+    border-color: rgb(255 255 255 / 12%);
+    background: var(--secretary-ink-deep);
+    color: rgb(255 253 249 / 60%);
+}
+
+.secretary-workspace .secretary-conversation-search-input,
+.secretary-workspace .secretary-conversation-toggle {
+    border-color: rgb(255 255 255 / 20%);
+    background: rgb(255 253 249 / 9%);
+    color: #fffdf9;
+    box-shadow: none;
+}
+
+.secretary-workspace .secretary-conversation-toggle .text-gray-500,
+.secretary-workspace .secretary-conversation-toggle .dark\:text-gray-400 {
+    color: rgb(255 253 249 / 58%) !important;
+}
+
+.secretary-workspace .secretary-conversation-list {
+    border-radius: 0.8rem;
+    background:
+        radial-gradient(circle at 0 0, rgb(8 239 173 / 9%), transparent 10rem),
+        var(--secretary-paper);
+}
+
+.secretary-conversation-link {
+    border-color: var(--secretary-line);
+    background: var(--secretary-surface);
+    color: var(--secretary-text);
+    box-shadow: var(--secretary-shadow-small);
+}
+
+.secretary-conversation-link:hover {
+    border-color: rgb(8 47 61 / 38%);
+    background: color-mix(in srgb, var(--secretary-mint-soft) 32%, var(--secretary-surface));
+    color: var(--secretary-text);
+}
+
+.secretary-conversation-link.is-active,
+.dark .secretary-conversation-link.is-active {
+    border-color: rgb(8 47 61 / 35%);
+    background: var(--secretary-mint-soft);
+    color: var(--secretary-ink-deep);
+    box-shadow:
+        inset 4px 0 0 var(--secretary-mint),
+        var(--secretary-shadow-small);
+}
+
+.secretary-conversation-meta,
+.secretary-conversation-link .text-gray-500 {
+    color: var(--secretary-muted) !important;
+}
+
+.secretary-main-panel > .secretary-scrollbar,
+.secretary-main-panel > .secretary-ready-state {
+    background:
+        radial-gradient(circle at 92% 2%, rgb(8 239 173 / 11%), transparent 16rem),
+        linear-gradient(rgb(255 253 249 / 16%), rgb(255 253 249 / 16%)),
+        var(--secretary-paper);
+}
+
+.secretary-context-bar {
+    border-color: var(--secretary-line);
+    background: var(--secretary-mint-soft);
+    color: var(--secretary-ink-deep);
+    box-shadow: inset 4px 0 0 var(--secretary-mint);
+}
+
+.secretary-context-bar:hover {
+    background: color-mix(in srgb, var(--secretary-mint) 24%, var(--secretary-mint-soft));
+}
+
+.secretary-empty-icon,
+.secretary-onboarding-icon {
+    border-color: rgb(8 239 173 / 65%);
+    background: var(--secretary-ink);
+    color: var(--secretary-mint-bright);
+    box-shadow:
+        0 5px 0 rgb(4 31 41 / 18%),
+        7px 7px 0 rgb(255 101 79 / 12%);
+}
+
+.secretary-prompt-suggestion {
+    border-color: var(--secretary-line);
+    background: var(--secretary-surface);
+    color: var(--secretary-text);
+    box-shadow: var(--secretary-shadow-small);
+}
+
+.secretary-prompt-suggestion:hover {
+    border-color: rgb(8 47 61 / 38%);
+    background: var(--secretary-mint-soft);
+}
+
+.secretary-prompt-suggestion:disabled,
+.secretary-prompt-suggestion:disabled:hover {
+    cursor: wait;
+    opacity: 0.64;
+    transform: none;
+}
+
+.secretary-prompt-suggestion svg {
+    color: var(--secretary-coral);
+    opacity: 1;
+}
+
+.secretary-assistant-mark {
+    border: 1px solid rgb(8 47 61 / 20%);
+    background: var(--secretary-mint);
+    color: var(--secretary-ink-deep);
+    box-shadow: 0 3px 0 rgb(4 31 41 / 14%);
+}
+
+.secretary-message-row.is-user .secretary-message {
+    border-color: var(--secretary-ink-deep) !important;
+    background: var(--secretary-ink-deep) !important;
+    color: #fffdf9 !important;
+    box-shadow: var(--secretary-shadow-small);
+}
+
+.secretary-message-row:not(.is-user) .secretary-message {
+    border-color: var(--secretary-line) !important;
+    background: var(--secretary-surface) !important;
+    color: var(--secretary-text) !important;
+    box-shadow: var(--secretary-shadow-small) !important;
+}
+
+.secretary-processing-card {
+    border: 1px solid rgb(8 47 61 / 18%);
+    background: var(--secretary-mint-soft);
+    color: var(--secretary-ink-deep);
+}
+
+.secretary-working-dots i {
+    background: var(--secretary-ink);
+}
+
+.secretary-system-event {
+    border-color: rgb(8 47 61 / 14%);
+    background: var(--secretary-mint-soft);
+    color: var(--secretary-ink-deep);
+}
+
+.secretary-change-card,
+.secretary-history,
+.secretary-diff,
+.secretary-review {
+    border-color: var(--secretary-line);
+    background: var(--secretary-surface);
+    box-shadow: var(--secretary-shadow-small);
+}
+
+.secretary-change-card {
+    border-top: 4px solid var(--secretary-yellow);
+}
+
+.secretary-change-publish,
+.secretary-preview-publish {
+    border-color: var(--secretary-ink-deep) !important;
+    background: linear-gradient(180deg, #ff806c, var(--secretary-coral)) !important;
+    color: var(--secretary-ink-deep) !important;
+    box-shadow: 0 4px 0 rgb(4 31 41 / 24%) !important;
+}
+
+.secretary-change-publish:hover:not(:disabled),
+.secretary-preview-publish:hover:not(:disabled) {
+    filter: saturate(1.05) brightness(1.03);
+    transform: translateY(-1px);
+}
+
+.secretary-composer {
+    border-color: var(--secretary-line);
+    background: var(--secretary-surface);
+    box-shadow: 0 -14px 34px -27px rgb(4 31 41 / 60%);
+}
+
+.secretary-composer-input {
+    border-color: rgb(8 47 61 / 26%);
+    background: color-mix(in srgb, var(--secretary-paper) 46%, var(--secretary-surface));
+    color: var(--secretary-text);
+}
+
+.secretary-composer-tool {
+    border-color: rgb(8 47 61 / 24%);
+    background: var(--secretary-paper);
+    color: var(--secretary-ink);
+}
+
+.secretary-composer-tool:hover:not(:disabled) {
+    border-color: var(--secretary-ink);
+    background: var(--secretary-mint-soft);
+    color: var(--secretary-ink-deep);
+}
+
+.secretary-composer button[type="submit"] {
+    border-color: var(--secretary-ink-deep) !important;
+    background: linear-gradient(180deg, var(--secretary-mint-bright), var(--secretary-mint)) !important;
+    color: var(--secretary-ink-deep) !important;
+    box-shadow: 0 4px 0 rgb(4 31 41 / 26%) !important;
+    transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+}
+
+.secretary-composer button[type="submit"]:hover:not(:disabled) {
+    filter: saturate(1.08) brightness(1.02);
+    transform: translateY(-1px);
+    box-shadow: 0 5px 0 rgb(4 31 41 / 26%) !important;
+}
+
+.secretary-composer button[type="submit"]:active:not(:disabled) {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 rgb(4 31 41 / 26%) !important;
+}
+
+.secretary-onboarding {
+    border-color: var(--secretary-line);
+    background: var(--secretary-surface);
+    box-shadow: var(--secretary-shadow);
+}
+
+.secretary-onboarding-intro {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid rgb(49 255 194 / 20%);
+    background:
+        radial-gradient(circle at 85% 0, rgb(49 255 194 / 20%), transparent 16rem),
+        var(--secretary-ink-deep);
+    color: #fffdf9;
+}
+
+.secretary-onboarding-intro h2,
+.dark .secretary-onboarding-intro h2 {
+    color: #fffdf9;
+}
+
+.secretary-onboarding-intro p,
+.dark .secretary-onboarding-intro p {
+    color: rgb(255 253 249 / 72%);
+}
+
+.secretary-onboarding-kicker {
+    color: var(--secretary-mint-bright);
+}
+
+.secretary-onboarding-progress {
+    border-color: var(--secretary-line);
+    background: var(--secretary-paper);
+}
+
+.secretary-onboarding-progress .is-current > span,
+.secretary-onboarding-step-heading > span {
+    border-color: var(--secretary-ink);
+    background: var(--secretary-ink);
+    color: var(--secretary-mint-bright);
+    box-shadow: 0 3px 0 rgb(4 31 41 / 15%);
+}
+
+.secretary-onboarding-progress .is-complete > span {
+    border-color: var(--secretary-ink);
+    background: var(--secretary-mint);
+    color: var(--secretary-ink-deep);
+}
+
+.secretary-onboarding-choice {
+    border-color: var(--secretary-line);
+    background: var(--secretary-surface);
+    color: var(--secretary-text);
+    box-shadow: var(--secretary-shadow-small);
+}
+
+.secretary-onboarding-choice:hover {
+    border-color: rgb(8 47 61 / 38%);
+    box-shadow: var(--secretary-shadow);
+}
+
+.secretary-onboarding-choice.is-recommended {
+    border-color: rgb(8 47 61 / 34%);
+    background: color-mix(in srgb, var(--secretary-mint-soft) 48%, var(--secretary-surface));
+    box-shadow: inset 0 4px 0 var(--secretary-mint), var(--secretary-shadow-small);
+}
+
+.secretary-choice-badge,
+.secretary-email-ready-label {
+    background: var(--secretary-mint);
+    color: var(--secretary-ink-deep);
+}
+
+.secretary-onboarding-choice > svg,
+.secretary-choice-action,
+.secretary-chat-instead,
+.secretary-email-address {
+    color: var(--secretary-ink);
+}
+
+.secretary-onboarding-method {
+    border-color: var(--secretary-line);
+    background: var(--secretary-paper);
+}
+
+.secretary-panel-launcher {
+    border: 1px solid rgb(49 255 194 / 55%) !important;
+    background:
+        linear-gradient(135deg, rgb(49 255 194 / 12%), transparent 50%),
+        var(--secretary-ink-deep) !important;
+    color: #fffdf9 !important;
+    box-shadow:
+        0 5px 0 rgb(4 31 41 / 28%),
+        0 18px 42px -16px rgb(4 31 41 / 70%) !important;
+    transition: transform 160ms ease, box-shadow 160ms ease !important;
+}
+
+.secretary-panel-launcher:hover {
+    filter: none !important;
+    transform: translateY(-2px);
+    box-shadow:
+        0 7px 0 rgb(4 31 41 / 28%),
+        0 22px 48px -16px rgb(4 31 41 / 75%) !important;
+}
+
+.secretary-panel-launcher-status {
+    border-color: var(--secretary-ink-deep);
+    background: var(--secretary-coral);
+}
+
+.stack-content:has(.secretary-panel-shell) {
+    border: 1px solid var(--secretary-ink-deep);
+    background: var(--secretary-paper);
+    box-shadow: var(--secretary-shadow) !important;
+}
+
+/* Keep the desktop assistant in the editor's flow. Statamic's stack hit area
+   normally consumes the first click outside the panel; Secretary lets that
+   click reach the Control Panel so Inertia navigation can update its context. */
+@media (min-width: 61.3125rem) {
+    .stack-container.stack-is-current:has(.secretary-panel-shell) {
+        pointer-events: none;
+    }
+
+    .stack-container.stack-is-current:has(.secretary-panel-shell) .stack-hit-area {
+        pointer-events: none;
+    }
+
+    .stack-container.stack-is-current:has(.secretary-panel-shell) .stack-content {
+        pointer-events: auto;
+    }
+}
+
+.stack-content:has(.secretary-panel-shell) > [data-ui-stack-title] {
+    border-color: rgb(255 255 255 / 12%);
+    background:
+        radial-gradient(circle at 80% -80%, rgb(49 255 194 / 24%), transparent 10rem),
+        var(--secretary-ink-deep);
+    color: #fffdf9;
+}
+
+.stack-content:has(.secretary-panel-shell) > [data-ui-stack-title] [data-ui-heading],
+.stack-content:has(.secretary-panel-shell) > [data-ui-stack-title] button,
+.stack-content:has(.secretary-panel-shell) > [data-ui-stack-title] svg {
+    color: #fffdf9 !important;
+}
+
+.secretary-panel-shell {
+    background: var(--secretary-paper) !important;
+    color: var(--secretary-text);
+}
+
+.secretary-panel-toolbar {
+    border-color: rgb(255 255 255 / 12%);
+    background: var(--secretary-ink-deep);
+}
+
+.secretary-panel-toolbar .secretary-conversation-select {
+    border-color: rgb(255 255 255 / 18%);
+    background: rgb(255 253 249 / 10%);
+    color: #fffdf9;
+}
+
+.secretary-panel-toolbar .secretary-conversation-chevron {
+    color: rgb(255 253 249 / 68%);
+}
+
+.secretary-panel-feed,
+.secretary-panel-empty,
+.secretary-panel-loading {
+    background:
+        radial-gradient(circle at 100% 0, rgb(8 239 173 / 10%), transparent 14rem),
+        var(--secretary-paper);
+}
+
+.secretary-panel-shell .secretary-composer {
+    background: var(--secretary-surface);
+}
+
+.secretary-panel-shell .secretary-reference-menu {
+    border-color: var(--secretary-line);
+    background: var(--secretary-surface);
+}
+
+.secretary-panel-shell .secretary-empty-context {
+    border: 1px solid var(--secretary-line);
+    background: var(--secretary-mint-soft);
+    color: var(--secretary-ink-deep);
+}
+
+.secretary-ready-state button,
+.secretary-panel-empty button {
+    border-color: var(--secretary-ink-deep) !important;
+    background: linear-gradient(180deg, var(--secretary-mint-bright), var(--secretary-mint)) !important;
+    color: var(--secretary-ink-deep) !important;
+    box-shadow: 0 4px 0 rgb(4 31 41 / 24%) !important;
+}
+
+.secretary-ready-state button:hover:not(:disabled),
+.secretary-panel-empty button:hover:not(:disabled) {
+    filter: saturate(1.08) brightness(1.02);
+    transform: translateY(-1px);
+}
+
+.dark .secretary-admin .secretary-page-settings,
+.dark .secretary-admin .secretary-settings-card,
+.dark .secretary-admin .secretary-settings-disclosure,
+.dark .secretary-admin .secretary-page-settings > details > summary,
+.dark .secretary-admin .secretary-tools-panel > summary,
+.dark .secretary-onboarding,
+.dark .secretary-onboarding-choice,
+.dark .secretary-composer,
+.dark .secretary-message-row:not(.is-user) .secretary-message,
+.dark .secretary-change-card,
+.dark .secretary-history,
+.dark .secretary-diff,
+.dark .secretary-review {
+    background: var(--secretary-surface);
+    color: var(--secretary-text);
+}
+
+.dark .secretary-admin .secretary-page-settings-content,
+.dark .secretary-admin .secretary-tools-panel-content,
+.dark .secretary-onboarding-progress,
+.dark .secretary-onboarding-method {
+    background: var(--secretary-paper);
+}
+
+.dark .secretary-conversation-link {
+    border-color: var(--secretary-line);
+    background: var(--secretary-surface);
+    color: var(--secretary-text);
+}
+
+.dark .secretary-composer-input,
+.dark .secretary-admin .secretary-settings-input,
+.dark .secretary-admin .secretary-active-input,
+.dark .secretary-panel-shell .secretary-active-input {
+    border-color: var(--secretary-line);
+    background: var(--secretary-paper);
+    color: var(--secretary-text);
+}
+
+.dark .secretary-main-panel > .secretary-scrollbar,
+.dark .secretary-main-panel > .secretary-ready-state,
+.dark .secretary-panel-feed,
+.dark .secretary-panel-empty,
+.dark .secretary-panel-loading {
+    background:
+        radial-gradient(circle at 92% 2%, rgb(8 239 173 / 8%), transparent 16rem),
+        var(--secretary-paper);
+}
+
+.dark .secretary-admin :is(h2, h3, strong),
+.dark .secretary-ready-state h2,
+.dark .secretary-onboarding-step-heading h3,
+.dark .secretary-onboarding-form-row label,
+.dark .secretary-onboarding-inner-form label,
+.dark .secretary-onboarding-fields label {
+    color: var(--secretary-text);
+}
+
+.dark .secretary-conversation-panel-header strong,
+.dark .secretary-main-header h2,
+.dark .secretary-onboarding-intro h2 {
+    color: #fffdf9;
+}
+
+@media (max-width: 52rem) {
+    .secretary-admin-intro {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .secretary-admin-principles {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 39.999rem) {
+    .secretary-admin-intro {
+        margin-top: -0.5rem;
+        border-radius: 0.9rem;
+        padding: 0.9rem;
+    }
+
+    .secretary-admin-mark {
+        width: 2.65rem;
+        height: 2.65rem;
+    }
+
+    .secretary-admin-principles {
+        display: grid;
+        width: 100%;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.45rem;
+    }
+
+    .secretary-admin-principles li {
+        align-items: flex-start;
+        white-space: normal;
+    }
+
+    .secretary-workspace .secretary-conversation-panel,
+    .secretary-workspace .secretary-main-panel {
+        border-radius: 0.9rem !important;
+    }
+
+    .secretary-main-header {
+        align-items: flex-start;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .secretary-panel-launcher,
+    .secretary-composer button[type="submit"] {
+        transition: none !important;
+    }
+
+    .secretary-panel-launcher:hover,
+    .secretary-composer button[type="submit"]:hover,
+    .secretary-composer button[type="submit"]:active {
+        transform: none;
     }
 }

@@ -5,7 +5,7 @@ $isNorwegian = $locale === 'nb';
 $homeUrl = $isNorwegian ? '/no' : '/';
 $copy = $isNorwegian ? [
     'html_lang' => 'nb',
-    'title' => 'Siden finnes ikke – Statamic Secretary',
+    'title' => 'Siden finnes ikke – Secretary for Statamic',
     'description' => 'Siden du leter etter finnes ikke.',
     'skip' => 'Hopp til innholdet',
     'kicker' => '404 · Lite innholdsavvik',
@@ -15,7 +15,7 @@ $copy = $isNorwegian ? [
     'language' => 'English',
 ] : [
     'html_lang' => 'en',
-    'title' => 'Page not found – Statamic Secretary',
+    'title' => 'Page not found – Secretary for Statamic',
     'description' => 'The page you are looking for does not exist.',
     'skip' => 'Skip to content',
     'kicker' => '404 · Tiny content mismatch',
@@ -44,7 +44,7 @@ $e = static fn (string $value): string => htmlspecialchars($value, ENT_QUOTES | 
 
     <header class="site-header is-scrolled" data-header>
         <div class="shell nav">
-            <a class="brand" href="<?= $e($homeUrl) ?>" aria-label="Statamic Secretary">
+            <a class="brand" href="<?= $e($homeUrl) ?>" aria-label="Secretary for Statamic">
                 <img src="/assets/secretary-icon.png" alt="" width="52" height="52">
                 <span>Statamic <strong>Secretary</strong></span>
             </a>

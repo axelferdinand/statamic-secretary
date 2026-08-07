@@ -1,0 +1,46 @@
+- region "Secretary for Statamic cover" [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e6]:
+        - strong [ref=e7]: Secretary
+        - text: for Statamic
+      - paragraph [ref=e8]: A content assistant for Statamic
+      - heading "Email your site. Get a draft back." [level=1] [ref=e9]:
+        - text: Email your site.
+        - emphasis [ref=e10]: Get a draft back.
+      - paragraph [ref=e11]: Update content or build complete new pages with the blueprints and modules already in your Statamic toolbox.
+      - list [ref=e12]:
+        - listitem [ref=e13]: ✓ Email or chat
+        - listitem [ref=e14]: ✓ Blueprint aware
+        - listitem [ref=e15]: ✓ You publish
+    - generic [ref=e16]:
+      - generic [ref=e17]: your blueprints ✓
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e24]: Secretary · Content desk
+          - generic [ref=e25]: ready
+        - generic [ref=e26]:
+          - article [ref=e27]:
+            - generic [ref=e28]:
+              - generic [ref=e29]: TO
+              - strong [ref=e30]: mysite.com@statamic.no
+            - generic [ref=e31]:
+              - generic [ref=e32]: SUBJECT
+              - strong [ref=e33]: A new Services page
+            - paragraph [ref=e34]: Create a page for Strategy under Services. Use our hero, feature grid, testimonial, and FAQ.
+          - generic [ref=e35]: Reading structure and content
+          - article [ref=e40]:
+            - generic [ref=e41]:
+              - generic [ref=e42]:
+                - paragraph [ref=e43]: New page · Services
+                - paragraph [ref=e44]: Strategy that turns into action
+              - generic [ref=e45]: Draft ready
+            - generic [ref=e46]:
+              - generic [ref=e47]: Hero
+              - generic [ref=e48]: Feature grid
+              - generic [ref=e49]: Testimonial
+              - generic [ref=e50]: FAQ
+            - generic [ref=e51]:
+              - generic [ref=e52]: 4 modules · nothing published
+              - generic [ref=e53]: Review & publish →
+      - generic [ref=e54]: content/ only

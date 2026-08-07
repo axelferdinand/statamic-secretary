@@ -22,6 +22,7 @@ final class InboundRouter
         private readonly RelayAddress $address,
         private readonly bool $requireSenderAuthentication = true,
         private readonly float $maximumSpamScore = 5.0,
+        private readonly bool $subscriptionRequired = false,
     ) {}
 
     public function route(InboundMessage $message): RouteOutcome
@@ -33,7 +34,8 @@ final class InboundRouter
         if ($parsed->routeToken === null) {
             $candidates = array_values(array_filter(
                 $this->store->installationsForSender($sender),
-                fn (Installation $installation): bool => $installation->active && $installation->allowsSender($sender),
+                fn (Installation $installation): bool => $installation->hasRelayAccess($this->subscriptionRequired)
+                    && $installation->allowsSender($sender),
             ));
 
             if ($candidates === []) {
@@ -53,7 +55,9 @@ final class InboundRouter
             $installation = $this->store->installationByRouteToken($parsed->routeToken);
             $selectedRouteToken = $parsed->routeToken;
 
-            if (! $installation || ! $installation->active || ! $installation->allowsSender($sender)) {
+            if (! $installation
+                || ! $installation->hasRelayAccess($this->subscriptionRequired)
+                || ! $installation->allowsSender($sender)) {
                 throw new RelayRejected('Route is not available to this sender.');
             }
 

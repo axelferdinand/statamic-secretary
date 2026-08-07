@@ -111,6 +111,11 @@ try {
                 $body,
                 $clientIdentity,
             ),
+            ['POST', '/v1/billing/stripe-webhook'] => $application->billingWebhook(
+                $headers,
+                $body,
+                $clientIdentity,
+            ),
             default => relay_json_result(404, 'not_found'),
         };
     }

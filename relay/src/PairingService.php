@@ -18,6 +18,7 @@ final readonly class PairingService
         private RelayAddress $address,
         private PublicHttpsUrl $urlPolicy,
         private ?PublicAliasProvisioner $aliases = null,
+        private ?SubscriptionService $subscriptions = null,
     ) {}
 
     /** @param  array<int, string>  $senders */
@@ -100,9 +101,11 @@ final readonly class PairingService
             hash('sha256', $payload['pairing_code']),
             $fingerprint,
             $payload['webhook_url'],
+            $this->subscriptions !== null,
         );
 
-        if ($this->aliases) {
+        if ($this->aliases
+            && ($this->subscriptions === null || $outcome->installation->hasRelayAccess(true))) {
             $this->aliases->provision($outcome->installation);
         }
 
@@ -113,6 +116,25 @@ final readonly class PairingService
     public function response(PairingOutcome $outcome): array
     {
         $installation = $outcome->installation;
+
+        if ($this->subscriptions !== null && ! $installation->hasRelayAccess(true)) {
+            $checkout = $this->subscriptions->checkout($installation);
+
+            return [
+                'accepted' => true,
+                'status' => 'payment_required',
+                'installation_id' => $installation->id,
+                'billing_status' => 'pending',
+                'checkout_url' => $checkout->url,
+                'checkout_expires_at' => $checkout->expiresAt,
+                'price' => [
+                    'amount' => 4900,
+                    'currency' => 'usd',
+                    'interval' => 'year',
+                ],
+            ];
+        }
+
         $routeAddress = $this->address->routeAddress($installation->routeToken);
         $publicAddress = $this->aliases && $installation->publicAlias
             ? $this->address->publicAddress($installation->publicAlias)
@@ -126,6 +148,7 @@ final readonly class PairingService
             'signing_secret' => rtrim(strtr(base64_encode($installation->signingSecret), '+/', '-_'), '='),
             'address' => $publicAddress,
             'route_address' => $routeAddress,
+            'billing_status' => $installation->billingStatus,
         ];
     }
 }

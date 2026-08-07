@@ -17,5 +17,6 @@ interface PairingStore
         string $codeDigest,
         string $claimFingerprint,
         string $webhookUrl,
+        bool $requiresPayment = false,
     ): PairingOutcome;
 }

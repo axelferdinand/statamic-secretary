@@ -159,17 +159,20 @@ final class SecretaryController extends CpController
             ->with('secretary_success', 'Safe drafts are on. Live content now stays unchanged until you publish.');
     }
 
-    public function runDiagnostics(): RedirectResponse
+    public function runDiagnostics(): JsonResponse
     {
         $user = $this->user();
         abort_unless($user->can('configure secretary'), 403);
 
-        $checks = $this->doctor->checks($this->email, $this->relay);
+        $checks = $this->doctor->checks($this->email, $this->relay, probeOpenAI: true);
         $problems = collect($checks)->filter(fn (array $check): bool => ! $check['passed'])->count();
 
-        return back()->with('secretary_success', $problems === 0
-            ? 'All Secretary checks passed.'
-            : "Checks completed. {$problems} ".($problems === 1 ? 'item needs' : 'items need').' attention.');
+        return response()->json([
+            'checks' => $checks,
+            'message' => $problems === 0
+                ? 'All Secretary checks passed, including a live OpenAI request.'
+                : "Checks completed. {$problems} ".($problems === 1 ? 'item needs' : 'items need').' attention.',
+        ]);
     }
 
     public function saveEditorialGuide(Request $request): RedirectResponse
@@ -330,6 +333,11 @@ final class SecretaryController extends CpController
             ]);
         }
 
+        if (($settings['billing_status'] ?? null) === 'pending') {
+            return redirect()->to(cp_route('secretary.index'))
+                ->with('secretary_success', 'Email verified. Complete the $49/year relay checkout, then return here to finish connecting.');
+        }
+
         return redirect()->to(cp_route('secretary.index'))
             ->with('secretary_success', 'The shared address is ready: '.$settings['address']);
     }
@@ -415,7 +423,7 @@ final class SecretaryController extends CpController
             }
         } catch (Throwable $exception) {
             report($exception);
-            $error = PublicError::message($exception, 'Secretary could not start processing. Check the application log and try again.');
+            $error = PublicError::message($exception, 'Secretary hit a temporary problem before the work could start. Your request is safe—try again.');
 
             if ($message && ! $message->processed_at) {
                 $message->update([
@@ -445,7 +453,7 @@ final class SecretaryController extends CpController
             report($exception);
 
             return back()->withErrors([
-                'secretary' => PublicError::message($exception, 'Secretary could not publish the change. Check the application log and try again.'),
+                'secretary' => PublicError::message($exception, 'Secretary could not publish this change. Nothing was published. Try again.'),
             ]);
         }
 

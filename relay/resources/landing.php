@@ -10,7 +10,7 @@ $ogImageUrl = 'https://secretary.statamic.no/assets/statamic-secretary-og.png';
 
 $copy = $isNorwegian ? [
     'html_lang' => 'nb',
-    'title' => 'Statamic Secretary – AI-assistent for Statamic-innhold',
+    'title' => 'Secretary for Statamic – AI-assistent for Statamic-innhold',
     'description' => 'Be om Statamic-endringer på e-post eller i kontrollpanelet. Secretary følger blueprintene, lager trygge utkast og publiserer bare når du ber om det.',
     'skip' => 'Hopp til innholdet',
     'nav_demo' => 'Se demo',
@@ -41,8 +41,8 @@ $copy = $isNorwegian ? [
     'problem_kicker' => 'Den bitte lille endringen',
     'problem_title' => 'Ingen bitte liten utvikleroppgave.',
     'problem_body' => 'Åpningstiden, ingressen og den nye undersiden trenger ikke vente på neste sprint. Secretary gjør redaktørens instruksjon om til et trygt, synlig utkast—uten å rote rundt i templates, config eller kode.',
-    'feature_1_title' => 'Snakk menneske',
-    'feature_1_body' => 'Skriv det du ville skrevet til en kollega. Secretary finner riktig innhold og stiller oppfølgingsspørsmål når noe mangler.',
+    'feature_1_title' => 'Snakk menneske. På ditt språk.',
+    'feature_1_body' => 'Skriv det du ville skrevet til en kollega, på språket teamet ditt bruker. Secretary følger språket ditt, finner riktig innhold og stiller oppfølgingsspørsmål når noe mangler.',
     'feature_2_title' => 'Behold Statamic',
     'feature_2_body' => 'Felter valideres mot de faktiske blueprintene. Struktur, multisite, tillatelser og revisjoner er en del av jobben.',
     'feature_3_title' => 'Se før du sender',
@@ -83,7 +83,7 @@ $copy = $isNorwegian ? [
     'cp_title' => 'Åpne chatten i Statamic',
     'cp_body' => 'Assistenten er tilgjengelig fra hele kontrollpanelet. Utkast og status oppdateres uten full sidelasting.',
     'shared_title' => 'Vil du slippe Postmark-oppsettet?',
-    'shared_body' => 'Koble nettstedet til den driftede innboksen secretary@statamic.no. Avsender og installasjon pares sikkert, slik at riktig beskjed alltid går til riktig nettsted.',
+    'shared_body' => 'Koble nettstedet til den driftede innboksen og få en egen adresse som eksempel.no@statamic.no. Avsender og installasjon pares sikkert, slik at riktig beskjed alltid går til riktig nettsted.',
     'safety_kicker' => 'Snill med innholdet. Paranoid med grensene.',
     'safety_title' => 'Den kan mye. Ikke alt.',
     'safety_body' => 'Secretary får ikke shell, en generell filskriver eller frie hender i prosjektet. Den får smale Statamic-verktøy som respekterer innholdsroten, blueprintene og redaktørens egne rettigheter.',
@@ -108,13 +108,13 @@ $copy = $isNorwegian ? [
     'hosted_label' => 'Driftet innboks',
     'hosted_price' => '+$49',
     'hosted_period' => 'per år',
-    'hosted_body' => 'Bruk secretary@statamic.no og hopp over egen Postmark-server, innkommende webhook og postkasse.',
-    'hosted_feature_1' => 'Én delt, driftet adresse',
+    'hosted_body' => 'Få eksempel.no@statamic.no og hopp over egen Postmark-server, innkommende webhook og postkasse.',
+    'hosted_feature_1' => 'Egen, driftet adresse for nettstedet',
     'hosted_feature_2' => 'Sikker paring av avsender og nettsted',
     'hosted_feature_3' => 'Drift, ruting og leveringsforsøk inkludert',
-    'hosted_feature_4' => 'Kan legges til senere',
-    'hosted_cta' => 'Start med Secretary',
-    'pricing_note' => 'OpenAI-bruk, Statamic-lisens og eventuell egen Postmark-kostnad er ikke inkludert.',
+    'hosted_feature_4' => 'Gratis å prøve på demoen',
+    'hosted_cta' => 'Hent addonen og aktiver',
+    'pricing_note' => 'Relay aktiveres med sikker Stripe-betaling inne i Secretary og faktureres separat fra Marketplace-kjøpet. OpenAI-bruk, Statamic-lisens og eventuell egen Postmark-kostnad er ikke inkludert.',
     'faq_kicker' => 'Ja, men …',
     'faq_title' => 'Spørsmål en fornuftig utvikler ville stilt.',
     'faq_1_q' => 'Kan Secretary endre templates eller kode?',
@@ -142,7 +142,7 @@ $copy = $isNorwegian ? [
     'consent_decline' => 'Bare nødvendige',
 ] : [
     'html_lang' => 'en',
-    'title' => 'Statamic Secretary – AI content assistant for Statamic',
+    'title' => 'Secretary for Statamic – AI content assistant for Statamic',
     'description' => 'Ask for Statamic content changes by email or Control Panel chat. Secretary follows your blueprints, prepares safe drafts, and publishes only when asked.',
     'skip' => 'Skip to content',
     'nav_demo' => 'Try the demo',
@@ -173,8 +173,8 @@ $copy = $isNorwegian ? [
     'problem_kicker' => 'The tiny content change',
     'problem_title' => 'Not another tiny developer ticket.',
     'problem_body' => 'Opening hours, intros, and that new child page should not wait for the next sprint. Secretary turns an editor’s instruction into a safe, visible draft—without wandering into templates, config, or code.',
-    'feature_1_title' => 'Speak human',
-    'feature_1_body' => 'Write what you would send to a colleague. Secretary finds the right content and asks a follow-up when something important is missing.',
+    'feature_1_title' => 'Speak human. In your language.',
+    'feature_1_body' => 'Write what you would send to a colleague, in the language your team uses. Secretary follows your language, finds the right content, and asks a follow-up when something important is missing.',
     'feature_2_title' => 'Keep Statamic',
     'feature_2_body' => 'Fields are validated against your real blueprints. Structure, multisite, permissions, and revisions remain part of the job.',
     'feature_3_title' => 'Look before you launch',
@@ -215,7 +215,7 @@ $copy = $isNorwegian ? [
     'cp_title' => 'Open chat in Statamic',
     'cp_body' => 'The assistant is available across the Control Panel. Drafts and status update in place without a full page refresh.',
     'shared_title' => 'Rather skip the Postmark setup?',
-    'shared_body' => 'Pair your site with the hosted secretary@statamic.no inbox. The sender and installation are securely matched, so the right request always reaches the right site.',
+    'shared_body' => 'Pair your site with the hosted inbox and get a dedicated address such as example.com@statamic.no. The sender and installation are securely matched, so the right request always reaches the right site.',
     'safety_kicker' => 'Friendly with content. Paranoid about boundaries.',
     'safety_title' => 'It can do plenty. Not everything.',
     'safety_body' => 'Secretary gets no shell, generic file writer, or free rein over your project. It gets narrow Statamic tools that respect the content root, your blueprints, and the editor’s own permissions.',
@@ -240,13 +240,13 @@ $copy = $isNorwegian ? [
     'hosted_label' => 'Hosted inbox',
     'hosted_price' => '+$49',
     'hosted_period' => 'per year',
-    'hosted_body' => 'Use secretary@statamic.no and skip your own Postmark server, inbound webhook, and mailbox.',
-    'hosted_feature_1' => 'One shared, managed address',
+    'hosted_body' => 'Get example.com@statamic.no and skip your own Postmark server, inbound webhook, and mailbox.',
+    'hosted_feature_1' => 'A managed address for your site',
     'hosted_feature_2' => 'Secure sender-to-site pairing',
     'hosted_feature_3' => 'Hosting, routing, and retries included',
-    'hosted_feature_4' => 'Add it whenever you are ready',
-    'hosted_cta' => 'Start with Secretary',
-    'pricing_note' => 'OpenAI usage, your Statamic license, and any bring-your-own Postmark fees are not included.',
+    'hosted_feature_4' => 'Free to try on the demo',
+    'hosted_cta' => 'Get the addon and activate',
+    'pricing_note' => 'Relay is activated through secure Stripe checkout inside Secretary and billed separately from the Marketplace purchase. OpenAI usage, your Statamic license, and any bring-your-own Postmark fees are not included.',
     'faq_kicker' => 'Yes, but …',
     'faq_title' => 'Questions a sensible developer would ask.',
     'faq_1_q' => 'Can Secretary edit templates or code?',
@@ -284,7 +284,7 @@ $organizationSchema = [
     '@context' => 'https://schema.org',
     '@type' => 'Organization',
     '@id' => 'https://secretary.statamic.no/#organization',
-    'name' => 'Statamic Secretary',
+    'name' => 'Secretary for Statamic',
     'url' => 'https://secretary.statamic.no/',
     'logo' => 'https://secretary.statamic.no/assets/secretary-icon.png',
     'email' => 'kontakt@prototypen.no',
@@ -296,7 +296,7 @@ $softwareSchema = [
     '@context' => 'https://schema.org',
     '@type' => 'SoftwareApplication',
     '@id' => 'https://secretary.statamic.no/#software',
-    'name' => 'Statamic Secretary',
+    'name' => 'Secretary',
     'applicationCategory' => 'BusinessApplication',
     'operatingSystem' => 'Statamic 6',
     'description' => $copy['description'],
@@ -306,7 +306,7 @@ $softwareSchema = [
     'offers' => [
         [
             '@type' => 'Offer',
-            'name' => 'Statamic Secretary addon',
+            'name' => 'Secretary addon',
             'price' => '49',
             'priceCurrency' => 'USD',
             'url' => $marketplaceUrl,
@@ -316,7 +316,7 @@ $softwareSchema = [
             'name' => 'Hosted Secretary inbox',
             'price' => '49',
             'priceCurrency' => 'USD',
-            'url' => $marketplaceUrl,
+            'url' => $siteUrl.'#pricing',
             'priceSpecification' => [
                 '@type' => 'UnitPriceSpecification',
                 'price' => '49',
@@ -370,7 +370,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="<?= $e($copy['title']) ?>">
-    <meta property="og:site_name" content="Statamic Secretary">
+    <meta property="og:site_name" content="Secretary for Statamic">
     <meta property="og:locale" content="<?= $isNorwegian ? 'nb_NO' : 'en_US' ?>">
     <meta property="og:locale:alternate" content="<?= $isNorwegian ? 'en_US' : 'nb_NO' ?>">
     <meta name="twitter:card" content="summary_large_image">
@@ -395,9 +395,9 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
 
     <header class="site-header" data-header>
         <div class="shell nav">
-            <a class="brand" href="<?= $isNorwegian ? '/no' : '/' ?>" aria-label="Statamic Secretary">
+            <a class="brand" href="<?= $isNorwegian ? '/no' : '/' ?>" aria-label="Secretary for Statamic">
                 <img src="/assets/secretary-icon.png" alt="" width="52" height="52">
-                <span>Statamic <strong>Secretary</strong></span>
+                <span><strong>Secretary</strong> for Statamic</span>
             </a>
 
             <nav class="nav-links" aria-label="Primary">
@@ -570,7 +570,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
                         <div class="progress-head">
                             <img src="/assets/secretary-icon.png" alt="" width="54" height="54">
                             <div>
-                                <p>Statamic Secretary</p>
+                                <p>Secretary</p>
                                 <strong data-demo-status aria-live="polite"><?= $e($copy['demo_running']) ?></strong>
                             </div>
                             <span class="working-dots" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -781,7 +781,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
         <div class="shell footer-grid">
             <a class="brand footer-brand" href="<?= $isNorwegian ? '/no' : '/' ?>">
                 <img src="/assets/secretary-icon.png" alt="" width="46" height="46">
-                <span>Statamic <strong>Secretary</strong></span>
+                <span><strong>Secretary</strong> for Statamic</span>
             </a>
             <p><?= $e($copy['footer_line']) ?></p>
             <nav aria-label="Footer">

@@ -1,4 +1,4 @@
-# Statamic Secretary hosted relay core
+# Secretary for Statamic hosted relay core
 
 This directory contains the framework-independent routing and security core for the optional shared `secretary@statamic.no` service. It is deliberately excluded from the Composer addon archive and is not deployed by installing the addon.
 
@@ -6,7 +6,7 @@ The core has no model access and never selects a site from prompt text. It route
 
 `Persistence\SqliteSchema` and `Persistence\SqliteRelayStore` provide the first durable adapter. Installation signing secrets are encrypted with AES-256-GCM through OpenSSL; legacy libsodium ciphertext remains readable when that optional extension is available. Two-phase signing-secret and route rotations are atomic and retry-safe, retired routes remain bound only to their existing conversations, claims are atomic across processes, crashed work can be reclaimed only after a bounded lease, old owners cannot complete reclaimed claims, nonces remain single-use across workers, and delivery metadata can be pruned without removing installations or conversation bindings. The database encryption key is a separate random 32-byte value loaded from deployment secrets. `CurlHttpTransport` resolves and pins public DNS destinations, blocks private or reserved addresses and redirects, verifies TLS hostnames, bounds request and response sizes, and rejects unsafe headers. Shared Postmark delivery is fixed to the official `/email` endpoint.
 
-This directory is also a standalone Composer project. Point a TLS-only PHP site at `public/`, set the environment values below, and run the migration command. `public/index.php` exposes `GET /health`, authenticated `POST /v1/postmark/inbound`, signed `POST /v1/replies`, email-verified `POST /v1/pairings/request`, and one-time `POST /v1/pairings/claim`. Permanent unsafe mail is acknowledged without forwarding so Postmark does not retry it forever; temporary site/Postmark failures and concurrent processing return retryable `503` responses.
+This directory is also a standalone Composer project. Point a TLS-only PHP site at `public/`, set the environment values below, and run the migration command. `public/index.php` exposes `GET /health`, authenticated `POST /v1/postmark/inbound`, signed `POST /v1/replies`, email-verified `POST /v1/pairings/request`, one-time `POST /v1/pairings/claim`, and signed-by-Stripe `POST /v1/billing/stripe-webhook`. Permanent unsafe mail is acknowledged without forwarding so Postmark does not retry it forever; temporary site/Postmark failures and concurrent processing return retryable `503` responses.
 
 ```dotenv
 RELAY_DATABASE_PATH=/absolute/private/path/relay.sqlite
@@ -31,6 +31,11 @@ RELAY_REPLY_RATE_LIMIT=300
 RELAY_PAIRING_RATE_LIMIT=60
 RELAY_PAIRING_REQUEST_RATE_LIMIT=10
 RELAY_PAIRING_RECIPIENT_RATE_LIMIT=3
+RELAY_BILLING_RATE_LIMIT=300
+RELAY_STRIPE_SECRET_KEY=sk_live_...
+RELAY_STRIPE_PRICE_ID=price_...
+RELAY_STRIPE_WEBHOOK_SECRET=whsec_...
+RELAY_STRIPE_WEBHOOK_TOLERANCE=300
 ```
 
 ```bash
@@ -58,9 +63,9 @@ php bin/rotate-installation-route.php \
 php bin/prune.php
 ```
 
-Normal customers never run the operator commands. In the Statamic Control Panel they request a code for an existing Secretary user's email address. The relay sends the code only to that address, retains only its digest, and lets the addon claim one isolated installation. The signing secret is encrypted at rest and never exposed to the browser. A retry of the same claim returns the same isolated installation, while another claimant cannot reuse the code.
+Normal customers never run the operator commands. In the Statamic Control Panel they request a code for an existing Secretary user's email address. The relay sends the code only to that address, retains only its digest, and lets the addon claim one isolated installation. When Stripe is configured, that first claim returns Checkout only. Credentials and the readable alias are withheld until a signed webhook records an active USD 49/year subscription; the exact claim retry then completes the connection. The signing secret is encrypted at rest and never exposed to the browser. Another claimant cannot reuse the code.
 
-The manual provisioning and pairing commands remain available for incident recovery and controlled tests. `manage-installation.php` can show redacted status, enable/disable one installation, or add/remove one exact sender without exposing the signing secret. `rotate-installation-secret.php` and `rotate-installation-route.php` implement the documented two-phase rotations. Endpoint limits use atomic SQLite windows keyed by an HMAC of the direct socket peer; a limit returns `429` plus `Retry-After`. Security logs contain stable categories and exception classes but never exception messages or request identities. See [`OPERATIONS.md`](OPERATIONS.md) before deployment.
+The manual provisioning and pairing commands remain available for incident recovery and controlled tests. `manage-installation.php` can list redacted installations, show status, enable/disable one installation, add/remove one exact sender, or deliberately set `beta`, `complimentary`, or `pending` billing without exposing the signing secret. `rotate-installation-secret.php` and `rotate-installation-route.php` implement the documented two-phase rotations. Endpoint limits use atomic SQLite windows keyed by an HMAC of the direct socket peer; a limit returns `429` plus `Retry-After`. Security logs contain stable categories and exception classes but never exception messages or request identities. See [`OPERATIONS.md`](OPERATIONS.md) and [`../docs/relay-billing.md`](../docs/relay-billing.md) before deployment.
 
 `poll-postmark.php` is a safe outbound-only fallback for hosts that block Postmark's
 inbound webhook addresses before PHP. Schedule it every minute while keeping the

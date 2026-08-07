@@ -137,7 +137,7 @@ final class SecretaryPanelController extends CpController
             }
         } catch (Throwable $exception) {
             report($exception);
-            $error = PublicError::message($exception, 'Secretary could not start processing. Check the application log and try again.');
+            $error = PublicError::message($exception, 'Secretary hit a temporary problem before the work could start. Your request is safe—try again.');
 
             if ($message && ! $message->processed_at) {
                 $message->update([
@@ -191,7 +191,7 @@ final class SecretaryPanelController extends CpController
             return response()->json([
                 'message' => PublicError::message(
                     $exception,
-                    'Secretary could not publish the change. Check the application log and try again.',
+                    'Secretary could not publish this change. Nothing was published. Try again.',
                 ),
             ], 422);
         }

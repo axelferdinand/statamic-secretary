@@ -1,24 +1,24 @@
-# Statamic Secretary Commercial License
+# Secretary for Statamic Commercial License
 
 Copyright © 2026 Axel Ferdinand. All rights reserved.
 
-Statamic Secretary is commercial software distributed through the Statamic
+Secretary for Statamic is commercial software distributed through the Statamic
 Marketplace.
 
 ## Development use
 
-You may install, evaluate, and use Statamic Secretary without purchasing a
+You may install, evaluate, and use Secretary without purchasing a
 license on local development, testing, and staging environments that are not
 serving a production website.
 
 ## Production use
 
-Each production Statamic installation requires a valid Statamic Secretary
+Each production Statamic installation requires a valid Secretary
 license purchased through the Statamic Marketplace and attached to the
 corresponding Site in the license holder's Statamic account.
 
 A license grants the license holder a limited, non-exclusive,
-non-transferable right to use Statamic Secretary for that licensed production
+non-transferable right to use Secretary for that licensed production
 installation. The license holder may configure and modify the source code for
 the needs of the licensed site and may allow employees or contractors to
 access it solely to develop, operate, or maintain that site.
@@ -41,7 +41,7 @@ own subscription and service terms.
 
 ## Ownership and third-party software
 
-Statamic Secretary is licensed, not sold. Axel Ferdinand retains all rights,
+Secretary is licensed, not sold. Axel Ferdinand retains all rights,
 title, and interest in the software. Third-party packages and incorporated
 open-source components remain subject to their respective licenses.
 

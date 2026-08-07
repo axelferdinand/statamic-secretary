@@ -25,6 +25,8 @@ const relayEmail = ref(props.relay.pending_sender ?? props.relay.suggested_sende
 const relayPublicUrl = ref(props.relay.pending_public_url ?? props.relay.suggested_public_url ?? '');
 const pairingCode = ref('');
 const emailReady = computed(() => props.email.connected || props.relay.connected);
+const pairingCodeReady = computed(() => /^pc_[A-Za-z0-9_-]{43}$/.test(pairingCode.value.trim())
+    && Boolean(relayPublicUrl.value.trim()));
 const setupError = computed(() => props.errors?.openai_api_key
     ?? props.errors?.api_key
     ?? props.errors?.safe_drafting
@@ -84,6 +86,12 @@ function connectRelay() {
         pairing_code: pairingCode.value.trim(),
         public_url: relayPublicUrl.value.trim(),
     });
+}
+
+function openRelayCheckout() {
+    if (!props.relay.checkout_url) return;
+
+    window.open(props.relay.checkout_url, '_blank', 'noopener,noreferrer');
 }
 
 function connectPostmark() {
@@ -312,7 +320,7 @@ function skipEmail() {
                             <strong v-if="relayAddress">{{ relayAddress }}</strong>
                             <em v-else>Enter the public URL above</em>
                         </span>
-                        <span class="text-xs text-gray-500">Included during beta</span>
+                        <span class="text-xs text-gray-500">$49/year on a live site</span>
                     </div>
                     <div>
                         <label for="secretary-onboarding-relay-email">Who will send instructions?</label>
@@ -332,6 +340,17 @@ function skipEmail() {
                     </ui-button>
                 </form>
 
+                <div v-if="relay.payment_required" class="secretary-relay-checkout" role="status">
+                    <div>
+                        <strong>Verification complete. Activate email relay.</strong>
+                        <p>The demo is free to try. Using your own <code>@statamic.no</code> address on this live site costs $49/year.</p>
+                    </div>
+                    <ui-button type="button" variant="primary" icon="credit-card" @click="openRelayCheckout">
+                        Start relay — $49/year
+                    </ui-button>
+                    <p>After checkout, return here and press <strong>Finish connection</strong>. Your Control Panel chat and your own Postmark setup do not require this subscription.</p>
+                </div>
+
                 <form v-if="relay.pending_sender" class="secretary-onboarding-inner-form is-code" @submit.prevent="connectRelay">
                     <div>
                         <label for="secretary-onboarding-code">Verification code</label>
@@ -348,8 +367,13 @@ function skipEmail() {
                         >
                         <p>Sent to {{ relay.pending_sender }}. Valid for 15 minutes.</p>
                     </div>
-                    <ui-button type="submit" variant="primary" :loading="busy" :disabled="busy || !pairingCode.trim() || !relayPublicUrl.trim()">
-                        Connect email
+                    <ui-button
+                        type="submit"
+                        :variant="pairingCodeReady ? 'primary' : 'default'"
+                        :loading="busy"
+                        :disabled="busy || !pairingCodeReady"
+                    >
+                        {{ relay.payment_required ? 'Finish connection' : 'Connect email' }}
                     </ui-button>
                 </form>
             </div>

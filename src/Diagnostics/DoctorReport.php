@@ -7,6 +7,7 @@ use AxelFerdinand\StatamicSecretary\Database\SecretaryDatabase;
 use AxelFerdinand\StatamicSecretary\Developer\ToolRegistry;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
 use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIHealthCheck;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
 use Statamic\Assets\AssetUploader;
 use Statamic\Facades\AssetContainer;
@@ -19,18 +20,24 @@ final class DoctorReport
         private readonly ToolRegistry $tools,
         private readonly SafeDrafting $safeDrafting,
         private readonly SecretaryDatabase $database,
+        private readonly OpenAIHealthCheck $openAIHealth,
     ) {}
 
     /** @return array<int, array{key: string, label: string, passed: bool, required: bool, details: string, success_details: string}> */
-    public function checks(EmailConfiguration $email, RelayConfiguration $relay): array
+    public function checks(EmailConfiguration $email, RelayConfiguration $relay, bool $probeOpenAI = false): array
     {
         $root = (string) (config('secretary.content.root') ?: base_path('content'));
         $emailEnabled = $email->enabled();
         $postmarkSetupPending = $email->tokenConfigured() && ! $email->connected() && blank(config('secretary.email.enabled'));
+        $openAI = app(OpenAIConfiguration::class);
+        $openAIHealth = $probeOpenAI && $openAI->configured()
+            ? $this->openAIHealth->run()
+            : $openAI->health();
 
         return [
-            $this->check('openai_key', 'OpenAI API key', app(OpenAIConfiguration::class)->configured(), true, 'Add the key in Secretary or set OPENAI_API_KEY.'),
+            $this->check('openai_key', 'OpenAI API key', $openAI->configured(), true, 'Add the key in Secretary or set OPENAI_API_KEY.'),
             $this->check('openai_model', 'OpenAI model', filled(config('secretary.openai.model')), true, 'Set SECRETARY_OPENAI_MODEL.'),
+            $this->openAIHealthCheck($openAI, $openAIHealth),
             $this->check('content_root', 'Content root', is_dir($root) && is_writable($root), true, 'The configured content directory must exist and be writable.'),
             $this->check(
                 'database',
@@ -90,6 +97,42 @@ final class DoctorReport
         return compact('key', 'label', 'passed', 'required', 'details') + [
             'success_details' => $successDetails,
         ];
+    }
+
+    /**
+     * @param  array{passed: bool, details: string, checked_at: string}|null  $health
+     * @return array{key: string, label: string, passed: bool, required: bool, details: string, success_details: string}
+     */
+    private function openAIHealthCheck(OpenAIConfiguration $configuration, ?array $health): array
+    {
+        if (! $configuration->configured()) {
+            return $this->check(
+                'openai_access',
+                'OpenAI access and credits',
+                false,
+                true,
+                'Connect an OpenAI API key, then run the checks again.',
+            );
+        }
+
+        if ($health === null) {
+            return $this->check(
+                'openai_access',
+                'OpenAI access and credits',
+                false,
+                false,
+                'Not tested yet. Run the checks once to verify the selected model and available credits.',
+            );
+        }
+
+        return $this->check(
+            'openai_access',
+            'OpenAI access and credits',
+            $health['passed'],
+            true,
+            $health['details'],
+            $health['details'],
+        );
     }
 
     private function emailIsComplete(EmailConfiguration $email): bool

@@ -1,50 +1,52 @@
-# Release checklist
+# Release and Marketplace checklist
 
-## Product proof
+Last verified: 2026-08-06.
 
-- [x] Verify the full suite against Laravel 12 and Laravel 13 with Statamic 6.
-- [x] Run the addon migrations in the local Statamic 6 sandbox.
-- [ ] Run `php please secretary:doctor` with production-like configuration.
-- [ ] Complete desktop, narrow, mobile, light, and dark CP browser QA.
-- [x] Complete a real GPT-5.5 inspect → new unpublished structured-page draft flow with a rotated key.
-- [x] Complete a real GPT-5.5 multi-turn CP follow-up without creating an unintended change set.
-- [ ] Publish the live-test draft through Secretary and verify its live URI.
-- [ ] Complete a real Postmark new thread → reply → publish flow.
-- [ ] Verify failed mail transport retry and queue-worker restart behavior.
-- [ ] Verify a non-super editor's collection/site restrictions in a real CP.
-- [ ] Verify a direct human edit blocks a stale Secretary publication.
-- [x] Implement and adversarially test the addon-side shared-relay receiver and signed reply client.
-- [x] Implement and adversarially test the framework-independent hosted relay routing/security/Postmark core.
-- [x] Add encrypted durable relay persistence with atomic cross-worker claims, crash leases, nonces, and retention.
-- [x] Add a DNS-pinned public-HTTPS transport and lock shared Postmark requests to the official API endpoint.
-- [x] Add the standalone authenticated HTTP application plus migration, manual provisioning, health, and retention commands.
-- [x] Add an idempotent ambiguous-sender selection notice that forwards the original instruction to neither site.
-- [x] Add retry-safe one-time pairing plus the encrypted control-panel setup flow.
-- [x] Add redacted operator status, enable/disable, and exact sender-membership controls.
-- [x] Add encrypted, retry-safe two-phase signing-secret rotation with bounded dual-secret grace periods.
-- [x] Add retry-safe route rotation that rejects new retired-route threads while preserving exact existing conversation bindings.
-- [x] Add cross-worker endpoint rate limits with hashed identities, retry headers, pruning, and secret-free security records.
-- [x] Add email-verified customer-facing code issuance without browser-visible codes or secrets.
-- [x] Deploy `secretary@statamic.no` and verify HTTPS health, authenticated Postmark ingress, plain forwarding, and preserved plus-address tags.
-- [ ] Complete the two-public-installation X/Y/random-sender isolation proof.
+## Already in place
 
-## Package
+- [x] Public GitHub repository: `axelferdinand/statamic-secretary`.
+- [x] Public Composer package on Packagist with installable beta releases and stable `0.1.0` release metadata.
+- [x] `statamic-addon` metadata, provider discovery, compiled CP assets, and automatic private-store installation.
+- [x] Commercial license for **USD 49 per production site**; Statamic handles Marketplace license validation.
+- [x] README, changelog, privacy, support, security, architecture, relay, and developer documentation.
+- [x] 1024×1024 and 512×512 product icons.
+- [x] Copy-ready Marketplace listing in `docs/marketplace-listing.md`.
+- [x] PHP 8.3/8.4/8.5, Laravel 12/13, asset reproducibility, archive inspection, and clean-install CI.
+- [x] Latest published `main` workflow completed successfully on 2026-08-05.
+- [x] Current local source passes strict Composer validation, Pint, and 267 tests / 2,036 assertions.
+- [x] Current Composer candidate is a clean 1.4 MB / 138-file runtime archive with private relay operations, Marketplace media, and development files excluded.
+- [x] Current candidate installs as a non-symlink Composer artifact in a fresh Statamic 6.27 / Laravel 13.24 site, publishes CP assets, creates its private store, runs its own migrations, registers routes, and exposes `secretary:doctor` without manual setup.
 
-- [x] Build and inspect a clean Composer archive containing runtime files and compiled assets only.
-- [x] Install the clean archive as a non-symlink Composer artifact in a separate Statamic 6 app and verify discovery, routes, and published assets.
-- [x] Use a proprietary commercial license for a USD 49 per-production-site Statamic Marketplace addon, with development/testing use permitted.
-- [x] Set the public repository and support URLs in `composer.json`.
-- [ ] Run the GitHub Actions PHP matrix and asset reproducibility job.
-- [ ] Send a real JPEG/PNG/WebP attachment through the hosted address, verify one append-only Statamic asset, visual model context, draft use, retry idempotency, and no relay-body persistence/logging.
-- [ ] Tag a semantic `v0.1.0` prerelease only after live proof.
-- [ ] Publish the package on Packagist.
-- [ ] Confirm `composer require axelferdinand/statamic-secretary` in a fresh site.
+## Final product gates
 
-## Marketplace
+- [ ] Complete one clean public-site flow: install → onboarding → email acknowledgement → draft → CP refinement → publish → live URL.
+- [ ] Pair two public sites and prove X reaches only X, Y reaches only Y, and an unknown sender reaches neither.
+- [ ] Complete a Stripe test-mode flow: unpaid live site is blocked → Checkout succeeds → webhook activates → exact pairing retry connects → cancellation blocks Relay.
+- [ ] Verify a normal non-super editor is limited by native Statamic permissions.
+- [ ] Verify a direct human edit blocks publication of a stale Secretary draft.
+- [ ] Complete final desktop/mobile, light/dark, keyboard/focus, loading, empty, error, draft, and published-state browser QA.
+- [x] Create a landing-page-led 1200×800 Marketplace cover and three genuine Control Panel screenshots: email-first setup, an email-created page conversation, and the contextual editor panel.
 
-- [x] Prepare square 1024×1024 and 512×512 addon icons.
-- [ ] Create or confirm the Statamic seller account.
-- [ ] Create the draft Marketplace product and connect the Packagist package.
-- [ ] Add product copy from `docs/marketplace-listing.md`.
-- [ ] Add icon, screenshots, compatibility, privacy, support, and security links.
-- [ ] Test the Marketplace installation command before publishing the listing.
+## Stable package gate
+
+- [ ] Commit the intended release source and generated `resources/dist` assets.
+- [ ] Confirm the release CI matrix repeats the archive and clean-install checks successfully from the committed source.
+- [ ] Repeat the human onboarding flow in that fresh site without terminal-only setup.
+- [x] Move the `Unreleased` changelog entries to `0.1.0` with the release date.
+- [ ] Create and push stable tag `v0.1.0`; confirm Packagist indexes `0.1.0`.
+- [ ] Verify the final public command: `composer require axelferdinand/statamic-secretary`.
+
+## Owner-only Marketplace steps
+
+- [ ] Open a Creator shop at https://statamic.com/creator/begin.
+- [ ] Connect GitHub and Stripe Connect. Statamic currently pays 75% of each sale: **USD 36.75 from a USD 49 license**.
+- [ ] Create the addon draft and connect `axelferdinand/statamic-secretary` from Packagist.
+- [ ] Set price to **USD 49**, compatibility to Statamic 6 / PHP 8.3+, and paste `docs/marketplace-listing.md`.
+- [ ] Upload the icon and final screenshots, preview the listing, and submit/publish it.
+- [ ] Create the Stripe Relay product and yearly USD 49 price, configure the signed webhook and customer portal, and approve cancellation, refund, tax, privacy, and support terms before charging live customers.
+
+## After publication
+
+- [ ] Replace generic Marketplace CTAs on `secretary.statamic.no` with the direct product URL.
+- [ ] Test purchase, site-license attachment, install, update, and support handoff with a non-owner account.
+- [ ] Monitor the first installs, Postmark delivery, relay isolation, model failures, and support requests without logging prompts or customer content to analytics.

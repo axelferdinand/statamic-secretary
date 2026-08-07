@@ -5,6 +5,8 @@ namespace AxelFerdinand\StatamicSecretary\Jobs;
 use AxelFerdinand\StatamicSecretary\Agent\ConversationService;
 use AxelFerdinand\StatamicSecretary\Agent\PublicationIntentDetector;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
+use AxelFerdinand\StatamicSecretary\Email\ReplyLanguage;
+use AxelFerdinand\StatamicSecretary\Exceptions\OpenAIRequestFailed;
 use AxelFerdinand\StatamicSecretary\Mail\SecretaryReply;
 use AxelFerdinand\StatamicSecretary\Models\Message;
 use AxelFerdinand\StatamicSecretary\Relay\RelayClient;
@@ -93,16 +95,18 @@ final class ProcessInboundEmail implements ShouldQueue
 
         $publicationRequested = $intent->matches($message->body);
         $senderAuthenticated = data_get($message->metadata, 'sender_authenticated') === true;
+        $language = app(ReplyLanguage::class);
+        $copy = $language->copy($language->forMessage($message));
 
         if ($publicationRequested && (! config('secretary.email.allow_publishing') || ! $senderAuthenticated)) {
             $reason = ! config('secretary.email.allow_publishing')
-                ? 'Publisering via e-post er deaktivert.'
-                : 'Avsenderen kunne ikke autentiseres med DKIM for avsenderdomenet.';
+                ? $copy['publishing_disabled']
+                : $copy['sender_not_authenticated'];
             $reply = $conversation->messages()->create([
                 'direction' => 'outbound',
                 'channel' => 'email',
                 'role' => 'assistant',
-                'body' => $reason.' Åpne Secretary i kontrollpanelet for å publisere utkastet.',
+                'body' => $reason.' '.$copy['open_cp_to_publish'],
                 'reply_to_message_id' => $message->id,
                 'metadata' => ['reply_to_message_id' => $message->id],
                 'processed_at' => now(),
@@ -125,11 +129,16 @@ final class ProcessInboundEmail implements ShouldQueue
         }
 
         try {
+            $language = app(ReplyLanguage::class);
+            $copy = $language->copy($language->forMessage($message));
+            $failureCopy = $exception instanceof OpenAIRequestFailed
+                ? ($copy['openai_'.$exception->reason] ?? $copy['processing_failed'])
+                : $copy['processing_failed'];
             $reply = $this->existingReply($message) ?? $message->conversation->messages()->create([
                 'direction' => 'outbound',
                 'channel' => 'email',
                 'role' => 'assistant',
-                'body' => 'Secretary kunne ikke behandle e-posten. Kontroller loggen eller åpne samtalen i kontrollpanelet og prøv igjen.',
+                'body' => $failureCopy,
                 'reply_to_message_id' => $message->id,
                 'metadata' => ['reply_to_message_id' => $message->id, 'processing_failed' => true],
                 'processed_at' => now(),
@@ -138,7 +147,9 @@ final class ProcessInboundEmail implements ShouldQueue
                 'processed_at' => now(),
                 'metadata' => [
                     ...(array) $message->metadata,
-                    'processing_error' => 'Secretary kunne ikke behandle e-posten. Kontroller loggen og prøv igjen.',
+                    'processing_error' => $exception instanceof OpenAIRequestFailed
+                        ? $failureCopy
+                        : $copy['processing_error'],
                 ],
             ]);
             $this->sendReply($message, $reply);

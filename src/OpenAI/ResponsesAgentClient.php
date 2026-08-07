@@ -5,16 +5,21 @@ namespace AxelFerdinand\StatamicSecretary\OpenAI;
 use AxelFerdinand\StatamicSecretary\Contracts\AgentClient;
 use AxelFerdinand\StatamicSecretary\Data\AgentRequest;
 use AxelFerdinand\StatamicSecretary\Data\AgentResponse;
+use AxelFerdinand\StatamicSecretary\Exceptions\OpenAIRequestFailed;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use RuntimeException;
+use Throwable;
 
 final class ResponsesAgentClient implements AgentClient
 {
-    public function __construct(private readonly HttpFactory $http) {}
+    public function __construct(
+        private readonly HttpFactory $http,
+        private readonly OpenAIConfiguration $configuration,
+    ) {}
 
     public function respond(AgentRequest $request): AgentResponse
     {
-        $apiKey = app(OpenAIConfiguration::class)->apiKey();
+        $apiKey = $this->configuration->apiKey();
 
         if ($apiKey === '') {
             throw new RuntimeException('Secretary requires an OpenAI API key.');
@@ -38,18 +43,30 @@ final class ResponsesAgentClient implements AgentClient
             ],
         ], static fn (mixed $value): bool => $value !== null);
 
-        $response = $this->http
-            ->baseUrl(rtrim((string) config('secretary.openai.base_url'), '/'))
-            ->withToken($apiKey)
-            ->withHeaders(array_filter([
-                'OpenAI-Project' => config('secretary.openai.project'),
-            ]))
-            ->acceptJson()
-            ->timeout((int) config('secretary.openai.timeout', 120))
-            ->retry(2, 250, throw: false)
-            ->post('/responses', $payload)
-            ->throw()
-            ->json();
+        try {
+            $response = $this->http
+                ->baseUrl(rtrim((string) config('secretary.openai.base_url'), '/'))
+                ->withToken($apiKey)
+                ->withHeaders(array_filter([
+                    'OpenAI-Project' => config('secretary.openai.project'),
+                ]))
+                ->acceptJson()
+                ->timeout((int) config('secretary.openai.timeout', 120))
+                ->retry(2, 250, throw: false)
+                ->post('/responses', $payload)
+                ->throw()
+                ->json();
+
+            $this->configuration->recordHealth(
+                true,
+                'A live OpenAI request succeeded. The API key, model access, and credits are ready.',
+            );
+        } catch (Throwable $exception) {
+            $failure = OpenAIRequestFailed::from($exception);
+            $this->configuration->recordHealth(false, $failure->healthDetails);
+
+            throw $failure;
+        }
 
         if (! is_array($response) || ! isset($response['id'], $response['status'], $response['output'])) {
             throw new RuntimeException('OpenAI returned an invalid Responses API payload.');

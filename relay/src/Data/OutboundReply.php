@@ -15,5 +15,6 @@ final readonly class OutboundReply
         public ?string $inReplyTo,
         public ?string $reviewUrl,
         public array $changeSets,
+        public string $locale = 'en',
     ) {}
 }

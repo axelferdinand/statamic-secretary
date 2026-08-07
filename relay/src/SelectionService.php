@@ -21,6 +21,7 @@ final class SelectionService
         private readonly SelectionTransport $mail,
         private readonly RelayAddress $address,
         private readonly bool $usePublicAliases = false,
+        private readonly bool $subscriptionRequired = false,
     ) {}
 
     /** @param  array<int, string>  $routeTokens */
@@ -44,7 +45,7 @@ final class SelectionService
             $installation = $this->installations->installationByRouteToken($routeToken);
 
             if (! $installation
-                || ! $installation->active
+                || ! $installation->hasRelayAccess($this->subscriptionRequired)
                 || ! $installation->allowsSender($sender)
                 || $installation->label === null) {
                 throw new RelayRejected('Selection candidate is not available to this sender.');

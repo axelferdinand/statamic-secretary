@@ -171,7 +171,7 @@ return [
     'limits' => [
         'max_input_characters' => (int) env('SECRETARY_MAX_INPUT_CHARACTERS', 20000),
         'max_history_messages' => (int) env('SECRETARY_MAX_HISTORY_MESSAGES', 30),
-        'max_tool_rounds' => (int) env('SECRETARY_MAX_TOOL_ROUNDS', 12),
+        'max_tool_rounds' => (int) env('SECRETARY_MAX_TOOL_ROUNDS', 20),
         'max_navigation_nodes' => (int) env('SECRETARY_MAX_NAVIGATION_NODES', 500),
         'max_resource_characters' => (int) env('SECRETARY_MAX_RESOURCE_CHARACTERS', 250000),
         'max_webhook_bytes' => (int) env('SECRETARY_MAX_WEBHOOK_BYTES', 24_000_000),

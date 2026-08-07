@@ -30,6 +30,7 @@ final class HostedRelayApplication
         ?callable $reporter = null,
         private readonly int $maximumRequestBytes = 24_000_000,
         private readonly ?RateLimiter $rateLimiter = null,
+        private readonly ?SubscriptionService $subscriptions = null,
     ) {
         if ($maximumRequestBytes < 32768 || $maximumRequestBytes > 32_000_000) {
             throw new RelayRejected('Hosted relay request limit is invalid.');
@@ -54,7 +55,7 @@ final class HostedRelayApplication
             $this->report($exception);
 
             return $this->json(401, ['accepted' => false, 'status' => 'unauthorized'], [
-                'WWW-Authenticate' => 'Basic realm="Statamic Secretary relay"',
+                'WWW-Authenticate' => 'Basic realm="Secretary relay"',
             ]);
         }
 
@@ -233,6 +234,54 @@ final class HostedRelayApplication
                 'accepted' => true,
                 'status' => 'verification_sent',
             ]);
+        } catch (RelayTransientFailure $exception) {
+            $this->report($exception);
+
+            return $this->json(503, ['accepted' => false, 'status' => 'temporary_failure'], [
+                'Retry-After' => '30',
+            ]);
+        } catch (RelayRejected $exception) {
+            $this->report($exception);
+
+            return $this->json(422, ['accepted' => false, 'status' => 'rejected']);
+        } catch (Throwable $exception) {
+            $this->report($exception);
+
+            return $this->json(503, ['accepted' => false, 'status' => 'temporary_failure'], [
+                'Retry-After' => '30',
+            ]);
+        }
+    }
+
+    /** @param  array<string, string>  $headers */
+    public function billingWebhook(
+        array $headers,
+        string $body,
+        string $clientIdentity = 'unknown',
+    ): HttpResult {
+        if ($this->subscriptions === null) {
+            return $this->json(404, ['accepted' => false, 'status' => 'not_found']);
+        }
+
+        if (! $this->jsonRequest($headers, $body)) {
+            return $this->json(415, ['accepted' => false, 'status' => 'invalid_request']);
+        }
+
+        if ($limited = $this->rateLimit('billing_source', $clientIdentity)) {
+            return $limited;
+        }
+
+        try {
+            $processed = $this->subscriptions->acceptWebhook($headers, $body);
+
+            return $this->json(200, [
+                'accepted' => true,
+                'status' => $processed ? 'processed' : 'ignored',
+            ]);
+        } catch (RelayAuthenticationFailed $exception) {
+            $this->report($exception);
+
+            return $this->json(401, ['accepted' => false, 'status' => 'unauthorized']);
         } catch (RelayTransientFailure $exception) {
             $this->report($exception);
 

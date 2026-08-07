@@ -26,6 +26,13 @@ final readonly class Installation
         public ?string $lastRouteRotationId = null,
         public ?int $routeRotationAvailableAt = null,
         public ?string $publicAlias = null,
+        public string $billingStatus = 'beta',
+        public ?string $stripeCustomerId = null,
+        public ?string $stripeSubscriptionId = null,
+        public ?int $billingPeriodEnd = null,
+        public ?string $checkoutId = null,
+        public ?string $checkoutUrl = null,
+        public ?int $checkoutExpiresAt = null,
     ) {
         if (preg_match('/^si_[a-z0-9_-]{20,125}$/D', $id) !== 1
             || preg_match('/^r[a-z0-9]{25}$/D', $routeToken) !== 1
@@ -50,6 +57,30 @@ final readonly class Installation
                 && ! self::validRouteRotationId($lastRouteRotationId))
             || ($routeRotationAvailableAt !== null && $routeRotationAvailableAt < 1)
             || ($publicAlias !== null && ! PublicSiteAlias::valid($publicAlias))
+            || ! in_array($billingStatus, [
+                'beta',
+                'complimentary',
+                'pending',
+                'active',
+                'trialing',
+                'past_due',
+                'canceled',
+                'unpaid',
+                'incomplete',
+                'incomplete_expired',
+                'paused',
+            ], true)
+            || ($stripeCustomerId !== null
+                && preg_match('/^cus_[A-Za-z0-9]+$/D', $stripeCustomerId) !== 1)
+            || ($stripeSubscriptionId !== null
+                && preg_match('/^sub_[A-Za-z0-9]+$/D', $stripeSubscriptionId) !== 1)
+            || ($billingPeriodEnd !== null && $billingPeriodEnd < 1)
+            || (($checkoutId === null) !== ($checkoutUrl === null))
+            || (($checkoutId === null) !== ($checkoutExpiresAt === null))
+            || ($checkoutId !== null
+                && preg_match('/^cs_(?:test|live)_[A-Za-z0-9]+$/D', $checkoutId) !== 1)
+            || ($checkoutUrl !== null && ! self::validCheckoutUrl($checkoutUrl))
+            || ($checkoutExpiresAt !== null && $checkoutExpiresAt < 1)
             || ! self::validSenders($senders)) {
             throw new RelayRejected('Installation configuration is invalid.');
         }
@@ -107,7 +138,35 @@ final readonly class Installation
             $this->lastRouteRotationId,
             $this->routeRotationAvailableAt,
             $this->publicAlias,
+            $this->billingStatus,
+            $this->stripeCustomerId,
+            $this->stripeSubscriptionId,
+            $this->billingPeriodEnd,
+            $this->checkoutId,
+            $this->checkoutUrl,
+            $this->checkoutExpiresAt,
         );
+    }
+
+    public function hasRelayAccess(bool $subscriptionRequired, ?int $now = null): bool
+    {
+        if (! $this->active) {
+            return false;
+        }
+
+        if (! $subscriptionRequired) {
+            return true;
+        }
+
+        if (in_array($this->billingStatus, ['complimentary', 'active', 'trialing'], true)) {
+            return true;
+        }
+
+        $now ??= time();
+
+        return $this->billingStatus === 'past_due'
+            && $this->billingPeriodEnd !== null
+            && $this->billingPeriodEnd >= $now;
     }
 
     private static function validRotationId(string $rotationId): bool
@@ -133,6 +192,17 @@ final readonly class Installation
             && ! isset($parts['pass'])
             && ! isset($parts['query'])
             && ! isset($parts['fragment']);
+    }
+
+    private static function validCheckoutUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+
+        return is_array($parts)
+            && mb_strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+            && mb_strtolower((string) ($parts['host'] ?? '')) === 'checkout.stripe.com'
+            && ! isset($parts['user'])
+            && ! isset($parts['pass']);
     }
 
     /** @param  array<int, string>  $senders */

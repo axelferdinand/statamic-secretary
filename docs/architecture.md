@@ -91,7 +91,7 @@ Each installation can use its own inbound route and public mailbox. For the opti
 
 ## Conversation flow
 
-1. Store the incoming message, enqueue it durably, and acknowledge the HTTP request quickly. A `sync` queue defers local processing until after the response; production queue drivers receive the job before the response is returned.
+1. Store the incoming message, dispatch it through the configured queue, and acknowledge the HTTP request quickly. The standard `sync` path processes after the response; persistent queue drivers receive the job before the response is returned.
 2. Resolve or create a conversation using the CP conversation ID or Postmark mailbox hash.
 3. Give the model only the current request, relevant conversation state, compact content schema, and allowlisted tools.
 4. Execute read tools immediately. Store mutation tools as audited change sets and validate them in application code.
@@ -101,7 +101,7 @@ Each installation can use its own inbound route and public mailbox. For the opti
 
 Each inbound message may create at most one change set for a given resource and operation identity. If a worker or model continuation repeats that mutation with different generated arguments after a partial success, Secretary returns the first auditable change instead of creating a divergent second draft.
 
-Jobs from CP and email share a per-conversation cache lock and defer newer messages until older inbound messages are processed. This keeps OpenAI continuation IDs and content mutations ordered even with multiple workers. A fixed retry deadline of at least 24 hours prevents normal FIFO deferrals from consuming a short attempt budget; actual exceptions remain separately bounded. Production requires a shared lock-capable cache and a queue `retry_after` longer than the configured Secretary job timeout.
+Jobs from CP and email share a per-conversation cache lock and defer newer messages until older inbound messages are processed. This keeps OpenAI continuation IDs and content mutations ordered even with multiple workers. A fixed retry deadline of at least 24 hours prevents normal FIFO deferrals from consuming a short attempt budget; actual exceptions remain separately bounded. The standard `sync` path needs no worker. Sites that opt into a persistent multi-worker queue should use a shared lock-capable cache and a queue `retry_after` longer than the configured Secretary job timeout.
 
 ## Model and API
 
@@ -111,15 +111,9 @@ The API key may come from environment configuration or the first-run Control Pan
 
 ## Marketplace shape
 
-The repository is a standalone `statamic-addon` Composer package with a Statamic addon service provider. Before Marketplace submission it will need:
+The repository is a standalone `statamic-addon` Composer package with a Statamic addon service provider. Semantic releases are tagged on GitHub and indexed by Packagist. The package includes installation, privacy, security, support, Postmark, relay, and OpenAI documentation, compiled Control Panel assets, and automated PHP/Laravel/package tests. Statamic performs commercial addon license validation from the Marketplace product; Secretary does not implement a parallel license system.
 
-- tagged semantic releases on GitHub;
-- a Packagist package;
-- installation, privacy, security, queue, Postmark, and OpenAI setup documentation;
-- a compatibility and support policy;
-- automated tests across supported PHP/Laravel versions;
-- screenshots and a polished Marketplace listing;
-- a seller account, and billing setup if the addon is paid.
+The remaining Marketplace work is operational: complete the final live acceptance gates, create the Creator shop with GitHub and Stripe, connect the stable Packagist package, upload the finished product media, and publish the Marketplace product.
 
 ## Deliberate limits
 

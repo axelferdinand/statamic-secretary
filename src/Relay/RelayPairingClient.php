@@ -118,6 +118,11 @@ final class RelayPairingClient
         }
 
         $payload = $response->json();
+
+        if (is_array($payload) && ($payload['status'] ?? null) === 'payment_required') {
+            return $this->storePendingCheckout($payload, $stored);
+        }
+
         $allowed = [
             'accepted',
             'status',
@@ -126,11 +131,12 @@ final class RelayPairingClient
             'signing_secret',
             'address',
             'route_address',
+            'billing_status',
         ];
 
         if (! is_array($payload)
             || array_diff(array_keys($payload), $allowed) !== []
-            || array_diff(array_diff($allowed, ['route_address']), array_keys($payload)) !== []
+            || array_diff(array_diff($allowed, ['route_address', 'billing_status']), array_keys($payload)) !== []
             || ($payload['accepted'] ?? null) !== true
             || ! in_array($payload['status'] ?? null, ['paired', 'already_paired'], true)
             || ! is_string($payload['installation_id'])
@@ -140,7 +146,15 @@ final class RelayPairingClient
             || ! is_string($payload['signing_secret'])
             || strlen($this->decodeSecret($payload['signing_secret'])) < 32
             || ! is_string($payload['address'])
-            || filter_var($payload['address'], FILTER_VALIDATE_EMAIL) === false) {
+            || filter_var($payload['address'], FILTER_VALIDATE_EMAIL) === false
+            || (isset($payload['billing_status'])
+                && ! in_array($payload['billing_status'], [
+                    'beta',
+                    'complimentary',
+                    'active',
+                    'trialing',
+                    'past_due',
+                ], true))) {
             throw new RelayDeliveryFailed('The shared-address relay returned an invalid pairing response.');
         }
 
@@ -161,6 +175,61 @@ final class RelayPairingClient
             'sender' => data_get($stored, 'pending_sender'),
             'base_url' => $this->configuration->baseUrl(),
             'connected_at' => now()->toIso8601String(),
+            'billing_status' => is_string($payload['billing_status'] ?? null)
+                ? $payload['billing_status']
+                : 'active',
+        ];
+        $this->configuration->store($settings);
+
+        return $settings;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $stored
+     * @return array<string, mixed>
+     */
+    private function storePendingCheckout(array $payload, array $stored): array
+    {
+        $allowed = [
+            'accepted',
+            'status',
+            'installation_id',
+            'billing_status',
+            'checkout_url',
+            'checkout_expires_at',
+            'price',
+        ];
+        $parts = is_string($payload['checkout_url'] ?? null)
+            ? parse_url($payload['checkout_url'])
+            : false;
+        $price = $payload['price'] ?? null;
+
+        if (array_keys($payload) !== $allowed
+            || ($payload['accepted'] ?? null) !== true
+            || ! is_string($payload['installation_id'] ?? null)
+            || preg_match('/^si_[a-z0-9_-]{20,125}$/D', $payload['installation_id']) !== 1
+            || ! in_array($payload['billing_status'] ?? null, ['beta', 'pending', 'past_due'], true)
+            || ! is_array($parts)
+            || mb_strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+            || mb_strtolower((string) ($parts['host'] ?? '')) !== 'checkout.stripe.com'
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || ! is_int($payload['checkout_expires_at'] ?? null)
+            || $payload['checkout_expires_at'] <= now()->getTimestamp()
+            || ! is_array($price)
+            || $price !== ['amount' => 4900, 'currency' => 'usd', 'interval' => 'year']) {
+            throw new RelayDeliveryFailed('The shared-address relay returned an invalid checkout response.');
+        }
+
+        $settings = [
+            ...$stored,
+            'enabled' => false,
+            'pending_installation_id' => $payload['installation_id'],
+            'billing_status' => 'pending',
+            'checkout_url' => $payload['checkout_url'],
+            'checkout_expires_at' => $payload['checkout_expires_at'],
+            'price' => $price,
         ];
         $this->configuration->store($settings);
 

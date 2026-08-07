@@ -240,6 +240,12 @@ final class RelayConfiguration
             'sender' => data_get($this->stored(), 'sender'),
             'pending_sender' => data_get($this->stored(), 'pending_sender'),
             'pending_public_url' => data_get($this->stored(), 'pending_public_url'),
+            'payment_required' => data_get($this->stored(), 'billing_status') === 'pending'
+                && filled(data_get($this->stored(), 'checkout_url')),
+            'billing_status' => data_get($this->stored(), 'billing_status'),
+            'checkout_url' => data_get($this->stored(), 'checkout_url'),
+            'checkout_expires_at' => data_get($this->stored(), 'checkout_expires_at'),
+            'price' => data_get($this->stored(), 'price'),
             'verification_requested_at' => data_get(
                 $this->stored(),
                 'verification_requested_at',

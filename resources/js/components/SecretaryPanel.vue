@@ -15,6 +15,7 @@ const loading = ref(false);
 const busy = ref(false);
 const error = ref(null);
 const panel = ref(null);
+const launcher = ref(null);
 const selectedConversation = ref('');
 const message = ref('');
 const feed = ref(null);
@@ -29,10 +30,13 @@ const previewOpen = ref(false);
 const previewLoading = ref(false);
 const previewData = ref(null);
 const previewError = ref(null);
+const previewChange = ref(null);
+const sendingSuggestion = ref(null);
 const pageUrl = ref(typeof window === 'undefined' ? '' : window.location.href);
 let pollTimer = null;
 let referenceTimer = null;
 let contextRequest = 0;
+let previewRequest = 0;
 let activeDraftKey = null;
 let stopNavigationListener = null;
 
@@ -141,28 +145,28 @@ const promptSuggestions = computed(() => {
 
     if (field?.type === 'bard' || field?.type === 'replicator') {
         return [
-            `Improve the copy in the ${field.set_type ? `${field.set_type} module` : field.display}.`,
-            'Make this module shorter without changing the rest of the page.',
-            'Suggest a better order for the content modules.',
+            `Make the ${field.set_type ? `${field.set_type} module` : field.display} clearer and more engaging.`,
+            'Trim this module until every sentence earns its keep.',
+            'Reorder these modules so the story stops doing parkour.',
         ];
     }
 
     if (field) {
         return [
             `Make the “${field.display}” field clearer.`,
-            `Proofread only “${field.display}”.`,
-            `Write three alternatives for “${field.display}”.`,
+            `Proofread only “${field.display}” — hunt typos, spare everything else.`,
+            `Write three alternatives for “${field.display}”: safe, bold, and slightly cheeky.`,
         ];
     }
 
     return activeContext.value ? [
-        'Make the introduction clearer and shorter.',
-        'Find language issues on this page.',
-        'Suggest a better page title.',
+        'Make the introduction clearer, shorter, and less corporate.',
+        'Hunt down awkward language and suspicious commas.',
+        'Give this page a title people might actually remember.',
     ] : [
-        'Make the homepage introduction clearer.',
-        'Find the “About us” page and suggest a better title.',
-        'Draft a new contact page.',
+        'Make the homepage introduction sound more human.',
+        'Find the “About us” page and rescue its title.',
+        'Draft a contact page that doesn’t feel like paperwork.',
     ];
 });
 
@@ -296,11 +300,10 @@ async function changeConversation() {
     await load(selectedConversation.value, { contextUrl: pageUrl.value });
 }
 
-async function send() {
-    const text = message.value.trim();
-
+async function submitMessage(text, suggestion = null) {
     if (!conversation.value?.send_url || !text || busy.value || !configured.value) return;
 
+    sendingSuggestion.value = suggestion;
     busy.value = true;
     error.value = null;
 
@@ -311,14 +314,23 @@ async function send() {
             field_context: fieldContext.value,
         });
         persistDraft(activeDraftKey, '');
-        message.value = '';
+        if (!suggestion) message.value = '';
         references.value = [];
         applyPanel(response.data);
     } catch (exception) {
         error.value = responseError(exception, 'Secretary could not send the message.');
     } finally {
         busy.value = false;
+        sendingSuggestion.value = null;
     }
+}
+
+async function send() {
+    await submitMessage(message.value.trim());
+}
+
+async function sendSuggestion(suggestion) {
+    await submitMessage(suggestion, suggestion);
 }
 
 async function review(change, target, decision) {
@@ -348,25 +360,44 @@ async function review(change, target, decision) {
 async function openPreview(change) {
     if (!change?.preview_url || previewLoading.value) return;
 
+    const requestId = ++previewRequest;
+
     previewOpen.value = true;
     previewLoading.value = true;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = change;
 
     try {
         const response = await axios.get(change.preview_url);
-        previewData.value = response.data;
+
+        if (requestId === previewRequest) previewData.value = response.data;
     } catch (exception) {
-        previewError.value = responseError(exception, 'The preview could not be opened.');
+        if (requestId === previewRequest) {
+            previewError.value = responseError(exception, 'The preview could not be opened.');
+        }
     } finally {
-        previewLoading.value = false;
+        if (requestId === previewRequest) previewLoading.value = false;
     }
 }
 
 function closePreview() {
+    previewRequest += 1;
     previewOpen.value = false;
+    previewLoading.value = false;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = null;
+}
+
+async function publishFromPreview() {
+    const change = previewChange.value;
+
+    if (!change) return;
+
+    const published = await publish(change);
+
+    if (published) closePreview();
 }
 
 function captureFieldContext(event) {
@@ -465,7 +496,7 @@ function reuseFailedMessage() {
 }
 
 async function publish(change) {
-    if (!change?.publish_url || publishingId.value || conversation.value?.processing || !canPublish.value) return;
+    if (!change?.publish_url || publishingId.value || conversation.value?.processing || !canPublish.value) return false;
 
     publishingId.value = change.id;
     error.value = null;
@@ -475,8 +506,10 @@ async function publish(change) {
         applyPanel(response.data);
         announcement.value = 'The change has been published.';
         refreshVisibleContent();
+        return true;
     } catch (exception) {
         error.value = responseError(exception, 'Secretary could not publish the change.');
+        return false;
     } finally {
         publishingId.value = null;
     }
@@ -491,16 +524,30 @@ function refreshVisibleContent() {
     });
 }
 
-function useSuggestion(suggestion) {
-    message.value = suggestion;
-    nextTick(() => document.getElementById('secretary-panel-message')?.focus());
-}
-
 function onComposerKeydown(event) {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         send();
     }
+}
+
+function onPanelKeydown(event) {
+    if (event.key !== 'Escape' || !open.value || previewOpen.value) return;
+
+    event.preventDefault();
+    open.value = false;
+    nextTick(() => {
+        window.requestAnimationFrame(() => {
+            const target = launcher.value?.$el
+                ?? launcher.value
+                ?? document.querySelector('.secretary-panel-launcher');
+            const button = target?.matches?.('button')
+                ? target
+                : target?.querySelector?.('button') ?? document.querySelector('.secretary-panel-launcher');
+
+            button?.focus?.();
+        });
+    });
 }
 
 function channelLabel(channel) {
@@ -541,6 +588,7 @@ async function ensureContextConversation() {
 }
 
 async function opened() {
+    labelPanelCloseButton();
     await load('', { contextUrl: pageUrl.value });
     await ensureContextConversation();
     syncPolling();
@@ -548,6 +596,20 @@ async function opened() {
 
 function closed() {
     syncPolling();
+}
+
+function labelPanelCloseButton() {
+    nextTick(() => {
+        const header = document.querySelector(
+            '.stack-content:has(.secretary-panel-shell) > [data-ui-stack-title]',
+        );
+        const closeButton = header?.querySelector('button:last-of-type');
+
+        if (!closeButton) return;
+
+        closeButton.setAttribute('aria-label', 'Close Secretary');
+        closeButton.setAttribute('title', 'Close Secretary');
+    });
 }
 
 async function syncPageContext() {
@@ -560,9 +622,12 @@ async function syncPageContext() {
     pageUrl.value = nextUrl;
     fieldContext.value = null;
     selectedConversation.value = '';
+    previewRequest += 1;
     previewOpen.value = false;
+    previewLoading.value = false;
     previewData.value = null;
     previewError.value = null;
+    previewChange.value = null;
     if (conversationId) open.value = true;
     await load(conversationId, {
         quiet: panel.value !== null,
@@ -582,6 +647,7 @@ onMounted(() => {
     stopNavigationListener = router.on('navigate', syncPageContext);
     window.addEventListener('popstate', syncPageContext);
     window.addEventListener('hashchange', syncPageContext);
+    window.addEventListener('keydown', onPanelKeydown);
     pageUrl.value = window.location.href;
     const conversationId = linkedConversationId(pageUrl.value);
     if (conversationId) open.value = true;
@@ -598,6 +664,7 @@ onBeforeUnmount(() => {
     stopNavigationListener?.();
     window.removeEventListener('popstate', syncPageContext);
     window.removeEventListener('hashchange', syncPageContext);
+    window.removeEventListener('keydown', onPanelKeydown);
     document.removeEventListener('focusin', captureFieldContext, true);
 });
 </script>
@@ -615,6 +682,7 @@ onBeforeUnmount(() => {
         >
             <template #trigger>
                 <ui-button
+                    ref="launcher"
                     v-show="!open && !isSecretaryWorkspace"
                     class="secretary-panel-launcher"
                     icon="ai-chat-spark"
@@ -740,7 +808,7 @@ onBeforeUnmount(() => {
                         aria-label="Secretary conversation"
                     >
                         <div v-if="conversation.processing_error" class="secretary-action-error" role="alert">
-                            <div class="font-semibold">Secretary stopped</div>
+                            <div class="font-semibold">Secretary couldn’t finish this request</div>
                             <div class="mt-1">{{ conversation.processing_error }}</div>
                             <button
                                 v-if="conversation.failed_message_body"
@@ -748,7 +816,7 @@ onBeforeUnmount(() => {
                                 class="secretary-error-action"
                                 @click="reuseFailedMessage"
                             >
-                                Put the request back in the composer
+                                Edit and try again
                             </button>
                         </div>
 
@@ -766,9 +834,11 @@ onBeforeUnmount(() => {
                                     :key="suggestion"
                                     type="button"
                                     class="secretary-prompt-suggestion"
-                                    @click="useSuggestion(suggestion)"
+                                    :aria-label="`Send: ${suggestion}`"
+                                    :disabled="busy || !configured"
+                                    @click="sendSuggestion(suggestion)"
                                 >
-                                    <span>{{ suggestion }}</span>
+                                    <span>{{ sendingSuggestion === suggestion ? 'Sending …' : suggestion }}</span>
                                     <ui-icon name="arrow-right" class="size-4 shrink-0" aria-hidden="true" />
                                 </button>
                             </div>
@@ -973,7 +1043,10 @@ onBeforeUnmount(() => {
             :preview="previewData"
             :loading="previewLoading"
             :error="previewError"
+            :can-publish="canPublish"
+            :publishing="publishingId === previewChange?.id"
             @close="closePreview"
+            @publish="publishFromPreview"
         />
     </Teleport>
 </template>

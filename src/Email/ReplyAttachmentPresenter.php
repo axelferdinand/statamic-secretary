@@ -81,7 +81,7 @@ final class ReplyAttachmentPresenter
     /**
      * @param  array<int, array{id: string, name: string, native_url: string}>  $attachments
      */
-    public function appendToText(string $body, array $attachments): string
+    public function appendToText(string $body, array $attachments, string $heading = 'Attachments in Statamic'): string
     {
         $body = trim($body);
 
@@ -89,7 +89,7 @@ final class ReplyAttachmentPresenter
             return $body;
         }
 
-        $body .= "\n\nVedlegg i Statamic:";
+        $body .= "\n\n{$heading}:";
 
         foreach ($attachments as $attachment) {
             $body .= "\n- {$attachment['name']}\n  {$attachment['native_url']}";

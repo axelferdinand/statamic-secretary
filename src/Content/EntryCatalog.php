@@ -39,15 +39,71 @@ final class EntryCatalog
     /** @return array<string, mixed> */
     public function describeBlueprint(User $user, string $collectionHandle, string $blueprintHandle): array
     {
-        $this->allowedCollections->ensure($collectionHandle);
-
-        $collection = Collection::find($collectionHandle)
-            ?? throw new ContentOperationDenied("Collection [{$collectionHandle}] was not found.");
-        $this->authorizeView($user, $collection, "collection [{$collectionHandle}]");
-        $blueprint = $collection->entryBlueprint($blueprintHandle)
-            ?? throw new ContentOperationDenied("Blueprint [{$blueprintHandle}] was not found in [{$collectionHandle}].");
+        [, $blueprint] = $this->blueprint($user, $collectionHandle, $blueprintHandle);
 
         return $this->payloadGuard->ensure($this->blueprints->describe($blueprint), "Blueprint [{$blueprintHandle}]");
+    }
+
+    /** @return array<string, mixed> */
+    public function describeBlueprintSet(
+        User $user,
+        string $collectionHandle,
+        string $blueprintHandle,
+        string $fieldHandle,
+        string $setHandle,
+    ): array {
+        [, $blueprint] = $this->blueprint($user, $collectionHandle, $blueprintHandle);
+
+        return $this->payloadGuard->ensure(
+            $this->blueprints->describeSet($blueprint, $fieldHandle, $setHandle),
+            "Set [{$fieldHandle}:{$setHandle}]",
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return array<int, array{collection: string, blueprint: string, field: string, set: string}>
+     */
+    public function structuredSetReferencesForEntry(User $user, string $id, array $values): array
+    {
+        $entry = Entry::find($id)
+            ?? throw new ContentOperationDenied("Entry [{$id}] was not found.");
+        $collection = $entry->collection()->handle();
+
+        $this->allowedCollections->ensure($collection);
+        $this->pathGuard->ensure($entry->path());
+        $this->authorizeView($user, $entry, "entry [{$id}]");
+
+        return array_map(
+            static fn (array $reference): array => [
+                'collection' => $collection,
+                'blueprint' => $entry->blueprint()->handle(),
+                ...$reference,
+            ],
+            $this->blueprints->structuredSetReferences($entry->blueprint(), $values),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return array<int, array{collection: string, blueprint: string, field: string, set: string}>
+     */
+    public function structuredSetReferencesForBlueprint(
+        User $user,
+        string $collectionHandle,
+        string $blueprintHandle,
+        array $values,
+    ): array {
+        [, $blueprint] = $this->blueprint($user, $collectionHandle, $blueprintHandle);
+
+        return array_map(
+            static fn (array $reference): array => [
+                'collection' => $collectionHandle,
+                'blueprint' => $blueprintHandle,
+                ...$reference,
+            ],
+            $this->blueprints->structuredSetReferences($blueprint, $values),
+        );
     }
 
     /** @return array<string, mixed> */
@@ -124,5 +180,19 @@ final class EntryCatalog
         if (! $user->can('view', $resource)) {
             throw new ContentOperationDenied("The requesting user is not allowed to read {$label}.");
         }
+    }
+
+    /** @return array{0: mixed, 1: mixed} */
+    private function blueprint(User $user, string $collectionHandle, string $blueprintHandle): array
+    {
+        $this->allowedCollections->ensure($collectionHandle);
+
+        $collection = Collection::find($collectionHandle)
+            ?? throw new ContentOperationDenied("Collection [{$collectionHandle}] was not found.");
+        $this->authorizeView($user, $collection, "collection [{$collectionHandle}]");
+        $blueprint = $collection->entryBlueprint($blueprintHandle)
+            ?? throw new ContentOperationDenied("Blueprint [{$blueprintHandle}] was not found in [{$collectionHandle}].");
+
+        return [$collection, $blueprint];
     }
 }

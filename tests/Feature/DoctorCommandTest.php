@@ -4,6 +4,7 @@ namespace AxelFerdinand\StatamicSecretary\Tests\Feature;
 
 use AxelFerdinand\StatamicSecretary\Diagnostics\DoctorReport;
 use AxelFerdinand\StatamicSecretary\Email\EmailConfiguration;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use AxelFerdinand\StatamicSecretary\Relay\RelayConfiguration;
 use AxelFerdinand\StatamicSecretary\Tests\TestCase;
 
@@ -32,6 +33,35 @@ class DoctorCommandTest extends TestCase
         $this->assertTrue($check['passed']);
         $this->assertSame('Background processing', $check['label']);
         $this->assertSame('Built-in processing is active. No queue worker is required.', $check['success_details']);
+    }
+
+    public function test_unverified_openai_access_is_a_visible_warning(): void
+    {
+        $check = collect(app(DoctorReport::class)->checks(
+            app(EmailConfiguration::class),
+            app(RelayConfiguration::class),
+        ))->firstWhere('key', 'openai_access');
+
+        $this->assertFalse($check['passed']);
+        $this->assertFalse($check['required']);
+        $this->assertStringContainsString('Not tested yet', $check['details']);
+    }
+
+    public function test_a_known_openai_credit_failure_is_blocking(): void
+    {
+        app(OpenAIConfiguration::class)->recordHealth(
+            false,
+            'The connected OpenAI account has no available credits.',
+        );
+
+        $check = collect(app(DoctorReport::class)->checks(
+            app(EmailConfiguration::class),
+            app(RelayConfiguration::class),
+        ))->firstWhere('key', 'openai_access');
+
+        $this->assertFalse($check['passed']);
+        $this->assertTrue($check['required']);
+        $this->assertStringContainsString('no available credits', $check['details']);
     }
 
     public function test_missing_safe_drafts_are_a_blocking_problem(): void

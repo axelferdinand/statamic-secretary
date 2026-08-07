@@ -1,6 +1,6 @@
 # Release and Marketplace roadmap
 
-This document preserves the remaining work required to turn Statamic Secretary from a working product into a production-proven Marketplace addon. It is a reminder list, not evidence that the release gates have passed.
+This document preserves the remaining work required to turn Secretary for Statamic from a working product into a production-proven Marketplace addon. It is a reminder list, not evidence that the release gates have passed.
 
 ## Product proof still required
 
@@ -32,32 +32,31 @@ The product must not be described as production-proven until these gates pass.
 - Keep the commercial license, Composer metadata, Marketplace price, and production-site licensing language aligned before every release.
 - Prepare a changelog, version support policy, privacy page, security policy, and support contact.
 
-## Packagist and Composer release
+## Stable Composer release
 
 1. Finish the product-proof and distribution gates above.
 2. Commit the intended release files to the public GitHub repository.
-3. Create an annotated semantic version tag, initially `v0.1.0` if this remains a prerelease.
-4. Submit `axelferdinand/statamic-secretary` to [Packagist](https://packagist.org/).
-5. Connect Packagist to GitHub so new tags update automatically.
-6. Wait for Packagist to index the tagged version and inspect the published dependency constraints.
-7. In a completely fresh Statamic 6 site, run:
+3. Move the changelog entries from `Unreleased` to stable version `0.1.0`.
+4. Create and push the stable semantic version tag `v0.1.0`. This is also the value to use for Marketplace’s **Minimum Git Version** field.
+5. Wait for the existing [Packagist package](https://packagist.org/packages/axelferdinand/statamic-secretary) to index `0.1.0`, then inspect the published dependency constraints and archive.
+6. In a completely fresh Statamic 6 site, run:
 
    ```shell
    composer require axelferdinand/statamic-secretary
    ```
 
-8. Open **Content → Secretary**, add an OpenAI key, and choose the hosted relay or a private Postmark server. Do not add Secretary secrets to `.env` for this test.
-9. Confirm the private SQLite store is created and migrated automatically without depending on the site's default database. Installations that explicitly set `SECRETARY_AUTO_MIGRATE=false` must initialize it on the first Secretary request without terminal access.
-10. Verify addon discovery, published assets, CP navigation, permissions, chat, draft creation, email onboarding, and uninstall behavior.
-11. Repeat this install test using the exact command shown by the Marketplace product.
+7. Open **Content → Secretary**, add an OpenAI key, and choose the hosted relay or a private Postmark server. Do not add Secretary secrets to `.env` for this test.
+8. Confirm the private SQLite store is created and migrated automatically without depending on the site's default database. Installations that explicitly set `SECRETARY_AUTO_MIGRATE=false` must initialize it on the first Secretary request without terminal access.
+9. Verify addon discovery, published assets, CP navigation, permissions, chat, draft creation, email onboarding, and uninstall behavior.
+10. Repeat this install test using the exact command shown by the Marketplace product.
 
 ## Statamic Marketplace release
 
-1. Create or confirm the seller profile on [Statamic Marketplace](https://statamic.com/sell).
+1. Create or confirm the Creator shop on [Statamic Marketplace](https://statamic.com/creator/begin).
 2. Connect GitHub and Stripe Connect. Statamic currently pays the seller a 75% commission and retains 25% for transaction fees, taxes, and Marketplace operations.
 3. Create the addon product and link its GitHub repository and Packagist package.
 4. Set the addon price to **USD 49**.
-5. Keep the optional hosted `secretary@statamic.no` plan separate at **USD 49 per year**. Document whether it is purchased in the Marketplace, through a hosted-service checkout, or by license upgrade.
+5. Keep the optional hosted Relay plan separate at **USD 49 per year**, purchased through Stripe Checkout inside Secretary. The Marketplace purchase remains the one-time addon license.
 6. Add the product copy from `docs/marketplace-listing.md`.
 7. Upload:
    - 1024×1024 and 512×512 icons.
@@ -65,7 +64,7 @@ The product must not be described as production-proven until these gates pass.
    - A before/after change-card screenshot.
    - A redacted email-thread screenshot.
    - A short demo video or animated walkthrough.
-8. List exact requirements: Statamic 6 Pro, PHP 8.3+, database, persistent Laravel queue, and an OpenAI API project.
+8. List exact requirements: Statamic 6 Pro, PHP 8.3+, writable Laravel storage, and an OpenAI API project. State explicitly that the standard install needs neither an external database nor a queue worker.
 9. Explain the two email options clearly:
    - Bring your own Postmark server and address.
    - Add the hosted `secretary@statamic.no` inbox for USD 49/year.

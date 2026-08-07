@@ -20,6 +20,161 @@ use Statamic\Facades\User;
 
 class AgentOrchestratorTest extends TestCase
 {
+    public function test_it_resolves_bard_set_schemas_before_saving_the_complete_module_field(): void
+    {
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
+        $collection->save();
+        $blueprint = $collection->entryBlueprints()->first();
+        $blueprint->setContents([
+            'tabs' => [
+                'main' => [
+                    'sections' => [[
+                        'fields' => [
+                            [
+                                'handle' => 'title',
+                                'field' => ['type' => 'text', 'validate' => ['required']],
+                            ],
+                            [
+                                'handle' => 'modules',
+                                'field' => [
+                                    'type' => 'bard',
+                                    'sets' => [
+                                        'content' => [
+                                            'sets' => [
+                                                'faq' => [
+                                                    'display' => 'FAQ',
+                                                    'fields' => [
+                                                        [
+                                                            'handle' => 'heading',
+                                                            'field' => ['type' => 'text', 'validate' => ['required']],
+                                                        ],
+                                                        [
+                                                            'handle' => 'items',
+                                                            'field' => [
+                                                                'type' => 'grid',
+                                                                'validate' => ['required'],
+                                                                'fields' => [
+                                                                    [
+                                                                        'handle' => 'question',
+                                                                        'field' => ['type' => 'text', 'validate' => ['required']],
+                                                                    ],
+                                                                    [
+                                                                        'handle' => 'answer',
+                                                                        'field' => ['type' => 'bard', 'save_html' => true, 'validate' => ['required']],
+                                                                    ],
+                                                                ],
+                                                            ],
+                                                        ],
+                                                    ],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ]],
+                ],
+            ],
+        ]);
+        Entry::make()->id('agreement')->collection($collection)->slug('agreement')->published(true)->data([
+            'title' => 'Agreement requirements',
+            'modules' => [],
+        ])->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create(['channel' => 'email', 'user_id' => $user->id()]);
+        $fingerprint = app(EntryCatalog::class)->read($user, 'agreement')['fingerprint'];
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Add the complete FAQ module.',
+        ]);
+        $modules = [[
+            'type' => 'set',
+            'attrs' => [
+                'values' => [
+                    'type' => 'faq',
+                    'heading' => 'Frequently asked questions',
+                    'items' => [[
+                        'question' => 'What is an agreement requirement?',
+                        'answer' => '<p>A documented requirement.</p>',
+                    ]],
+                ],
+            ],
+        ]];
+        $client = new class($fingerprint, $modules) implements AgentClient
+        {
+            /** @var array<int, AgentRequest> */
+            public array $requests = [];
+
+            public function __construct(
+                private readonly string $fingerprint,
+                private readonly array $modules,
+            ) {}
+
+            public function respond(AgentRequest $request): AgentResponse
+            {
+                $this->requests[] = $request;
+
+                return match (count($this->requests)) {
+                    1 => $this->call('read', 'read_entry', ['entry_id' => 'agreement']),
+                    2 => $this->call('partial_update', 'update_entry_draft', [
+                        'entry_id' => 'agreement',
+                        'expected_fingerprint' => $this->fingerprint,
+                        'patch_json' => json_encode(['modules' => [[
+                            'type' => 'paragraph',
+                            'content' => [['type' => 'text', 'text' => 'A partial placeholder']],
+                        ]]], JSON_THROW_ON_ERROR),
+                        'summary' => 'Added a partial placeholder',
+                    ]),
+                    3, 4 => $this->call('complete_update_'.count($this->requests), 'update_entry_draft', [
+                        'entry_id' => 'agreement',
+                        'expected_fingerprint' => $this->fingerprint,
+                        'patch_json' => json_encode(['modules' => $this->modules], JSON_THROW_ON_ERROR),
+                        'summary' => 'Added the complete FAQ module',
+                    ]),
+                    default => new AgentResponse('resp_final', 'completed', [[
+                        'type' => 'message',
+                        'content' => [['type' => 'output_text', 'text' => 'The verified FAQ draft is ready.']],
+                    ]], 'The verified FAQ draft is ready.'),
+                };
+            }
+
+            private function call(string $id, string $name, array $arguments): AgentResponse
+            {
+                return new AgentResponse('resp_'.$id, 'completed', [[
+                    'type' => 'function_call',
+                    'call_id' => 'call_'.$id,
+                    'name' => $name,
+                    'arguments' => json_encode($arguments, JSON_THROW_ON_ERROR),
+                ]], '');
+            }
+        };
+
+        $reply = app()->makeWith(AgentOrchestrator::class, ['client' => $client])
+            ->respond($conversation, $inbound, $user);
+
+        $preflight = json_decode($client->requests[3]->input[0]['output'], true, flags: JSON_THROW_ON_ERROR);
+        $saved = json_decode($client->requests[4]->input[0]['output'], true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertFalse($preflight['ok']);
+        $this->assertSame('retry_update_entry_draft', $preflight['required_action']);
+        $this->assertSame(['heading', 'items'], array_column($preflight['set_schemas'][0]['fields'], 'handle'));
+        $this->assertSame(['question', 'answer'], array_column($preflight['set_schemas'][0]['fields'][1]['fields'], 'handle'));
+        $this->assertSame(['modules'], $saved['verified_saved_fields']);
+        $this->assertSame(['modules' => ['faq']], $saved['verified_bard_sets']);
+        $storedModules = Entry::find('agreement')->fromWorkingCopy()->value('modules');
+        $this->assertSame('faq', $storedModules[0]['attrs']['values']['type']);
+        $this->assertSame('Frequently asked questions', $storedModules[0]['attrs']['values']['heading']);
+        $this->assertSame('What is an agreement requirement?', $storedModules[0]['attrs']['values']['items'][0]['question']);
+        $this->assertSame('<p>A documented requirement.</p>', $storedModules[0]['attrs']['values']['items'][0]['answer']);
+        $this->assertSame('The verified FAQ draft is ready.', $reply->body);
+        $this->assertCount(1, $conversation->changeSets()->get());
+        $this->assertSame('Added the complete FAQ module', $conversation->changeSets()->first()->summary);
+    }
+
     public function test_an_imported_email_image_is_sent_to_openai_with_its_exact_statamic_asset_id(): void
     {
         $assetId = $this->createImageAsset('email/hero.png');
@@ -456,7 +611,7 @@ class AgentOrchestratorTest extends TestCase
         $this->assertSame(5, $client->requests);
     }
 
-    public function test_it_executes_a_strict_draft_tool_loop_without_publishing(): void
+    public function test_it_replaces_an_incomplete_same_message_draft_without_publishing(): void
     {
         $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
         $collection->save();
@@ -532,12 +687,84 @@ class AgentOrchestratorTest extends TestCase
 
         $this->assertSame('Tittelen er oppdatert i et utkast.', $reply->body);
         $this->assertSame('Før', Entry::find('home')->value('title'));
-        $this->assertSame('Etter', Entry::find('home')->fromWorkingCopy()->value('title'));
+        $this->assertSame('Et annet retry-resultat', Entry::find('home')->fromWorkingCopy()->value('title'));
         $this->assertSame('resp_tool', $client->requests[1]->previousResponseId);
         $this->assertSame('function_call_output', $client->requests[1]->input[0]['type']);
         $this->assertCount(1, $reply->metadata['change_set_ids']);
         $this->assertCount(1, $conversation->changeSets()->get());
-        $this->assertSame(['title' => 'Etter'], $conversation->changeSets()->first()->patch);
+        $this->assertSame(['title' => 'Et annet retry-resultat'], $conversation->changeSets()->first()->patch);
+        $this->assertSame('Nondeterministisk retry-resultat', $conversation->changeSets()->first()->summary);
+    }
+
+    public function test_it_recovers_when_the_model_attempts_an_entry_update_before_reading_the_entry(): void
+    {
+        $collection = Collection::make('pages')->title('Pages')->revisionsEnabled(true);
+        $collection->save();
+        Entry::make()->id('home')->collection($collection)->slug('home')->published(true)->data(['title' => 'Before'])->save();
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create(['channel' => 'email', 'user_id' => $user->id()]);
+        $fingerprint = app(EntryCatalog::class)->read($user, 'home')['fingerprint'];
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Change the homepage title.',
+        ]);
+        $client = new class($fingerprint) implements AgentClient
+        {
+            /** @var array<int, AgentRequest> */
+            public array $requests = [];
+
+            public function __construct(private readonly string $fingerprint) {}
+
+            public function respond(AgentRequest $request): AgentResponse
+            {
+                $this->requests[] = $request;
+
+                return match (count($this->requests)) {
+                    1 => new AgentResponse('resp_preflight', 'completed', [[
+                        'type' => 'function_call',
+                        'call_id' => 'call_update_early',
+                        'name' => 'update_entry_draft',
+                        'arguments' => json_encode([
+                            'entry_id' => 'home',
+                            'expected_fingerprint' => 'not-yet-read',
+                            'patch_json' => json_encode(['title' => 'After']),
+                            'summary' => 'Changed the title',
+                        ]),
+                    ]], ''),
+                    2 => new AgentResponse('resp_retry', 'completed', [[
+                        'type' => 'function_call',
+                        'call_id' => 'call_update_retry',
+                        'name' => 'update_entry_draft',
+                        'arguments' => json_encode([
+                            'entry_id' => 'home',
+                            'expected_fingerprint' => $this->fingerprint,
+                            'patch_json' => json_encode(['title' => 'After']),
+                            'summary' => 'Changed the title',
+                        ]),
+                    ]], ''),
+                    default => new AgentResponse('resp_final', 'completed', [[
+                        'type' => 'message',
+                        'content' => [['type' => 'output_text', 'text' => 'The draft is ready.']],
+                    ]], 'The draft is ready.'),
+                };
+            }
+        };
+
+        $reply = app()->makeWith(AgentOrchestrator::class, ['client' => $client])
+            ->respond($conversation, $inbound, $user);
+
+        $preflight = json_decode($client->requests[1]->input[0]['output'], true, flags: JSON_THROW_ON_ERROR);
+        $this->assertFalse($preflight['ok']);
+        $this->assertTrue($preflight['inspection_completed']);
+        $this->assertSame('retry_update_entry_draft', $preflight['required_action']);
+        $this->assertSame($fingerprint, $preflight['entry']['fingerprint']);
+        $this->assertSame('The draft is ready.', $reply->body);
+        $this->assertSame('Before', Entry::find('home')->value('title'));
+        $this->assertSame('After', Entry::find('home')->fromWorkingCopy()->value('title'));
+        $this->assertSame('draft', $conversation->changeSets()->first()->status);
     }
 
     public function test_it_preserves_local_state_for_tool_calls_when_openai_storage_is_disabled(): void
@@ -651,5 +878,64 @@ class AgentOrchestratorTest extends TestCase
         }
 
         $this->assertSame('resp_previous_complete', $conversation->fresh()->openai_response_id);
+    }
+
+    public function test_it_returns_a_useful_final_message_when_the_safe_tool_budget_is_exhausted(): void
+    {
+        config()->set('secretary.limits.max_tool_rounds', 2);
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create(['channel' => 'email', 'user_id' => $user->id()]);
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Bytt ut tekst og bilder med bedre innhold.',
+        ]);
+        $client = new class implements AgentClient
+        {
+            /** @var array<int, AgentRequest> */
+            public array $requests = [];
+
+            public function respond(AgentRequest $request): AgentResponse
+            {
+                $this->requests[] = $request;
+                $round = count($this->requests);
+
+                if ($round <= 2) {
+                    return new AgentResponse('resp_tool_'.$round, 'completed', [[
+                        'type' => 'function_call',
+                        'call_id' => 'call_'.$round,
+                        'name' => 'list_collections',
+                        'arguments' => '{}',
+                    ]], '');
+                }
+
+                return new AgentResponse('resp_budget_final', 'completed', [[
+                    'type' => 'message',
+                    'content' => [[
+                        'type' => 'output_text',
+                        'text' => 'Hvilket mål og hvilken målgruppe skal siden optimaliseres for?',
+                    ]],
+                ]], 'Hvilket mål og hvilken målgruppe skal siden optimaliseres for?');
+            }
+        };
+        $orchestrator = new AgentOrchestrator(
+            $client,
+            app(EntryCatalog::class),
+            app(EntryChangeService::class),
+            app(ContentResourceCatalog::class),
+            app(StagedContentChangeService::class),
+        );
+
+        $reply = $orchestrator->respond($conversation, $inbound, $user);
+
+        $this->assertSame('Hvilket mål og hvilken målgruppe skal siden optimaliseres for?', $reply->body);
+        $this->assertCount(3, $client->requests);
+        $this->assertSame([], $client->requests[2]->tools);
+        $this->assertSame('resp_tool_2', $client->requests[2]->previousResponseId);
+        $this->assertStringContainsString('safe inspection budget is now exhausted', $client->requests[2]->instructions);
+        $this->assertNotNull($inbound->fresh()->processed_at);
+        $this->assertSame('resp_budget_final', $conversation->fresh()->openai_response_id);
     }
 }

@@ -3,6 +3,8 @@
 namespace AxelFerdinand\StatamicSecretary\Tests\Unit;
 
 use AxelFerdinand\StatamicSecretary\Data\AgentRequest;
+use AxelFerdinand\StatamicSecretary\Exceptions\OpenAIRequestFailed;
+use AxelFerdinand\StatamicSecretary\OpenAI\OpenAIConfiguration;
 use AxelFerdinand\StatamicSecretary\OpenAI\ResponsesAgentClient;
 use AxelFerdinand\StatamicSecretary\Tests\TestCase;
 use Illuminate\Support\Facades\Http;
@@ -109,5 +111,33 @@ class ResponsesAgentClientTest extends TestCase
         app(ResponsesAgentClient::class)->respond(new AgentRequest([
             ['role' => 'user', 'content' => 'Hei'],
         ]));
+    }
+
+    public function test_it_turns_missing_credits_into_a_safe_editor_message_and_failed_health_check(): void
+    {
+        config()->set('secretary.openai.api_key', 'test-key');
+        Http::fake([
+            'api.openai.com/v1/responses' => Http::response([
+                'error' => [
+                    'code' => 'insufficient_quota',
+                    'message' => 'You have no credits remaining.',
+                ],
+            ], 429),
+        ]);
+
+        try {
+            app(ResponsesAgentClient::class)->respond(new AgentRequest([
+                ['role' => 'user', 'content' => 'Update the homepage'],
+            ]));
+            $this->fail('The OpenAI quota failure was not reported.');
+        } catch (OpenAIRequestFailed $exception) {
+            $this->assertSame('credits', $exception->reason);
+            $this->assertStringContainsString('no available credits', $exception->publicMessage);
+            $this->assertStringNotContainsString('test-key', $exception->publicMessage);
+        }
+
+        $health = app(OpenAIConfiguration::class)->health();
+        $this->assertFalse($health['passed']);
+        $this->assertStringContainsString('no available credits', $health['details']);
     }
 }

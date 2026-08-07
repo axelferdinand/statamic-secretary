@@ -20,6 +20,7 @@ final class SqliteSchema
         self::allowRepeatedInstallationPairings($pdo);
         self::addInstallationRotationColumns($pdo);
         self::addInstallationAliasColumn($pdo);
+        self::addInstallationBillingColumns($pdo);
         self::backfillInstallationAliases($pdo);
         $pdo->exec(
             'CREATE UNIQUE INDEX IF NOT EXISTS relay_public_alias_unique
@@ -194,7 +195,57 @@ final class SqliteSchema
                 )
                 SQL,
             'CREATE INDEX IF NOT EXISTS relay_postmark_poll_lease ON relay_postmark_poll_claims(status, lease_expires_at)',
+            <<<'SQL'
+                CREATE TABLE IF NOT EXISTS relay_billing_events (
+                    event_id TEXT PRIMARY KEY,
+                    installation_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (installation_id) REFERENCES relay_installations(id) ON DELETE CASCADE
+                )
+                SQL,
+            'CREATE INDEX IF NOT EXISTS relay_billing_event_installation ON relay_billing_events(installation_id, created_at)',
         ];
+    }
+
+    private static function addInstallationBillingColumns(PDO $pdo): void
+    {
+        $columns = $pdo->query('PRAGMA table_info(relay_installations)')->fetchAll(PDO::FETCH_ASSOC);
+        $existing = array_fill_keys(array_map(
+            static fn (array $column): string => (string) $column['name'],
+            $columns,
+        ), true);
+        $definitions = [
+            'billing_status' => "TEXT NOT NULL DEFAULT 'beta'",
+            'stripe_customer_id' => 'TEXT NULL',
+            'stripe_subscription_id' => 'TEXT NULL',
+            'billing_period_end' => 'INTEGER NULL',
+            'checkout_id' => 'TEXT NULL',
+            'checkout_url' => 'TEXT NULL',
+            'checkout_expires_at' => 'INTEGER NULL',
+        ];
+
+        foreach ($definitions as $name => $definition) {
+            if (! isset($existing[$name])) {
+                $pdo->exec("ALTER TABLE relay_installations ADD COLUMN {$name} {$definition}");
+            }
+        }
+
+        $pdo->exec(
+            'CREATE UNIQUE INDEX IF NOT EXISTS relay_stripe_customer_unique
+             ON relay_installations(stripe_customer_id)
+             WHERE stripe_customer_id IS NOT NULL',
+        );
+        $pdo->exec(
+            'CREATE UNIQUE INDEX IF NOT EXISTS relay_stripe_subscription_unique
+             ON relay_installations(stripe_subscription_id)
+             WHERE stripe_subscription_id IS NOT NULL',
+        );
+        $pdo->exec(
+            'CREATE UNIQUE INDEX IF NOT EXISTS relay_checkout_unique
+             ON relay_installations(checkout_id)
+             WHERE checkout_id IS NOT NULL',
+        );
     }
 
     private static function addInstallationRotationColumns(PDO $pdo): void

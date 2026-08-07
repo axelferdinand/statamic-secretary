@@ -10,8 +10,8 @@ $homeUrl = $isNorwegian ? '/no' : '/';
 $ogImageUrl = 'https://secretary.statamic.no/assets/statamic-secretary-og.png';
 $copy = $isNorwegian ? [
     'html_lang' => 'nb',
-    'title' => 'Personvern – Statamic Secretary',
-    'description' => 'Slik bruker landingssiden til Statamic Secretary valgfri Google Analytics, samtykke og nødvendige serverlogger.',
+    'title' => 'Personvern – Secretary for Statamic',
+    'description' => 'Slik bruker landingssiden til Secretary for Statamic valgfri Google Analytics, samtykke og nødvendige serverlogger.',
     'skip' => 'Hopp til innholdet',
     'language' => 'English',
     'breadcrumb_home' => 'Forside',
@@ -29,7 +29,7 @@ $copy = $isNorwegian ? [
     'choice_title' => 'Ditt valg',
     'choice_body' => 'Samtykkevalget lagres lokalt i nettleseren under nøkkelen statamic-secretary-analytics-consent-v1. Velger du «Bare nødvendige», lastes ikke Google-taggen. Åpne «Personvernvalg» i footeren for å endre valget. Når et samtykke trekkes tilbake, stoppes videre måling og kjente _ga-cookies slettes.',
     'service_title' => 'Secretary-tjenesten',
-    'service_body' => 'Denne erklæringen gjelder landingssiden. Selve addonen er selvhostet, og hver nettstedseier styrer sin Statamic-installasjon, OpenAI-konto, e-posttransport og lagring. Den driftede e-posttjenesten behandler bare data som trengs for sikker ruting og svar.',
+    'service_body' => 'Denne erklæringen gjelder landingssiden. Selve addonen er selvhostet, og hver nettstedseier styrer sin Statamic-installasjon, OpenAI-konto, e-posttransport og lagring. Den valgfrie driftede e-posttjenesten behandler data som trengs for sikker ruting og svar. Ved abonnement behandler Stripe kontakt-, betalings-, faktura- og abonnementsdata som betalingsleverandør. Secretary lagrer bare Stripe-identifikatorer og abonnementsstatus som trengs for å åpne eller sperre relay.',
     'service_link' => 'Les den tekniske personvernerklæringen på GitHub',
     'contact_title' => 'Kontakt',
     'contact_body' => 'Spørsmål om personvern, innsyn eller sletting kan sendes til',
@@ -43,8 +43,8 @@ $copy = $isNorwegian ? [
     'footer_privacy' => 'Personvern',
 ] : [
     'html_lang' => 'en',
-    'title' => 'Privacy – Statamic Secretary',
-    'description' => 'How the Statamic Secretary landing site uses optional Google Analytics, consent, and necessary server logs.',
+    'title' => 'Privacy – Secretary for Statamic',
+    'description' => 'How the Secretary for Statamic landing site uses optional Google Analytics, consent, and necessary server logs.',
     'skip' => 'Skip to content',
     'language' => 'Norsk',
     'breadcrumb_home' => 'Home',
@@ -62,7 +62,7 @@ $copy = $isNorwegian ? [
     'choice_title' => 'Your choice',
     'choice_body' => 'Your choice is stored locally in the browser under statamic-secretary-analytics-consent-v1. If you choose “Necessary only,” the Google tag does not load. Open “Privacy choices” in the footer to change your choice. Withdrawing consent stops further measurement and removes known _ga cookies.',
     'service_title' => 'The Secretary service',
-    'service_body' => 'This notice covers the landing site. The addon itself is self-hosted, and each site owner controls their Statamic installation, OpenAI account, mail transport, and retention. The hosted email service processes only the data needed for secure routing and replies.',
+    'service_body' => 'This notice covers the landing site. The addon itself is self-hosted, and each site owner controls their Statamic installation, OpenAI account, mail transport, and retention. The optional hosted email service processes the data needed for secure routing and replies. For subscriptions, Stripe processes contact, payment, invoice, and subscription data as the payment provider. Secretary stores only the Stripe identifiers and subscription status needed to allow or block relay access.',
     'service_link' => 'Read the technical privacy notice on GitHub',
     'contact_title' => 'Contact',
     'contact_body' => 'Questions about privacy, access, or deletion can be sent to',
@@ -126,7 +126,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="<?= $e($copy['title']) ?>">
-    <meta property="og:site_name" content="Statamic Secretary">
+    <meta property="og:site_name" content="Secretary for Statamic">
     <meta property="og:locale" content="<?= $isNorwegian ? 'nb_NO' : 'en_US' ?>">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="<?= $e($copy['title']) ?>">
@@ -146,7 +146,7 @@ $jsonFlags = JSON_UNESCAPED_SLASHES
 
     <header class="site-header is-scrolled" data-header>
         <div class="shell nav">
-            <a class="brand" href="<?= $e($homeUrl) ?>" aria-label="Statamic Secretary">
+            <a class="brand" href="<?= $e($homeUrl) ?>" aria-label="Secretary for Statamic">
                 <img src="/assets/secretary-icon.png" alt="" width="52" height="52">
                 <span>Statamic <strong>Secretary</strong></span>
             </a>

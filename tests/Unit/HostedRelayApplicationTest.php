@@ -64,7 +64,7 @@ class HostedRelayApplicationTest extends TestCase
         );
 
         $this->assertSame(401, $unauthorized->status);
-        $this->assertSame('Basic realm="Statamic Secretary relay"', $unauthorized->headers['WWW-Authenticate']);
+        $this->assertSame('Basic realm="Secretary relay"', $unauthorized->headers['WWW-Authenticate']);
         $this->assertSame(200, $wrongContentType->status);
         $this->assertSame(['accepted' => false, 'status' => 'rejected'], $this->decoded($wrongContentType->body));
         $this->assertSame(200, $invalidSender->status);

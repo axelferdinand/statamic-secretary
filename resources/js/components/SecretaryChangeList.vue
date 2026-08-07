@@ -96,6 +96,7 @@ function actionLabel(change) {
                 </ui-button>
                 <ui-button
                     v-if="change.status === 'draft' && canPublish"
+                    class="secretary-change-publish"
                     size="sm"
                     variant="primary"
                     :loading="publishingId === change.id"
