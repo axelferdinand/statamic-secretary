@@ -31,6 +31,7 @@ final class HostedRelayApplication
         private readonly int $maximumRequestBytes = 24_000_000,
         private readonly ?RateLimiter $rateLimiter = null,
         private readonly ?SubscriptionService $subscriptions = null,
+        private readonly ?BillingNoticeService $billingNotices = null,
     ) {
         if ($maximumRequestBytes < 32768 || $maximumRequestBytes > 32_000_000) {
             throw new RelayRejected('Hosted relay request limit is invalid.');
@@ -86,6 +87,10 @@ final class HostedRelayApplication
                     $message,
                     $outcome->candidateRouteTokens,
                 ),
+                'payment_required' => $this->billingResult(
+                    $message,
+                    $outcome->installationId,
+                ),
                 default => throw new RelayRejected('Relay returned an unknown routing outcome.'),
             };
         } catch (RelayTransientFailure $exception) {
@@ -105,6 +110,31 @@ final class HostedRelayApplication
                 'Retry-After' => '30',
             ]);
         }
+    }
+
+    private function billingResult(InboundMessage $message, ?string $installationId): HttpResult
+    {
+        if (! $this->billingNotices || ! is_string($installationId) || $installationId === '') {
+            throw new RelayRejected('Relay billing notice is unavailable.');
+        }
+
+        $outcome = $this->billingNotices->notify($message, $installationId);
+
+        if ($outcome->status === 'processing') {
+            return $this->json(503, [
+                'accepted' => false,
+                'status' => 'processing',
+            ], ['Retry-After' => '5']);
+        }
+
+        if (! in_array($outcome->status, ['sent', 'duplicate'], true)) {
+            throw new RelayRejected('Relay returned an unknown billing notice outcome.');
+        }
+
+        return $this->json(200, [
+            'accepted' => false,
+            'status' => 'payment_required',
+        ]);
     }
 
     /** @param  array<string, string>  $headers */

@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay\Bootstrap;
 
+use AxelFerdinand\StatamicSecretaryRelay\BillingNoticeService;
 use AxelFerdinand\StatamicSecretaryRelay\CpanelPublicAliasProvisioner;
 use AxelFerdinand\StatamicSecretaryRelay\CurlHttpTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
@@ -10,6 +11,7 @@ use AxelFerdinand\StatamicSecretaryRelay\InboundRouter;
 use AxelFerdinand\StatamicSecretaryRelay\Observability\SecurityEventReporter;
 use AxelFerdinand\StatamicSecretaryRelay\PairingService;
 use AxelFerdinand\StatamicSecretaryRelay\Persistence\SqliteRelayStore;
+use AxelFerdinand\StatamicSecretaryRelay\PostmarkBillingNoticeTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkInboundAdapter;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkMailTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkPairingCodeTransport;
@@ -151,6 +153,20 @@ final class RelayFactory
             ),
             rateLimiter: $rateLimiter,
             subscriptions: $subscriptions,
+            billingNotices: $subscriptions === null
+                ? null
+                : new BillingNoticeService(
+                    $store,
+                    $store,
+                    $subscriptions,
+                    new PostmarkBillingNoticeTransport(
+                        $http,
+                        $postmarkToken,
+                        $fromAddress,
+                        $fromName,
+                        $messageStream,
+                    ),
+                ),
         );
     }
 

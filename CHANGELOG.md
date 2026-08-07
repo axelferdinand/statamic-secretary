@@ -4,6 +4,10 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.5 - 2026-08-07
+
+- Send an English activation email with a secure Stripe Checkout link when an authorized sender emails a pending hosted Relay installation, instead of rejecting the message silently.
+
 ## 0.1.4 - 2026-08-07
 
 - Correct the hosted Relay factory wiring so Stripe billing boots with the intended Postmark limits and inbound traffic enforces subscription entitlements.
