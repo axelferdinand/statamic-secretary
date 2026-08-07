@@ -4,6 +4,11 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.3 - 2026-08-07
+
+- Update `league/commonmark` to 2.9.0 to include the upstream denial-of-service security fixes published on 2026-08-06.
+- Add Stripe Sandbox billing for the hosted Secretary Relay at USD 49 per year, including signed and idempotent webhook handling, customer Checkout activation, subscription-state enforcement, and complimentary demo installations.
+- Add operator-safe Relay billing commands, migration and deployment checks, and a complete activation guide that keeps existing installations available until billing is deliberately enabled.
 - Add an in-Control-Panel live OpenAI check that verifies API-key access, the selected model, and available credits without exposing provider secrets.
 - Replace opaque OpenAI and background-job failures with safe, actionable editor messages while preserving detailed diagnostics for administrators.
 - Keep the contextual Secretary panel open through normal desktop navigation, label its close control, and make Escape reliably close the panel and restore keyboard focus on desktop and mobile.
