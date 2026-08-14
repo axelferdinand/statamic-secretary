@@ -4,6 +4,10 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.7 - 2026-08-14
+
+- Update the transitive `nanoid` dependency to 3.3.18 to address GHSA-2v37-7h3g-55p8 and restore a clean production dependency audit.
+
 ## 0.1.6 - 2026-08-14
 
 - Let the hardened deployment routine reuse an already-unlocked SSH agent only when it contains the exact pinned Secretary deployment key, while retaining the private short-lived agent fallback and a portable short control-socket path.
