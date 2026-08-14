@@ -107,9 +107,11 @@ limited to a target, the release owner must:
 3. commit and push the release to `main`;
 4. create and push the matching stable or prerelease tag so Composer/Packagist
    can distribute the same code;
-5. run the dry-run and production deployment below; and
-6. verify the synchronized targets, production URLs, and published Composer
-   version.
+5. publish the matching GitHub Release with that version's notes from
+   `CHANGELOG.md`, so Statamic Marketplace can populate its release-notes page;
+6. run the dry-run and production deployment below; and
+7. verify the synchronized targets, production URLs, Marketplace release notes,
+   and the published Composer version.
 
 Use **Deploy live only** when the intended scope is deliberately limited to
 the hosted relay, landing page, and live demo without publishing a new

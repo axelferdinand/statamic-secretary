@@ -15,6 +15,7 @@ const props = defineProps({
     email_enabled: { type: Boolean, required: true },
     email_setup: { type: Object, required: true },
     relay_setup: { type: Object, required: true },
+    relay_checkout: { type: Object, required: true },
     onboarding: { type: Object, required: true },
     style_guides: { type: Object, required: true },
     diagnostics: { type: Object, required: true },
@@ -41,6 +42,7 @@ const diagnosticsNotice = ref(null);
 const safeDraftingBusy = ref(false);
 const copiedPostmarkAddress = ref(false);
 const copiedActiveEmailAddress = ref(false);
+const relayCheckoutTimedOut = ref(false);
 const postmarkApiKey = ref('');
 const publishCandidate = ref(null);
 const reviewingTarget = ref(null);
@@ -227,8 +229,43 @@ const { start: startPolling, stop: stopPolling } = usePoll(2000, {
     only: ['conversation', 'conversations'],
     preserveScroll: true,
 }, { autoStart: false });
+const { start: startCheckoutPolling, stop: stopCheckoutPolling } = usePoll(2000, {
+    only: ['relay_setup', 'relay_checkout'],
+    preserveScroll: true,
+}, { autoStart: false });
 let pollingMounted = false;
 let referenceTimer = null;
+let checkoutTimer = null;
+
+function clearCheckoutTimer() {
+    if (checkoutTimer) window.clearTimeout(checkoutTimer);
+    checkoutTimer = null;
+}
+
+function monitorRelayCheckout() {
+    clearCheckoutTimer();
+
+    if (props.relay_checkout.status !== 'verifying') {
+        stopCheckoutPolling();
+
+        if (props.relay_checkout.status === 'active') {
+            window.history.replaceState({}, '', props.endpoints.home);
+        }
+
+        return;
+    }
+
+    relayCheckoutTimedOut.value = false;
+    startCheckoutPolling();
+    checkoutTimer = window.setTimeout(() => {
+        stopCheckoutPolling();
+        relayCheckoutTimedOut.value = true;
+    }, 30000);
+}
+
+function retryRelayCheckout() {
+    monitorRelayCheckout();
+}
 
 function newConversation() {
     router.post(props.endpoints.create, {}, { onStart: () => busy.value = true, onFinish: () => busy.value = false });
@@ -598,6 +635,7 @@ onMounted(() => {
     scrollToLatest();
     syncPolling();
     loadGuide();
+    monitorRelayCheckout();
 });
 watch(() => props.conversation?.messages?.length, scrollToLatest);
 watch(processing, syncPolling);
@@ -611,7 +649,10 @@ watch(() => props.relay_setup.connected, connected => {
 });
 onBeforeUnmount(() => {
     if (referenceTimer) window.clearTimeout(referenceTimer);
+    clearCheckoutTimer();
+    stopCheckoutPolling();
 });
+watch(() => props.relay_checkout.status, monitorRelayCheckout);
 watch(guideSite, loadGuide);
 </script>
 
@@ -626,6 +667,48 @@ watch(guideSite, loadGuide);
                 </ui-button>
             </template>
         </ui-header>
+
+        <section
+            v-if="relay_checkout.returned"
+            class="secretary-checkout-return"
+            :class="`is-${relay_checkout.status}`"
+            aria-live="polite"
+        >
+            <span class="secretary-checkout-return-icon" aria-hidden="true">
+                <ui-icon :name="relay_checkout.status === 'active' ? 'checkmark' : (relay_checkout.status === 'canceled' ? 'close' : 'credit-card')" />
+            </span>
+            <div>
+                <small>Email Relay</small>
+                <h2 v-if="relay_checkout.status === 'active'">Payment complete — Relay is active</h2>
+                <h2 v-else-if="relay_checkout.status === 'canceled'">Checkout canceled</h2>
+                <h2 v-else-if="relay_checkout.status === 'finish'">Payment complete — finish the connection</h2>
+                <h2 v-else>Confirming your Relay subscription</h2>
+                <p>{{ relay_checkout.message }}</p>
+                <strong v-if="relay_checkout.status === 'active' && relay_setup.address">{{ relay_setup.address }}</strong>
+                <p v-if="relayCheckoutTimedOut" class="secretary-checkout-return-timeout">
+                    Stripe is taking longer than usual. Nothing is lost; try the check again.
+                </p>
+            </div>
+            <div class="secretary-checkout-return-actions">
+                <ui-button
+                    v-if="relay_checkout.status === 'active' && relay_setup.address"
+                    :href="`mailto:${relay_setup.address}`"
+                    variant="primary"
+                    icon="mail"
+                >
+                    Send first instruction
+                </ui-button>
+                <ui-button
+                    v-else-if="relayCheckoutTimedOut"
+                    type="button"
+                    variant="primary"
+                    icon="refresh"
+                    @click="retryRelayCheckout"
+                >
+                    Check again
+                </ui-button>
+            </div>
+        </section>
 
         <section v-if="!onboardingActive" class="secretary-admin-intro" aria-label="Secretary workflow">
             <div class="secretary-admin-intro-copy">

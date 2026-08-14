@@ -99,6 +99,32 @@ class RelayInboundControllerTest extends TestCase
         $this->assertDatabaseMissing('secretary_messages', ['provider_message_id' => 'relay-image-bad-hash']);
     }
 
+    public function test_version_three_reuses_the_relay_thread_and_skips_a_second_acknowledgement(): void
+    {
+        $this->configureRelay();
+        $this->authorizedUser();
+        Bus::fake();
+        Http::fake();
+        $conversationToken = 'c'.str_repeat('e', 25);
+        $payload = $this->payload('relay-edge-acknowledged', [
+            'version' => 3,
+            'conversation_token' => $conversationToken,
+            'acknowledgement_sent' => true,
+        ]);
+
+        $response = $this->postSigned($payload);
+
+        $response->assertOk()->assertJson([
+            'accepted' => true,
+            'conversation_token' => $conversationToken,
+        ]);
+        $conversation = Conversation::query()->firstOrFail();
+        $message = Message::query()->firstOrFail();
+        $this->assertSame($conversationToken, data_get($conversation->context, 'relay_conversation_token'));
+        $this->assertNotNull(data_get($message->metadata, 'acknowledgement_sent_at'));
+        Http::assertNothingSent();
+    }
+
     public function test_a_relay_reply_includes_a_direct_statamic_link_for_an_imported_attachment(): void
     {
         $this->configureRelay();

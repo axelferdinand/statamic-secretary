@@ -638,8 +638,12 @@ final class ApplicationSiteTransport implements SiteTransport
 
     public bool $failNext = false;
 
-    public function deliver(Installation $installation, InboundMessage $message, ?string $conversationToken): SiteDeliveryResult
-    {
+    public function deliver(
+        Installation $installation,
+        InboundMessage $message,
+        ?string $conversationToken,
+        bool $acknowledgementSent = false,
+    ): SiteDeliveryResult {
         if ($this->failNext) {
             $this->failNext = false;
 

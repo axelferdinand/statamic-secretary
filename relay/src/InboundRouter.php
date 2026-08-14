@@ -23,6 +23,7 @@ final class InboundRouter
         private readonly bool $requireSenderAuthentication = true,
         private readonly float $maximumSpamScore = 5.0,
         private readonly bool $subscriptionRequired = false,
+        private readonly ?ReceiptService $receipts = null,
     ) {}
 
     public function route(InboundMessage $message): RouteOutcome
@@ -127,18 +128,41 @@ final class InboundRouter
             $deliveryMessage = $this->requireSenderAuthentication
                 ? $message
                 : $message->authorizedForRegisteredSender();
-            $result = $this->transport->deliver(
-                $installation->forDeliveryRoute($selectedRouteToken),
-                $deliveryMessage,
-                $parsed->conversationToken,
+            $conversationToken = $parsed->conversationToken ?? $this->conversationToken(
+                $installation,
+                $message,
             );
             $conversation = new ConversationRoute(
-                $result->conversationToken,
+                $conversationToken,
                 $installation->id,
                 $selectedRouteToken,
                 $sender,
             );
             $this->store->saveConversation($conversation);
+            $receipt = $this->receipts?->send(
+                $installation,
+                $deliveryMessage,
+                $selectedRouteToken,
+                $conversationToken,
+            );
+
+            if ($receipt?->status === 'processing') {
+                $this->store->releaseInbound($message->providerMessageId, $installation->id);
+
+                return new RouteOutcome(
+                    'processing',
+                    $installation->id,
+                    $conversationToken,
+                    acknowledgementMilliseconds: $receipt->milliseconds,
+                );
+            }
+
+            $result = $this->transport->deliver(
+                $installation->forDeliveryRoute($selectedRouteToken),
+                $deliveryMessage,
+                $conversationToken,
+                $receipt !== null,
+            );
             $this->store->completeInbound(new InboundDelivery(
                 $message->providerMessageId,
                 $installation->id,
@@ -152,7 +176,12 @@ final class InboundRouter
             throw $exception;
         }
 
-        return new RouteOutcome('forwarded', $installation->id, $result->conversationToken);
+        return new RouteOutcome(
+            'forwarded',
+            $installation->id,
+            $result->conversationToken,
+            acknowledgementMilliseconds: $receipt?->milliseconds,
+        );
     }
 
     private function validate(InboundMessage $message): void
@@ -195,5 +224,12 @@ final class InboundRouter
         }
 
         return hash('sha256', $identity);
+    }
+
+    private function conversationToken(Installation $installation, InboundMessage $message): string
+    {
+        $digest = hash_hmac('sha256', $message->providerMessageId, $installation->signingSecret);
+
+        return 'c'.substr($digest, 0, 25);
     }
 }

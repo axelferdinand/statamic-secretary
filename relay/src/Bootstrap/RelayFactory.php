@@ -17,6 +17,7 @@ use AxelFerdinand\StatamicSecretaryRelay\PostmarkMailTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkPairingCodeTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkSelectionTransport;
 use AxelFerdinand\StatamicSecretaryRelay\RateLimiter;
+use AxelFerdinand\StatamicSecretaryRelay\ReceiptService;
 use AxelFerdinand\StatamicSecretaryRelay\RelayAddress;
 use AxelFerdinand\StatamicSecretaryRelay\ReplyService;
 use AxelFerdinand\StatamicSecretaryRelay\Security\BasicAuth;
@@ -114,6 +115,7 @@ final class RelayFactory
                 $this->boolean('RELAY_REQUIRE_SENDER_AUTHENTICATION', true),
                 $this->float('RELAY_MAXIMUM_SPAM_SCORE', 5.0, -100.0, 100.0),
                 $subscriptionRequired,
+                new ReceiptService($store, $postmark, $address),
             ),
             new ReplyService(
                 $store,

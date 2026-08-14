@@ -3068,6 +3068,83 @@
     color: var(--secretary-text);
 }
 
+.secretary-checkout-return {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 1.25rem;
+    border: 1px solid color-mix(in srgb, var(--secretary-mint) 52%, var(--secretary-text));
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--secretary-mint) 13%, white);
+    color: var(--secretary-text);
+    box-shadow: 0 .65rem 1.5rem rgb(0 35 43 / 8%);
+}
+
+.secretary-checkout-return.is-verifying,
+.secretary-checkout-return.is-finish {
+    border-color: color-mix(in srgb, var(--secretary-yellow) 70%, var(--secretary-text));
+    background: color-mix(in srgb, var(--secretary-yellow) 15%, white);
+}
+
+.secretary-checkout-return.is-canceled {
+    border-color: var(--secretary-line);
+    background: var(--secretary-paper);
+}
+
+.secretary-checkout-return-icon {
+    display: grid;
+    width: 3rem;
+    height: 3rem;
+    place-items: center;
+    border: 1px solid currentColor;
+    border-radius: .9rem;
+    background: var(--secretary-surface);
+}
+
+.secretary-checkout-return small {
+    display: block;
+    margin-bottom: .2rem;
+    color: var(--secretary-muted);
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.secretary-checkout-return h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    line-height: 1.25;
+}
+
+.secretary-checkout-return p {
+    margin: .35rem 0 0;
+    color: var(--secretary-muted);
+}
+
+.secretary-checkout-return > div > strong {
+    display: block;
+    margin-top: .45rem;
+    overflow-wrap: anywhere;
+}
+
+.secretary-checkout-return-timeout {
+    color: var(--secretary-text) !important;
+    font-weight: 650;
+}
+
+@media (max-width: 700px) {
+    .secretary-checkout-return {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .secretary-checkout-return-actions {
+        grid-column: 1 / -1;
+    }
+}
+
 .secretary-admin-intro {
     position: relative;
     display: flex;

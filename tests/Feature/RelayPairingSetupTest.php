@@ -283,6 +283,113 @@ class RelayPairingSetupTest extends TestCase
                 ->where('relay_setup.price.amount', 4900));
     }
 
+    public function test_a_successful_checkout_finishes_the_existing_pairing_without_the_code(): void
+    {
+        $claimId = null;
+        Http::fake(function (Request $request) use (&$claimId) {
+            if ($request->url() === 'https://secretary.statamic.no/v1/pairings/claim') {
+                $claimId = $request->data()['claim_id'];
+
+                return Http::response([
+                    'accepted' => true,
+                    'status' => 'payment_required',
+                    'installation_id' => self::INSTALLATION_ID,
+                    'billing_status' => 'pending',
+                    'checkout_url' => 'https://checkout.stripe.com/c/pay/cs_test_'.str_repeat('a', 24),
+                    'checkout_expires_at' => now()->addMinutes(30)->getTimestamp(),
+                    'price' => [
+                        'amount' => 4900,
+                        'currency' => 'usd',
+                        'interval' => 'year',
+                    ],
+                ], 201);
+            }
+
+            if ($request->url() === 'https://secretary.statamic.no/v1/pairings/status') {
+                return Http::response([
+                    ...$this->pairingResponse(),
+                    'billing_status' => 'active',
+                ], 200);
+            }
+
+            return Http::response([], 404);
+        });
+        $owner = $this->owner();
+
+        $this->actingAs($owner)
+            ->post('/cp/secretary/setup/relay', [
+                'pairing_code' => self::PAIRING_CODE,
+                'public_url' => 'https://site.example.com',
+            ])
+            ->assertRedirect('/cp/secretary');
+
+        $this->assertIsString($claimId);
+
+        $this->actingAs($owner)
+            ->get('/cp/secretary?relay_checkout=success')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('relay_checkout.returned', true)
+                ->where('relay_checkout.status', 'active')
+                ->where('relay_setup.connected', true)
+                ->where('relay_setup.address', 'site.example.com@statamic.no'));
+
+        Http::assertSent(function (Request $request) use ($claimId): bool {
+            return $request->url() === 'https://secretary.statamic.no/v1/pairings/status'
+                && $request->data() === [
+                    'version' => 1,
+                    'installation_id' => self::INSTALLATION_ID,
+                    'claim_id' => $claimId,
+                    'webhook_url' => 'https://site.example.com/_secretary/webhooks/relay/inbound',
+                ];
+        });
+
+        $settings = Setting::query()->findOrFail('relay')->value;
+        $this->assertTrue($settings['enabled']);
+        $this->assertSame('active', $settings['billing_status']);
+        $this->assertArrayNotHasKey('pending_claim_id', $settings);
+        $this->assertArrayNotHasKey('pending_code_fingerprint', $settings);
+        $this->assertArrayNotHasKey('checkout_url', $settings);
+    }
+
+    public function test_a_delayed_checkout_confirmation_stays_in_a_safe_verifying_state(): void
+    {
+        Http::fake([
+            'https://secretary.statamic.no/v1/pairings/claim' => Http::response([
+                'accepted' => true,
+                'status' => 'payment_required',
+                'installation_id' => self::INSTALLATION_ID,
+                'billing_status' => 'pending',
+                'checkout_url' => 'https://checkout.stripe.com/c/pay/cs_test_'.str_repeat('a', 24),
+                'checkout_expires_at' => now()->addMinutes(30)->getTimestamp(),
+                'price' => ['amount' => 4900, 'currency' => 'usd', 'interval' => 'year'],
+            ], 201),
+            'https://secretary.statamic.no/v1/pairings/status' => Http::response([
+                'accepted' => true,
+                'status' => 'payment_required',
+                'installation_id' => self::INSTALLATION_ID,
+                'billing_status' => 'pending',
+                'checkout_url' => 'https://checkout.stripe.com/c/pay/cs_test_'.str_repeat('a', 24),
+                'checkout_expires_at' => now()->addMinutes(30)->getTimestamp(),
+                'price' => ['amount' => 4900, 'currency' => 'usd', 'interval' => 'year'],
+            ], 200),
+        ]);
+        $owner = $this->owner();
+
+        $this->actingAs($owner)->post('/cp/secretary/setup/relay', [
+            'pairing_code' => self::PAIRING_CODE,
+            'public_url' => 'https://site.example.com',
+        ]);
+
+        $this->actingAs($owner)
+            ->get('/cp/secretary?relay_checkout=success')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('relay_checkout.returned', true)
+                ->where('relay_checkout.status', 'verifying')
+                ->where('relay_setup.connected', false));
+    }
+
     public function test_pairing_rejects_local_urls_and_unauthorized_users_before_network_io(): void
     {
         Http::fake();

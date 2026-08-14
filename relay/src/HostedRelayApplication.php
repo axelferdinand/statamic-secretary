@@ -78,6 +78,11 @@ final class HostedRelayApplication
                 'forwarded', 'duplicate' => $this->json(200, [
                     'accepted' => true,
                     'status' => $outcome->status,
+                    ...($outcome->acknowledgementMilliseconds === null ? [] : [
+                        'acknowledgement_ms' => $outcome->acknowledgementMilliseconds,
+                    ]),
+                ], $outcome->acknowledgementMilliseconds === null ? [] : [
+                    'Server-Timing' => 'secretary-ack;dur='.$outcome->acknowledgementMilliseconds,
                 ]),
                 'processing' => $this->json(503, [
                     'accepted' => false,
@@ -226,6 +231,43 @@ final class HostedRelayApplication
 
             return $this->json(503, ['accepted' => false, 'status' => 'temporary_failure'], [
                 'Retry-After' => '30',
+            ]);
+        }
+    }
+
+    /** @param  array<string, string>  $headers */
+    public function pairingStatus(
+        array $headers,
+        string $body,
+        string $clientIdentity = 'unknown',
+    ): HttpResult {
+        if (! $this->jsonRequest($headers, $body)) {
+            return $this->json(415, ['accepted' => false, 'status' => 'invalid_request']);
+        }
+
+        if ($limited = $this->rateLimit('pairing_source', $clientIdentity)) {
+            return $limited;
+        }
+
+        try {
+            $outcome = $this->pairings->resume($body);
+
+            return $this->json(200, $this->pairings->response($outcome));
+        } catch (RelayTransientFailure $exception) {
+            $this->report($exception);
+
+            return $this->json(503, ['accepted' => false, 'status' => 'temporary_failure'], [
+                'Retry-After' => '5',
+            ]);
+        } catch (RelayRejected $exception) {
+            $this->report($exception);
+
+            return $this->json(422, ['accepted' => false, 'status' => 'rejected']);
+        } catch (Throwable $exception) {
+            $this->report($exception);
+
+            return $this->json(503, ['accepted' => false, 'status' => 'temporary_failure'], [
+                'Retry-After' => '5',
             ]);
         }
     }

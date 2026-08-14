@@ -760,6 +760,44 @@ final class SqliteRelayStore implements BillingStore, InstallationAdminStore, Pa
         });
     }
 
+    public function resumePairing(
+        string $installationId,
+        string $claimFingerprint,
+    ): PairingOutcome {
+        if (preg_match('/^si_[a-z0-9_-]{20,125}$/D', $installationId) !== 1
+            || preg_match('/^[a-f0-9]{64}$/D', $claimFingerprint) !== 1) {
+            throw new RelayRejected('Pairing completion identity is invalid.');
+        }
+
+        $statement = $this->pdo->prepare(
+            <<<'SQL'
+                SELECT installation_id
+                FROM relay_pairing_codes
+                WHERE status = 'complete'
+                  AND installation_id = :installation_id
+                  AND claim_fingerprint = :claim_fingerprint
+                ORDER BY claimed_at DESC
+                LIMIT 1
+                SQL,
+        );
+        $statement->execute([
+            'installation_id' => $installationId,
+            'claim_fingerprint' => $claimFingerprint,
+        ]);
+
+        if ($statement->fetchColumn() !== $installationId) {
+            throw new RelayRejected('Pairing completion could not be verified.');
+        }
+
+        $installation = $this->installationById($installationId);
+
+        if (! $installation) {
+            throw new RelayRejected('Paired installation could not be loaded.');
+        }
+
+        return new PairingOutcome($installation, true);
+    }
+
     public function installationById(string $id): ?Installation
     {
         return $this->installation('id = :value', $id);

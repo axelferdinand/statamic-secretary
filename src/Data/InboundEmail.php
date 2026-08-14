@@ -19,5 +19,6 @@ final readonly class InboundEmail
         public ?string $threadToken = null,
         public ?string $routeToken = null,
         public array $attachments = [],
+        public bool $acknowledgementSent = false,
     ) {}
 }

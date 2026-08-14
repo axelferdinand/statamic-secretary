@@ -38,6 +38,7 @@ class HostedRelayRouteRotationTest extends TestCase
                 Installation $installation,
                 InboundMessage $message,
                 ?string $conversationToken,
+                bool $acknowledgementSent = false,
             ): SiteDeliveryResult {
                 $this->routes[] = $installation->routeToken;
                 $this->counter++;

@@ -182,7 +182,12 @@ class HostedRelayBillingTest extends TestCase
             time() + 31_536_000,
         ));
 
-        $connected = $pairings->claim($body);
+        $connected = $pairings->resume(json_encode([
+            'version' => 1,
+            'installation_id' => $pending->installation->id,
+            'claim_id' => 'pci_'.str_repeat('a', 22),
+            'webhook_url' => 'https://live.example.com/_secretary/webhooks/relay/inbound',
+        ], JSON_THROW_ON_ERROR));
         $connectedResponse = $pairings->response($connected);
 
         $this->assertCount(1, $aliases->installations);
@@ -430,8 +435,12 @@ final class BillingSiteTransport implements SiteTransport
     /** @var array<int, InboundMessage> */
     public array $deliveries = [];
 
-    public function deliver(Installation $installation, InboundMessage $message, ?string $conversationToken): SiteDeliveryResult
-    {
+    public function deliver(
+        Installation $installation,
+        InboundMessage $message,
+        ?string $conversationToken,
+        bool $acknowledgementSent = false,
+    ): SiteDeliveryResult {
         $this->deliveries[] = $message;
 
         return new SiteDeliveryResult('c'.str_repeat('a', 25));

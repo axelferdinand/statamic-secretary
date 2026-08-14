@@ -53,6 +53,9 @@ final class ReplyLanguage
                 'open_draft' => 'Åpne utkastet i Statamic',
                 'continue_conversation' => 'Fortsett samtalen i Secretary',
                 'reply_to_continue' => 'Svar på denne e-posten for å fortsette samme samtale.',
+                'receipt_subject' => 'Secretary har mottatt forespørselen din',
+                'receipt_title' => 'Mottatt — jeg er på saken.',
+                'receipt_body' => 'Jeg har funnet frem redaktørhatten og sjekker nå nettstedets faktiske innhold og struktur. Jeg svarer her når utkastet er klart.',
             ];
         }
 
@@ -65,6 +68,9 @@ final class ReplyLanguage
             'open_draft' => 'Open the draft in Statamic',
             'continue_conversation' => 'Continue the conversation in Secretary',
             'reply_to_continue' => 'Reply to this email to continue the same conversation.',
+            'receipt_subject' => 'Secretary received your request',
+            'receipt_title' => 'Received — I’m on it.',
+            'receipt_body' => 'I’ve put on my editor’s hat and started checking the site’s actual content and structure. I’ll reply here when the draft is ready.',
         ];
     }
 

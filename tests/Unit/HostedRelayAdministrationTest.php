@@ -46,6 +46,7 @@ class HostedRelayAdministrationTest extends TestCase
                 Installation $installation,
                 InboundMessage $message,
                 ?string $conversationToken,
+                bool $acknowledgementSent = false,
             ): SiteDeliveryResult {
                 $this->deliveries++;
 

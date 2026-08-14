@@ -40,10 +40,11 @@ final class RelayInboundController extends Controller
             'conversation_token',
             'rfc_message_id',
             'attachments',
+            'acknowledgement_sent',
         ];
         abort_if(array_diff(array_keys($request->all()), $allowedKeys) !== [], 403, 'The relay payload contains unsupported fields.');
         $validator = Validator::make($request->all(), [
-            'version' => ['required', 'integer', 'in:1,2'],
+            'version' => ['required', 'integer', 'in:1,2,3'],
             'provider_message_id' => ['required', 'string', 'max:255'],
             'sender' => ['required', 'email:rfc', 'max:255'],
             'subject' => ['nullable', 'string', 'max:998'],
@@ -59,6 +60,7 @@ final class RelayInboundController extends Controller
             'attachments.*.content' => ['required_with:attachments', 'string'],
             'attachments.*.content_length' => ['required_with:attachments', 'integer', 'min:1'],
             'attachments.*.sha256' => ['required_with:attachments', 'string', 'size:64'],
+            'acknowledgement_sent' => ['nullable', 'boolean'],
         ]);
         abort_if($validator->fails(), 403, 'Invalid Secretary relay payload.');
         $payload = $validator->validated();
@@ -66,6 +68,11 @@ final class RelayInboundController extends Controller
             (int) $payload['version'] === 1 && ($payload['attachments'] ?? []) !== [],
             403,
             'Relay payload version 1 cannot contain attachments.',
+        );
+        abort_if(
+            ((int) $payload['version'] === 3) !== (($payload['acknowledgement_sent'] ?? false) === true),
+            403,
+            'Relay payload acknowledgement state is invalid.',
         );
         $routeToken = (string) $payload['route_token'];
         abort_unless(
@@ -105,6 +112,7 @@ final class RelayInboundController extends Controller
             threadToken: $payload['conversation_token'] ?? null,
             routeToken: $routeToken,
             attachments: $attachments,
+            acknowledgementSent: (bool) ($payload['acknowledgement_sent'] ?? false),
         ));
 
         return response()->json([
