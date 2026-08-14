@@ -1,6 +1,6 @@
 {
     "name": "axelferdinand/statamic-secretary",
-    "description": "Secretary for Statamic is a guarded content assistant, available through the Control Panel and email.",
+    "description": "Send an email to your site, and Secretary updates content or builds new pages with your own blueprints and modules — ready for review.",
     "type": "statamic-addon",
     "license": "proprietary",
     "homepage": "https://secretary.statamic.no",
@@ -57,7 +57,7 @@
     "extra": {
         "statamic": {
             "name": "Secretary",
-            "description": "A guarded content assistant for the Statamic Control Panel and email."
+            "description": "Send an email to your site, and Secretary updates content or builds new pages with your own blueprints and modules — ready for review."
         },
         "laravel": {
             "providers": [
