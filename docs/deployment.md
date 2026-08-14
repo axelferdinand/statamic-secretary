@@ -7,8 +7,11 @@ maintenance, a second synchronization check, and live HTTP checks.
 The routine is fixed to `statamic@prototypen.sircon.net`; the host cannot be
 overridden through the environment. It pins both the dedicated deployment-key
 fingerprint and the server's Ed25519 host key, ignores user SSH configuration,
-and allows public-key authentication only. The key is loaded into a private,
-short-lived agent that is destroyed when the command exits.
+and allows public-key authentication only. The routine reuses an existing SSH
+agent only when that exact pinned Secretary key is already unlocked. Otherwise,
+the key is loaded into a private, short-lived agent that is destroyed when the
+command exits. The configured identity file, pinned fingerprint and
+`IdentitiesOnly` restriction remain mandatory in both cases.
 
 One authenticated SSH master connection is reused for the probe, both `rsync`
 targets, remote maintenance and post-deployment synchronization checks. The

@@ -2,6 +2,15 @@
 
 This document preserves the remaining work required to turn Secretary for Statamic from a working product into a production-proven Marketplace addon. It is a reminder list, not evidence that the release gates have passed.
 
+## Next release UX
+
+- When Stripe returns to `?relay_checkout=success`, show a prominent **Payment complete — Relay is active** confirmation instead of dropping the customer into the normal Secretary screen without feedback.
+- For a new installation, keep the existing **Finish connection** action and explain that it completes the secure pairing after payment.
+- For an already paired beta installation, do not ask the customer to pair again. Confirm that the existing Secretary address is active and offer a clear **Send your first instruction** next step.
+- Handle delayed webhooks explicitly: show a short verifying state, poll until entitlement is active, and provide a useful retry state if confirmation takes longer than expected.
+- Send an immediate receipt acknowledgement when an entitled, authorized sender emails Secretary, before AI processing begins. It should confirm that the request arrived and that Secretary will reply again when the work is ready, use the sender's language, stay in the same email thread, and be idempotent across Postmark webhook retries and polling. Unknown or unauthorized senders must still receive no response.
+- Measure acknowledgement latency separately from final-result latency. The acknowledgement should be emitted at the relay edge as soon as routing and authorization succeed, rather than waiting for content analysis or draft creation.
+
 ## Product proof still required
 
 - Complete onboarding and run the Control Panel system check with the zero-configuration `sync` path customers receive by default.

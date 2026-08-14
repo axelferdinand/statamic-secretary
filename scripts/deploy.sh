@@ -22,6 +22,8 @@ SSH_CONTROL_DIR=""
 SSH_CONTROL_PATH=""
 SSH_AGENT_DIR=""
 DEPLOY_SSH_AGENT_PID=""
+ORIGINAL_SSH_AUTH_SOCK="${SSH_AUTH_SOCK:-}"
+DEPLOY_IDENTITY_AGENT=""
 RELAY_POST_CHECK=""
 ADDON_POST_CHECK=""
 
@@ -59,6 +61,14 @@ EOF
 fail() {
   printf 'Deploy aborted: %s\n' "$*" >&2
   exit 1
+}
+
+agent_has_deploy_key() {
+  local agent_socket="$1"
+
+  [[ -n "$agent_socket" && -S "$agent_socket" ]] || return 1
+  SSH_AUTH_SOCK="$agent_socket" ssh-add -l 2>/dev/null |
+    rg --fixed-strings "$KEY_FINGERPRINT" >/dev/null
 }
 
 cleanup() {
@@ -126,7 +136,7 @@ for required_exclusion in ".env" "error_log"; do
     fail "The relay exclusions must contain ${required_exclusion}."
 done
 
-for required_exclusion in ".env" "/.git/" "/.secretary-deploy/" "/relay/" "/sandbox/" "/vendor/"; do
+for required_exclusion in ".env" "/.git/" "/.playwright-mcp/" "/.secretary-deploy/" "/relay/" "/sandbox/" "/vendor/"; do
   rg --fixed-strings --line-regexp "$required_exclusion" "$ADDON_EXCLUDES_FILE" >/dev/null ||
     fail "The addon exclusions must contain ${required_exclusion}."
 done
@@ -190,33 +200,42 @@ if [[ "$MODE" == "apply" ]]; then
     fail "The GitHub release tag does not match the local release commit."
 fi
 
-SSH_AGENT_DIR="$(mktemp -d -t secretary-ssh-agent.XXXXXX)"
-SSH_AUTH_SOCK="${SSH_AGENT_DIR}/agent.sock"
-export SSH_AUTH_SOCK
-ssh-agent -a "$SSH_AUTH_SOCK" -D >/dev/null 2>&1 &
-DEPLOY_SSH_AGENT_PID="$!"
-
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  [[ -S "$SSH_AUTH_SOCK" ]] && break
-  sleep 0.05
-done
-[[ -S "$SSH_AUTH_SOCK" ]] || fail "Could not start the private deployment key agent."
-
-printf 'Loading the dedicated Secretary deployment key into a private, short-lived agent …\n'
-if [[ -t 0 ]]; then
-  ssh-add -t 600 --apple-use-keychain "$SSH_KEY" 2>/dev/null || ssh-add -t 600 "$SSH_KEY"
+if agent_has_deploy_key "$ORIGINAL_SSH_AUTH_SOCK"; then
+  DEPLOY_IDENTITY_AGENT="$ORIGINAL_SSH_AUTH_SOCK"
+  printf 'Using the already-unlocked, pinned Secretary deployment key …\n'
 else
-  ssh-add -t 600 --apple-use-keychain "$SSH_KEY" </dev/null 2>/dev/null || true
+  SSH_AGENT_DIR="$(mktemp -d -t secretary-ssh-agent.XXXXXX)"
+  DEPLOY_IDENTITY_AGENT="${SSH_AGENT_DIR}/agent.sock"
+  SSH_AUTH_SOCK="$DEPLOY_IDENTITY_AGENT"
+  export SSH_AUTH_SOCK
+  ssh-agent -a "$DEPLOY_IDENTITY_AGENT" -D >/dev/null 2>&1 &
+  DEPLOY_SSH_AGENT_PID="$!"
+
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [[ -S "$DEPLOY_IDENTITY_AGENT" ]] && break
+    sleep 0.05
+  done
+  [[ -S "$DEPLOY_IDENTITY_AGENT" ]] || fail "Could not start the private deployment key agent."
+
+  printf 'Loading the dedicated Secretary deployment key into a private, short-lived agent …\n'
+  if [[ -t 0 ]]; then
+    ssh-add -t 600 --apple-use-keychain "$SSH_KEY" 2>/dev/null || ssh-add -t 600 "$SSH_KEY"
+  else
+    ssh-add -t 600 --apple-use-keychain "$SSH_KEY" </dev/null 2>/dev/null || true
+  fi
+  agent_has_deploy_key "$DEPLOY_IDENTITY_AGENT" ||
+    fail "The dedicated deployment key could not be unlocked."
 fi
-ssh-add -l 2>/dev/null | rg --fixed-strings "$KEY_FINGERPRINT" >/dev/null ||
-  fail "The dedicated deployment key could not be unlocked."
+
+SSH_AUTH_SOCK="$DEPLOY_IDENTITY_AGENT"
+export SSH_AUTH_SOCK
 
 SSH_OPTIONS=(
   -F /dev/null
   -p 22
   -i "$SSH_KEY"
   -o Hostname=prototypen.sircon.net
-  -o "IdentityAgent=${SSH_AUTH_SOCK}"
+  -o "IdentityAgent=${DEPLOY_IDENTITY_AGENT}"
   -o IdentitiesOnly=yes
   -o AddKeysToAgent=no
   -o BatchMode=yes
@@ -248,15 +267,15 @@ SSH_OPTIONS=(
   -o ConnectTimeout=10
 )
 
-SSH_CONTROL_DIR="$(mktemp -d -t secretary-ssh-control.XXXXXX)"
-SSH_CONTROL_PATH="${SSH_CONTROL_DIR}/control"
+SSH_CONTROL_DIR="$(mktemp -d /tmp/secretary-ssh.XXXXXX)"
+SSH_CONTROL_PATH="${SSH_CONTROL_DIR}/ctl"
 SSH_OPTIONS+=(
   -o "ControlPath=${SSH_CONTROL_PATH}"
 )
 
 printf -v RSYNC_SSH_COMMAND \
   'ssh -F /dev/null -p 22 -i %q -o Hostname=prototypen.sircon.net -o IdentityAgent=%q -o IdentitiesOnly=yes -o AddKeysToAgent=no -o BatchMode=yes -o NumberOfPasswordPrompts=0 -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o GSSAPIAuthentication=no -o HostbasedAuthentication=no -o ForwardAgent=no -o ForwardX11=no -o ClearAllForwardings=yes -o PermitLocalCommand=no -o KnownHostsCommand=none -o ProxyCommand=none -o ProxyJump=none -o RemoteCommand=none -o RequestTTY=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile=%q -o GlobalKnownHostsFile=/dev/null -o HostKeyAlgorithms=ssh-ed25519 -o UpdateHostKeys=no -o VerifyHostKeyDNS=no -o CheckHostIP=no -o CanonicalizeHostname=no -o ConnectionAttempts=1 -o ConnectTimeout=10 -o ControlMaster=no -o ControlPath=%q' \
-  "$SSH_KEY" "$SSH_AUTH_SOCK" "$KNOWN_HOSTS_FILE" "$SSH_CONTROL_PATH"
+  "$SSH_KEY" "$DEPLOY_IDENTITY_AGENT" "$KNOWN_HOSTS_FILE" "$SSH_CONTROL_PATH"
 
 RSYNC_COMMON=(
   -avz

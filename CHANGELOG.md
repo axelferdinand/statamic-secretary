@@ -4,6 +4,23 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.7 - 2026-08-14
+
+- Update the transitive `nanoid` dependency to 3.3.18 to address GHSA-2v37-7h3g-55p8 and restore a clean production dependency audit.
+
+## 0.1.6 - 2026-08-14
+
+- Let the hardened deployment routine reuse an already-unlocked SSH agent only when it contains the exact pinned Secretary deployment key, while retaining the private short-lived agent fallback and a portable short control-socket path.
+- Keep local Playwright browser state outside the live-demo addon deployment.
+
+## 0.1.5 - 2026-08-07
+
+- Send an English activation email with a secure Stripe Checkout link when an authorized sender emails a pending hosted Relay installation, instead of rejecting the message silently.
+
+## 0.1.4 - 2026-08-07
+
+- Correct the hosted Relay factory wiring so Stripe billing boots with the intended Postmark limits and inbound traffic enforces subscription entitlements.
+
 ## 0.1.3 - 2026-08-07
 
 - Update `league/commonmark` to 2.9.0 to include the upstream denial-of-service security fixes published on 2026-08-06.

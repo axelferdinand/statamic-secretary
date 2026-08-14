@@ -3,6 +3,7 @@ error_log
 .DS_Store
 /.git/
 /.github/
+/.playwright-mcp/
 /.secretary-deploy/
 /node_modules/
 /relay/

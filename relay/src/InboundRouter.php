@@ -32,13 +32,21 @@ final class InboundRouter
         $parsed = $this->address->parse($message->recipient);
 
         if ($parsed->routeToken === null) {
-            $candidates = array_values(array_filter(
+            $registered = array_values(array_filter(
                 $this->store->installationsForSender($sender),
-                fn (Installation $installation): bool => $installation->hasRelayAccess($this->subscriptionRequired)
+                fn (Installation $installation): bool => $installation->active
                     && $installation->allowsSender($sender),
+            ));
+            $candidates = array_values(array_filter(
+                $registered,
+                fn (Installation $installation): bool => $installation->hasRelayAccess($this->subscriptionRequired),
             ));
 
             if ($candidates === []) {
+                if ($this->subscriptionRequired && count($registered) === 1) {
+                    return new RouteOutcome('payment_required', $registered[0]->id);
+                }
+
                 throw new RelayRejected('Sender is not registered for an active installation.');
             }
 
@@ -56,8 +64,15 @@ final class InboundRouter
             $selectedRouteToken = $parsed->routeToken;
 
             if (! $installation
-                || ! $installation->hasRelayAccess($this->subscriptionRequired)
                 || ! $installation->allowsSender($sender)) {
+                throw new RelayRejected('Route is not available to this sender.');
+            }
+
+            if (! $installation->hasRelayAccess($this->subscriptionRequired)) {
+                if ($this->subscriptionRequired && $installation->active) {
+                    return new RouteOutcome('payment_required', $installation->id);
+                }
+
                 throw new RelayRejected('Route is not available to this sender.');
             }
 

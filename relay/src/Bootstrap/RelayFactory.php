@@ -2,6 +2,7 @@
 
 namespace AxelFerdinand\StatamicSecretaryRelay\Bootstrap;
 
+use AxelFerdinand\StatamicSecretaryRelay\BillingNoticeService;
 use AxelFerdinand\StatamicSecretaryRelay\CpanelPublicAliasProvisioner;
 use AxelFerdinand\StatamicSecretaryRelay\CurlHttpTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
@@ -10,6 +11,7 @@ use AxelFerdinand\StatamicSecretaryRelay\InboundRouter;
 use AxelFerdinand\StatamicSecretaryRelay\Observability\SecurityEventReporter;
 use AxelFerdinand\StatamicSecretaryRelay\PairingService;
 use AxelFerdinand\StatamicSecretaryRelay\Persistence\SqliteRelayStore;
+use AxelFerdinand\StatamicSecretaryRelay\PostmarkBillingNoticeTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkInboundAdapter;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkMailTransport;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkPairingCodeTransport;
@@ -100,7 +102,6 @@ final class RelayFactory
                 $sharedAddress,
                 $this->boolean('RELAY_REQUIRE_SENDER_AUTHENTICATION', true),
                 $this->float('RELAY_MAXIMUM_SPAM_SCORE', 5.0, -100.0, 100.0),
-                $subscriptionRequired,
                 $this->integer('RELAY_MAXIMUM_MESSAGE_CHARACTERS', 20000, 1000, 20000),
                 $this->integer('RELAY_MAXIMUM_ATTACHMENTS', 4, 1, 10),
                 $this->integer('RELAY_MAXIMUM_ATTACHMENT_BYTES', 8_000_000, 100_000, 20_000_000),
@@ -112,6 +113,7 @@ final class RelayFactory
                 $address,
                 $this->boolean('RELAY_REQUIRE_SENDER_AUTHENTICATION', true),
                 $this->float('RELAY_MAXIMUM_SPAM_SCORE', 5.0, -100.0, 100.0),
+                $subscriptionRequired,
             ),
             new ReplyService(
                 $store,
@@ -151,6 +153,20 @@ final class RelayFactory
             ),
             rateLimiter: $rateLimiter,
             subscriptions: $subscriptions,
+            billingNotices: $subscriptions === null
+                ? null
+                : new BillingNoticeService(
+                    $store,
+                    $store,
+                    $subscriptions,
+                    new PostmarkBillingNoticeTransport(
+                        $http,
+                        $postmarkToken,
+                        $fromAddress,
+                        $fromName,
+                        $messageStream,
+                    ),
+                ),
         );
     }
 

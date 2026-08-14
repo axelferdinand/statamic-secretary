@@ -39,7 +39,7 @@ try {
         ? $response['status']
         : 'invalid_response';
     $accepted = $result->status === 200
-        && in_array($status, ['forwarded', 'duplicate', 'selection_required'], true);
+        && in_array($status, ['forwarded', 'duplicate', 'selection_required', 'payment_required'], true);
 
     echo json_encode([
         'accepted' => $accepted,
