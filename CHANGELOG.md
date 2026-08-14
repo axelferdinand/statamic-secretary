@@ -4,6 +4,11 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.9 - 2026-08-14
+
+- Keep ambiguous email requests in one language from acknowledgement through the AI-generated completion by storing the detected locale and making it authoritative during processing.
+- Use the same concise, email-first product description in Composer metadata, the Statamic Control Panel, and the Marketplace listing.
+
 ## 0.1.8 - 2026-08-14
 
 - Send the first receipt acknowledgement from the hosted Relay edge immediately after routing and sender authorization, preserve the original email thread and language, and suppress duplicates across provider and site-delivery retries.

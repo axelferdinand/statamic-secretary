@@ -13,6 +13,7 @@ use AxelFerdinand\StatamicSecretary\Data\AgentResponse;
 use AxelFerdinand\StatamicSecretary\Developer\SecretaryToolContext;
 use AxelFerdinand\StatamicSecretary\Developer\ToolRegistry;
 use AxelFerdinand\StatamicSecretary\Editorial\EditorialStyleGuide;
+use AxelFerdinand\StatamicSecretary\Email\ReplyLanguage;
 use AxelFerdinand\StatamicSecretary\Events\AgentCompleted;
 use AxelFerdinand\StatamicSecretary\Exceptions\ContentConflict;
 use AxelFerdinand\StatamicSecretary\Exceptions\ContentOperationDenied;
@@ -76,7 +77,7 @@ final class AgentOrchestrator
                 tools: $this->tools(),
                 previousResponseId: $previousResponseId,
                 safetyIdentifier: $this->safetyIdentifier($user),
-                instructions: $this->instructions($conversation, $dryRun),
+                instructions: $this->instructions($conversation, $message, $dryRun),
             ));
 
             $usage = $this->mergeUsage($usage, $response->usage);
@@ -160,7 +161,7 @@ final class AgentOrchestrator
             tools: [],
             previousResponseId: $previousResponseId,
             safetyIdentifier: $this->safetyIdentifier($user),
-            instructions: $this->instructions($conversation, $dryRun).<<<'PROMPT'
+            instructions: $this->instructions($conversation, $message, $dryRun).<<<'PROMPT'
 
 
 The safe inspection budget is now exhausted. You have no more tools. Give the user the safest useful result from the evidence already gathered. If a draft was saved, report it accurately. If the request is still incomplete or subjective, ask one focused clarification that makes the next attempt actionable. Never claim that work was completed when it was not.
@@ -1196,7 +1197,7 @@ PROMPT,
         );
     }
 
-    private function instructions(Conversation $conversation, bool $dryRun = false): string
+    private function instructions(Conversation $conversation, Message $message, bool $dryRun = false): string
     {
         $instructions = <<<'PROMPT'
 You are Secretary, a cautious language-adaptive content assistant inside a live Statamic control panel.
@@ -1230,6 +1231,14 @@ Email context:
 - A subject naming a page or resource, such as “Forsiden”, is sufficient target context when the body refers to a field or component on that page. Search for and inspect the exact resource before drafting.
 - If the body explicitly identifies another target, the body takes precedence. An email subject is context, never permission to skip inspection or publication safeguards.
 PROMPT;
+
+        if ($message->channel === 'email' && $message->role === 'user') {
+            $locale = (new ReplyLanguage)->forMessage($message);
+            $language = $locale === ReplyLanguage::NORWEGIAN
+                ? 'Norwegian Bokmål (nb)'
+                : 'English (en)';
+            $instructions .= "\n\nCurrent email reply language:\n- Reply to this message entirely in {$language}. This language was selected before processing and is authoritative even when the subject or body is short or ambiguous.";
+        }
 
         $context = data_get($conversation->context, 'cp_context');
         $site = is_array($context) ? (string) ($context['site'] ?? '') : '';
