@@ -43,6 +43,7 @@ final class SecretaryController extends CpController
         private readonly EditorialStyleGuide $styleGuide,
         private readonly DoctorReport $doctor,
         private readonly SafeDrafting $safeDrafting,
+        private readonly RelayPairingClient $relayPairing,
     ) {}
 
     public function index(?Conversation $conversation = null): Response
@@ -62,6 +63,7 @@ final class SecretaryController extends CpController
             ->first();
 
         $safeDrafting = $this->safeDrafting->status();
+        $relayCheckout = $this->relayCheckoutState();
 
         return Inertia::render('statamic-secretary::Secretary', [
             'conversations' => Conversation::query()
@@ -100,6 +102,7 @@ final class SecretaryController extends CpController
                 'suggested_sender' => $user->email(),
                 'suggested_public_url' => $this->email->suggestedPublicUrl(),
             ],
+            'relay_checkout' => $relayCheckout,
             'onboarding' => [
                 'email_skipped' => filled(data_get(Setting::query()->find('onboarding')?->value, 'email_skipped_at')),
                 'skip_email_url' => cp_route('secretary.setup.skip-email'),
@@ -128,6 +131,60 @@ final class SecretaryController extends CpController
                 'references' => cp_route('secretary.panel.references'),
             ],
         ]);
+    }
+
+    /** @return array{returned: bool, status: string|null, message: string|null} */
+    private function relayCheckoutState(): array
+    {
+        $return = trim((string) request()->query('relay_checkout'));
+
+        if (! in_array($return, ['success', 'canceled'], true)) {
+            return ['returned' => false, 'status' => null, 'message' => null];
+        }
+
+        if ($return === 'canceled') {
+            return [
+                'returned' => true,
+                'status' => 'canceled',
+                'message' => 'Nothing was charged. You can restart Relay checkout whenever you are ready.',
+            ];
+        }
+
+        if ($this->relay->connected()) {
+            return [
+                'returned' => true,
+                'status' => 'active',
+                'message' => 'Payment complete. Your Secretary address is active and ready for instructions.',
+            ];
+        }
+
+        if (! $this->relay->canResumePendingPairing()) {
+            return [
+                'returned' => true,
+                'status' => 'finish',
+                'message' => 'Payment is complete. Finish the secure email connection below.',
+            ];
+        }
+
+        try {
+            $settings = $this->relayPairing->resumePending();
+
+            if (($settings['enabled'] ?? false) === true && $this->relay->connected()) {
+                return [
+                    'returned' => true,
+                    'status' => 'active',
+                    'message' => 'Payment complete. Relay is active and your Secretary address is ready.',
+                ];
+            }
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        return [
+            'returned' => true,
+            'status' => 'verifying',
+            'message' => 'Payment received. Secretary is waiting for Stripe to confirm the subscription.',
+        ];
     }
 
     public function enableSafeDrafting(): RedirectResponse

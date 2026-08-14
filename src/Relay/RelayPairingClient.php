@@ -90,11 +90,13 @@ final class RelayPairingClient
             $claimId = 'pci_'.Str::random(43);
         }
 
-        $this->configuration->store([
+        $stored = [
             ...$stored,
             'pending_code_fingerprint' => $codeFingerprint,
             'pending_claim_id' => $claimId,
-        ]);
+            'pending_public_url' => $publicUrl,
+        ];
+        $this->configuration->store($stored);
 
         try {
             $response = Http::acceptJson()
@@ -123,6 +125,57 @@ final class RelayPairingClient
             return $this->storePendingCheckout($payload, $stored);
         }
 
+        return $this->storeConnectedResponse($payload, $stored);
+    }
+
+    /** @return array<string, mixed> */
+    public function resumePending(): array
+    {
+        $stored = $this->configuration->stored();
+
+        if (! $this->configuration->canResumePendingPairing()
+            || ! $this->configuration->hasValidBaseUrl()) {
+            throw new RelayDeliveryFailed('Secretary does not have a pending relay connection to finish.');
+        }
+
+        $publicUrl = rtrim((string) data_get($stored, 'pending_public_url'), '/');
+
+        try {
+            $response = Http::acceptJson()
+                ->asJson()
+                ->connectTimeout(5)
+                ->timeout(15)
+                ->post($this->configuration->pairingStatusEndpoint(), [
+                    'version' => 1,
+                    'installation_id' => data_get($stored, 'pending_installation_id'),
+                    'claim_id' => data_get($stored, 'pending_claim_id'),
+                    'webhook_url' => $publicUrl.'/_secretary/webhooks/relay/inbound',
+                ]);
+        } catch (ConnectionException $exception) {
+            throw new RelayDeliveryFailed('Secretary could not reach the shared-address relay.', previous: $exception);
+        } catch (Throwable $exception) {
+            throw new RelayDeliveryFailed('Secretary could not verify the relay checkout.', previous: $exception);
+        }
+
+        if (! $response->successful()) {
+            throw new RelayDeliveryFailed('The shared-address relay could not verify the checkout yet.');
+        }
+
+        $payload = $response->json();
+
+        if (is_array($payload) && ($payload['status'] ?? null) === 'payment_required') {
+            return $this->storePendingCheckout($payload, $stored);
+        }
+
+        return $this->storeConnectedResponse($payload, $stored);
+    }
+
+    /**
+     * @param  array<string, mixed>  $stored
+     * @return array<string, mixed>
+     */
+    private function storeConnectedResponse(mixed $payload, array $stored): array
+    {
         $allowed = [
             'accepted',
             'status',

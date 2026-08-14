@@ -194,9 +194,33 @@ final class RelayConfiguration
         return $this->baseUrl().'/v1/pairings/request';
     }
 
+    public function pairingStatusEndpoint(): string
+    {
+        return $this->baseUrl().'/v1/pairings/status';
+    }
+
+    public function canResumePendingPairing(): bool
+    {
+        return preg_match('/^si_[a-z0-9_-]{20,125}$/D', (string) data_get($this->stored(), 'pending_installation_id')) === 1
+            && preg_match('/^pci_[A-Za-z0-9_-]{22,86}$/D', (string) data_get($this->stored(), 'pending_claim_id')) === 1
+            && $this->hasValidPendingPublicUrl();
+    }
+
     public function address(): string
     {
         return trim((string) data_get($this->stored(), 'address'));
+    }
+
+    private function hasValidPendingPublicUrl(): bool
+    {
+        $url = rtrim((string) data_get($this->stored(), 'pending_public_url'), '/');
+        $parts = parse_url($url);
+
+        return is_array($parts)
+            && mb_strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+            && isset($parts['host'])
+            && ! isset($parts['user'])
+            && ! isset($parts['pass']);
     }
 
     /** @param  array<string, mixed>  $settings */

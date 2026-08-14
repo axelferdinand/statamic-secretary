@@ -3,7 +3,7 @@
 /** @var string $locale */
 /** @var string|null $analyticsMeasurementId */
 $isNorwegian = $locale === 'nb';
-$marketplaceUrl = 'https://statamic.com/marketplace';
+$marketplaceUrl = 'https://statamic.com/addons/prototypen/secretary';
 $siteUrl = $isNorwegian ? 'https://secretary.statamic.no/no' : 'https://secretary.statamic.no/';
 $privacyUrl = $isNorwegian ? '/no/personvern' : '/privacy';
 $ogImageUrl = 'https://secretary.statamic.no/assets/statamic-secretary-og.png';

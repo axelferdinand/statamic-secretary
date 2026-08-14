@@ -4,6 +4,12 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.8 - 2026-08-14
+
+- Send the first receipt acknowledgement from the hosted Relay edge immediately after routing and sender authorization, preserve the original email thread and language, and suppress duplicates across provider and site-delivery retries.
+- Finish the existing secure pairing automatically after Stripe Checkout, with a prominent active-address confirmation, delayed-webhook polling, a bounded retry state, and no second one-time code.
+- Link every landing-page Marketplace action directly to the Secretary product listing.
+
 ## 0.1.7 - 2026-08-14
 
 - Update the transitive `nanoid` dependency to 3.3.18 to address GHSA-2v37-7h3g-55p8 and restore a clean production dependency audit.

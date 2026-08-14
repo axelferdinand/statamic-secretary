@@ -8,5 +8,10 @@ use AxelFerdinand\StatamicSecretaryRelay\Data\SiteDeliveryResult;
 
 interface SiteTransport
 {
-    public function deliver(Installation $installation, InboundMessage $message, ?string $conversationToken): SiteDeliveryResult;
+    public function deliver(
+        Installation $installation,
+        InboundMessage $message,
+        ?string $conversationToken,
+        bool $acknowledgementSent = false,
+    ): SiteDeliveryResult;
 }

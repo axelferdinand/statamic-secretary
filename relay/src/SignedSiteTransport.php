@@ -16,11 +16,15 @@ final class SignedSiteTransport implements SiteTransport
 {
     public function __construct(private readonly HttpTransport $http) {}
 
-    public function deliver(Installation $installation, InboundMessage $message, ?string $conversationToken): SiteDeliveryResult
-    {
+    public function deliver(
+        Installation $installation,
+        InboundMessage $message,
+        ?string $conversationToken,
+        bool $acknowledgementSent = false,
+    ): SiteDeliveryResult {
         try {
             $body = json_encode(
-                $message->sitePayload($installation->routeToken, $conversationToken),
+                $message->sitePayload($installation->routeToken, $conversationToken, $acknowledgementSent),
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
             );
         } catch (JsonException $exception) {

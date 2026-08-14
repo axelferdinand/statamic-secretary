@@ -112,6 +112,44 @@ final readonly class PairingService
         return $outcome;
     }
 
+    public function resume(string $body): PairingOutcome
+    {
+        try {
+            $payload = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new RelayRejected('Pairing completion request is invalid JSON.', previous: $exception);
+        }
+
+        $allowed = ['version', 'installation_id', 'claim_id', 'webhook_url'];
+
+        if (! is_array($payload)
+            || array_diff(array_keys($payload), $allowed) !== []
+            || array_diff($allowed, array_keys($payload)) !== []
+            || ($payload['version'] ?? null) !== 1
+            || ! is_string($payload['installation_id'])
+            || preg_match('/^si_[a-z0-9_-]{20,125}$/D', $payload['installation_id']) !== 1
+            || ! is_string($payload['claim_id'])
+            || preg_match('/^pci_[A-Za-z0-9_-]{22,86}$/D', $payload['claim_id']) !== 1
+            || ! is_string($payload['webhook_url'])
+            || mb_strlen($payload['webhook_url']) > 2048) {
+            throw new RelayRejected('Pairing completion request failed validation.');
+        }
+
+        $this->urlPolicy->resolve($payload['webhook_url']);
+        $fingerprint = hash('sha256', implode("\0", [
+            $payload['claim_id'],
+            $payload['webhook_url'],
+        ]));
+        $outcome = $this->store->resumePairing($payload['installation_id'], $fingerprint);
+
+        if ($this->aliases
+            && ($this->subscriptions === null || $outcome->installation->hasRelayAccess(true))) {
+            $this->aliases->provision($outcome->installation);
+        }
+
+        return $outcome;
+    }
+
     /** @return array<string, mixed> */
     public function response(PairingOutcome $outcome): array
     {

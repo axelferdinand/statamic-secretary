@@ -19,6 +19,7 @@ use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayTransientFailure;
 use AxelFerdinand\StatamicSecretaryRelay\InboundRouter;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkInboundAdapter;
 use AxelFerdinand\StatamicSecretaryRelay\PostmarkMailTransport;
+use AxelFerdinand\StatamicSecretaryRelay\ReceiptService;
 use AxelFerdinand\StatamicSecretaryRelay\RelayAddress;
 use AxelFerdinand\StatamicSecretaryRelay\ReplyService;
 use AxelFerdinand\StatamicSecretaryRelay\Security\Signature;
@@ -147,6 +148,69 @@ class HostedRelayCoreTest extends TestCase
         $this->assertSame('forwarded', $outcome->status);
         $this->assertSame(2, $transport->attempts);
         $this->assertCount(1, $transport->deliveries);
+    }
+
+    public function test_relay_acknowledges_immediately_once_and_keeps_the_reply_thread_bound(): void
+    {
+        $installation = $this->installationA();
+        $store = new MemoryRelayStore([$installation]);
+        $site = new MemorySiteTransport;
+        $mail = new MemoryMailTransport;
+        $address = new RelayAddress('secretary@statamic.no');
+        $router = new InboundRouter(
+            $store,
+            $site,
+            $address,
+            receipts: new ReceiptService($store, $mail, $address),
+        );
+        $message = $this->message('receipt-provider', $this->alias($installation->routeToken));
+
+        $first = $router->route($message);
+        $duplicate = $router->route($message);
+
+        $this->assertSame('forwarded', $first->status);
+        $this->assertSame('duplicate', $duplicate->status);
+        $this->assertIsInt($first->acknowledgementMilliseconds);
+        $this->assertCount(1, $mail->replies);
+        $this->assertCount(1, $site->deliveries);
+        $this->assertTrue($site->deliveries[0]['acknowledgement_sent']);
+        $receipt = $mail->replies[0];
+        $this->assertSame('nb', $receipt->locale);
+        $this->assertStringContainsString('Mottatt — jeg er på saken.', $receipt->body);
+        $this->assertSame(
+            $this->alias($installation->routeToken, $first->conversationToken),
+            $receipt->replyTo,
+        );
+    }
+
+    public function test_site_retry_does_not_send_a_second_receipt(): void
+    {
+        $installation = $this->installationA();
+        $store = new MemoryRelayStore([$installation]);
+        $site = new MemorySiteTransport;
+        $site->failNext = true;
+        $mail = new MemoryMailTransport;
+        $address = new RelayAddress('secretary@statamic.no');
+        $router = new InboundRouter(
+            $store,
+            $site,
+            $address,
+            receipts: new ReceiptService($store, $mail, $address),
+        );
+        $message = $this->message('receipt-retry-provider', $this->alias($installation->routeToken));
+
+        try {
+            $router->route($message);
+            $this->fail('The simulated delivery failure did not escape.');
+        } catch (RuntimeException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $outcome = $router->route($message);
+
+        $this->assertSame('forwarded', $outcome->status);
+        $this->assertCount(1, $mail->replies);
+        $this->assertSame(2, $site->attempts);
     }
 
     public function test_inactive_unknown_and_unauthenticated_routes_are_rejected(): void
@@ -923,15 +987,19 @@ final class MemoryRelayStore implements RelayStore
 
 final class MemorySiteTransport implements SiteTransport
 {
-    /** @var array<int, array{installation: Installation, message: InboundMessage, conversation: string|null}> */
+    /** @var array<int, array{installation: Installation, message: InboundMessage, conversation: string|null, acknowledgement_sent: bool}> */
     public array $deliveries = [];
 
     public bool $failNext = false;
 
     public int $attempts = 0;
 
-    public function deliver(Installation $installation, InboundMessage $message, ?string $conversationToken): SiteDeliveryResult
-    {
+    public function deliver(
+        Installation $installation,
+        InboundMessage $message,
+        ?string $conversationToken,
+        bool $acknowledgementSent = false,
+    ): SiteDeliveryResult {
         $this->attempts++;
 
         if ($this->failNext) {
@@ -941,7 +1009,10 @@ final class MemorySiteTransport implements SiteTransport
         }
 
         $conversationToken ??= 'c'.substr(hash('sha256', $installation->id."\0".$message->providerMessageId), 0, 25);
-        $this->deliveries[] = compact('installation', 'message') + ['conversation' => $conversationToken];
+        $this->deliveries[] = compact('installation', 'message') + [
+            'conversation' => $conversationToken,
+            'acknowledgement_sent' => $acknowledgementSent,
+        ];
 
         return new SiteDeliveryResult($conversationToken);
     }

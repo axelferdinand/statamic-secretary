@@ -19,4 +19,9 @@ interface PairingStore
         string $webhookUrl,
         bool $requiresPayment = false,
     ): PairingOutcome;
+
+    public function resumePairing(
+        string $installationId,
+        string $claimFingerprint,
+    ): PairingOutcome;
 }

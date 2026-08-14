@@ -59,7 +59,7 @@ It cannot invent fields or page modules that do not exist. That constraint is a 
 
 ### Email-first editing
 
-Send instructions from an authorized Statamic user's email address. Secretary replies immediately to confirm the request, works in the background, and emails again when the draft is ready. Reply to continue the same thread.
+Send instructions from an authorized Statamic user's email address. Secretary confirms the request at the Relay edge before AI processing begins, works in the background, and emails again when the draft is ready. The acknowledgement is sent once even if the mail provider retries delivery. Reply to continue the same thread.
 
 Completed-work emails link directly to the affected entry, taxonomy term, global set, or navigation in Statamic. If a request changes several resources, every resource gets its own editor link.
 
@@ -81,6 +81,8 @@ The hosted Relay is an optional service and is separate from the Marketplace add
 It is free to try on the public demo. A live site activates Relay through Stripe
 Checkout inside Secretary for **USD 49/year per site**. Control Panel chat and a
 customer-managed Postmark server do not require a Relay subscription.
+
+After Stripe Checkout, Secretary returns to the Control Panel, verifies the existing secure pairing automatically, and shows the active site-specific address. A delayed Stripe webhook gets a clear verification and retry state instead of asking the customer to repeat onboarding.
 
 ### Advanced setup: your Postmark server
 

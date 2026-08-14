@@ -78,6 +78,9 @@ final class InboundEmailService
                     'email_delivery' => $inbound->delivery,
                     'relay_route_token' => $inbound->routeToken,
                     'attachments' => $importedAttachments,
+                    ...($inbound->acknowledgementSent ? [
+                        'acknowledgement_sent_at' => now()->toIso8601String(),
+                    ] : []),
                 ],
                 $inbound->providerMessageId,
             );
@@ -163,10 +166,16 @@ final class InboundEmailService
                     ->first()
                 : Conversation::query()->whereKey($threadToken)->where('channel', 'email')->first();
 
-            abort_unless($conversation && hash_equals(mb_strtolower((string) $conversation->email), $sender), 403, 'The email thread could not be matched to this sender.');
-            $this->ensureConversationRoute($conversation, $inbound);
+            if ($conversation) {
+                abort_unless(hash_equals(mb_strtolower((string) $conversation->email), $sender), 403, 'The email thread could not be matched to this sender.');
+                $this->ensureConversationRoute($conversation, $inbound);
 
-            return $conversation;
+                return $conversation;
+            }
+
+            abort_unless($inbound->delivery === 'relay', 403, 'The email thread could not be matched to this sender.');
+
+            return $this->startRelayConversation($inbound, $sender, $user, $threadToken);
         }
 
         $context = ['email_delivery' => $inbound->delivery];
@@ -177,6 +186,37 @@ final class InboundEmailService
             $context['relay_conversation_token'] = 'c'.Str::lower(Str::random(25));
             $externalThreadId = 'relay:'.hash('sha256', $inbound->providerMessageId);
         }
+
+        try {
+            return $this->conversations->start('email', $user, $sender, $externalThreadId, $context);
+        } catch (QueryException $exception) {
+            $conversation = Conversation::query()
+                ->where('channel', 'email')
+                ->where('external_thread_id', $externalThreadId)
+                ->first();
+
+            if ($conversation && hash_equals(mb_strtolower((string) $conversation->email), $sender)) {
+                $this->ensureConversationRoute($conversation, $inbound);
+
+                return $conversation;
+            }
+
+            throw $exception;
+        }
+    }
+
+    private function startRelayConversation(
+        InboundEmail $inbound,
+        string $sender,
+        $user,
+        string $threadToken,
+    ): Conversation {
+        $context = [
+            'email_delivery' => 'relay',
+            'relay_route_token' => (string) $inbound->routeToken,
+            'relay_conversation_token' => $threadToken,
+        ];
+        $externalThreadId = 'relay:conversation:'.hash('sha256', $threadToken);
 
         try {
             return $this->conversations->start('email', $user, $sender, $externalThreadId, $context);

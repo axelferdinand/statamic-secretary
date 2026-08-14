@@ -32,7 +32,7 @@ SECRETARY_RELAY_CACHE_STORE=redis
 
 The signing secret must decode to at least 256 bits. `SECRETARY_RELAY_CACHE_STORE` must be a persistent shared Laravel cache; the array store is refused by `secretary:doctor` because it cannot prevent a nonce replay in a later request. These values are intentionally separate from the site's OpenAI and Postmark credentials.
 
-The relay posts to `POST /_secretary/webhooks/relay/inbound`. The route is disabled until the installation is fully configured. It accepts the normalized version-1 fields for ordinary messages and version 2 only when validated image attachments are present. It verifies the signature before parsing, then reuses the same sender allowlist, native Statamic user/permission check, input/attachment limits, queue, idempotency, publication gate, and audit path as direct Postmark delivery.
+The relay posts to `POST /_secretary/webhooks/relay/inbound`. The route is disabled until the installation is fully configured. It accepts normalized version 1 for ordinary messages, version 2 when validated image attachments are present, and version 3 when the relay edge has already sent the receipt acknowledgement. It verifies the signature before parsing, then reuses the same sender allowlist, native Statamic user/permission check, input/attachment limits, queue, idempotency, publication gate, and audit path as direct Postmark delivery.
 
 ## Non-negotiable isolation rules
 
@@ -80,7 +80,7 @@ Secretary-Signature: v1=<hex HMAC-SHA256>
 
 The canonical signature input is the HTTP method, request path, installation ID, timestamp, nonce, and content digest separated by newlines. The addon accepts a narrow clock skew, compares signatures in constant time, consumes the nonce atomically, and then applies its existing payload-size, sender, native-user, DKIM, spam, threading, queue, and publication checks.
 
-The normalized payload retains the provider message ID, plain-text body, subject, authenticated sender, author-domain authentication result, spam score, route token, and conversation token. HTML is excluded. Ordinary messages remain version 1 for backward compatibility. Version 2 adds an `attachments` array containing only validated JPEG, PNG, or WebP images with filename, MIME type, base64 bytes, exact byte length, and SHA-256 checksum. The exact signed body covers those bytes.
+The normalized payload retains the provider message ID, plain-text body, subject, authenticated sender, author-domain authentication result, spam score, route token, and conversation token. HTML is excluded. Ordinary messages remain version 1 for backward compatibility. Version 2 adds an `attachments` array containing only validated JPEG, PNG, or WebP images with filename, MIME type, base64 bytes, exact byte length, and SHA-256 checksum. Version 3 adds `acknowledgement_sent: true`, preventing the site from sending a duplicate acknowledgement after the relay edge has already replied. The exact signed body covers every field and attachment byte.
 
 The implemented version-1 field names are `provider_message_id`, `sender`, `subject`, `body`, `sender_authenticated`, `spam_score`, `route_token`, `conversation_token`, and `rfc_message_id`. Unknown fields are rejected. A new conversation receives a compact random token stored only in that site's database. Follow-ups must supply both that token and the same route token.
 

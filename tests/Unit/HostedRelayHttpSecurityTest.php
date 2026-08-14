@@ -31,7 +31,8 @@ class HostedRelayHttpSecurityTest extends TestCase
         $this->assertStringContainsString('<html lang="en"', $english->body);
         $this->assertStringContainsString('Your Statamic site', $english->body);
         $this->assertStringContainsString('secretary@statamic.no', $english->body);
-        $this->assertStringContainsString('https://statamic.com/marketplace', $english->body);
+        $this->assertStringContainsString('https://statamic.com/addons/prototypen/secretary', $english->body);
+        $this->assertStringNotContainsString('https://statamic.com/marketplace', $english->body);
         $this->assertStringContainsString('data-demo', $english->body);
         $this->assertStringContainsString('Speak human. In your language.', $english->body);
         $this->assertStringContainsString('<title>Secretary for Statamic', $english->body);

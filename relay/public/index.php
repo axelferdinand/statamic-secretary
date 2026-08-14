@@ -106,6 +106,11 @@ try {
                 $body,
                 $clientIdentity,
             ),
+            ['POST', '/v1/pairings/status'] => $application->pairingStatus(
+                $headers,
+                $body,
+                $clientIdentity,
+            ),
             ['POST', '/v1/pairings/request'] => $application->requestPairingCode(
                 $headers,
                 $body,

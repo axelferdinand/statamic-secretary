@@ -10,5 +10,6 @@ final readonly class RouteOutcome
         public ?string $installationId = null,
         public ?string $conversationToken = null,
         public array $candidateRouteTokens = [],
+        public ?int $acknowledgementMilliseconds = null,
     ) {}
 }
