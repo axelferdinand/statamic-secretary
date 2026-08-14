@@ -42,6 +42,7 @@ final class InboundEmailService
         $user = User::findByEmail($sender);
         abort_unless($user && $user->can('use secretary'), 403, 'No authorized Statamic user matches the sender.');
         $body = trim($inbound->body);
+        $replyLocale = $this->replyLanguage->detect(trim((string) $inbound->subject."\n".$body));
         abort_if($body === '' && $inbound->attachments === [], 403, 'The inbound email has no readable body or supported image attachment.');
         $maximumCharacters = max(1, (int) config('secretary.limits.max_input_characters', 20000));
         abort_if(mb_strlen($body) > $maximumCharacters, 403, 'The inbound email instruction is too long.');
@@ -58,8 +59,7 @@ final class InboundEmailService
         }
 
         if ($body === '') {
-            $locale = $this->replyLanguage->detect(trim((string) $inbound->subject));
-            $body = $this->replyLanguage->copy($locale)['attached_image'].': '.implode(', ', array_column($importedAttachments, 'name'));
+            $body = $this->replyLanguage->copy($replyLocale)['attached_image'].': '.implode(', ', array_column($importedAttachments, 'name'));
         }
 
         $conversation = $this->resolveConversation($inbound, $sender, $user);
@@ -77,6 +77,7 @@ final class InboundEmailService
                     'rfc_message_id' => $inbound->rfcMessageId,
                     'email_delivery' => $inbound->delivery,
                     'relay_route_token' => $inbound->routeToken,
+                    'reply_locale' => $replyLocale,
                     'attachments' => $importedAttachments,
                     ...($inbound->acknowledgementSent ? [
                         'acknowledgement_sent_at' => now()->toIso8601String(),

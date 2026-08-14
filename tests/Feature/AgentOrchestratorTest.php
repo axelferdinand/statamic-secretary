@@ -398,6 +398,55 @@ class AgentOrchestratorTest extends TestCase
             'A subject naming a page or resource, such as “Forsiden”, is sufficient target context',
             (string) $client->request?->instructions,
         );
+        $this->assertStringContainsString(
+            'Reply to this message entirely in Norwegian Bokmål (nb).',
+            (string) $client->request?->instructions,
+        );
+    }
+
+    public function test_a_stored_email_locale_is_authoritative_when_the_message_is_ambiguous(): void
+    {
+        $user = User::make()->id('editor@example.com')->email('editor@example.com')->makeSuper();
+        $user->save();
+        $conversation = Conversation::create(['channel' => 'email', 'user_id' => $user->id()]);
+        $inbound = $conversation->messages()->create([
+            'direction' => 'inbound',
+            'channel' => 'email',
+            'role' => 'user',
+            'body' => 'Tester',
+            'metadata' => [
+                'subject' => 'Tester',
+                'reply_locale' => 'nb',
+            ],
+        ]);
+        $client = new class implements AgentClient
+        {
+            public ?AgentRequest $request = null;
+
+            public function respond(AgentRequest $request): AgentResponse
+            {
+                $this->request = $request;
+
+                return new AgentResponse('resp_final', 'completed', [[
+                    'type' => 'message',
+                    'content' => [['type' => 'output_text', 'text' => 'Hva vil du teste?']],
+                ]], 'Hva vil du teste?');
+            }
+        };
+        $orchestrator = new AgentOrchestrator(
+            $client,
+            app(EntryCatalog::class),
+            app(EntryChangeService::class),
+            app(ContentResourceCatalog::class),
+            app(StagedContentChangeService::class),
+        );
+
+        $orchestrator->respond($conversation, $inbound, $user);
+
+        $this->assertStringContainsString(
+            'Reply to this message entirely in Norwegian Bokmål (nb).',
+            (string) $client->request?->instructions,
+        );
     }
 
     public function test_stateless_email_history_keeps_normalized_subject_context_on_each_user_message(): void

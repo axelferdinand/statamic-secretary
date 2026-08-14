@@ -12,6 +12,12 @@ final class ReplyLanguage
 
     public function forMessage(Message $message): string
     {
+        $stored = data_get($message->metadata, 'reply_locale');
+
+        if (in_array($stored, [self::ENGLISH, self::NORWEGIAN], true)) {
+            return $stored;
+        }
+
         $subject = trim((string) data_get($message->metadata, 'subject'));
 
         return $this->detect(trim($subject."\n".$message->body));

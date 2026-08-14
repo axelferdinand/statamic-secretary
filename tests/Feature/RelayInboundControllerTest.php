@@ -122,6 +122,7 @@ class RelayInboundControllerTest extends TestCase
         $message = Message::query()->firstOrFail();
         $this->assertSame($conversationToken, data_get($conversation->context, 'relay_conversation_token'));
         $this->assertNotNull(data_get($message->metadata, 'acknowledgement_sent_at'));
+        $this->assertSame('nb', data_get($message->metadata, 'reply_locale'));
         Http::assertNothingSent();
     }
 
@@ -367,6 +368,10 @@ class RelayInboundControllerTest extends TestCase
         $this->assertSame(
             "Email subject:\nEndre forsiden\n\nEmail message:\nOppdater forsiden.",
             $captured->request?->input[0]['content'],
+        );
+        $this->assertStringContainsString(
+            'Reply to this message entirely in Norwegian Bokmål (nb).',
+            (string) $captured->request?->instructions,
         );
         Http::assertSentCount(2);
         Http::assertSent(function ($request) use ($message): bool {
