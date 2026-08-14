@@ -4,6 +4,11 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.6 - 2026-08-14
+
+- Let the hardened deployment routine reuse an already-unlocked SSH agent only when it contains the exact pinned Secretary deployment key, while retaining the private short-lived agent fallback and a portable short control-socket path.
+- Keep local Playwright browser state outside the live-demo addon deployment.
+
 ## 0.1.5 - 2026-08-07
 
 - Send an English activation email with a secure Stripe Checkout link when an authorized sender emails a pending hosted Relay installation, instead of rejecting the message silently.
