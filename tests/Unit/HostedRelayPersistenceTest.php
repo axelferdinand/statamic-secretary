@@ -46,6 +46,11 @@ class HostedRelayPersistenceTest extends TestCase
 
         $loaded = $store->installationByRouteToken($installation->routeToken);
         $this->assertEquals($installation, $loaded);
+        $this->assertEquals(
+            $installation,
+            $store->installationByPublicAlias('SITE-A.EXAMPLE.COM'),
+        );
+        $this->assertNull($store->installationByPublicAlias('unknown.example.com'));
         $this->assertSame(
             [$installation->id],
             array_map(
@@ -305,6 +310,7 @@ class HostedRelayPersistenceTest extends TestCase
             $senders,
             true,
             'Site A',
+            publicAlias: 'site-a.example.com',
         );
     }
 }

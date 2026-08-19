@@ -86,9 +86,7 @@ final class PostmarkInboundAdapter
             throw new RelayRejected('Postmark inbound message has no acceptable plain-text body.');
         }
 
-        $mailboxHash = $this->mailboxHash($mailboxHash, $toFull);
-        [$local, $domain] = explode('@', mb_strtolower($this->sharedAddress), 2);
-        $recipient = $local.(trim($mailboxHash) !== '' ? '+'.mb_strtolower(trim($mailboxHash)) : '').'@'.$domain;
+        $recipient = $this->recipient($mailboxHash, $toFull);
         (new RelayAddress($this->sharedAddress))->parse($recipient);
         $authentication = $this->authentication($headers);
 
@@ -106,18 +104,19 @@ final class PostmarkInboundAdapter
     }
 
     /**
-     * cPanel forwards secretary+tag@domain to Postmark's bare inbound address,
-     * which leaves the top-level MailboxHash empty. Postmark still preserves
-     * the original tagged recipient in ToFull, including its MailboxHash.
+     * Direct inbound-domain delivery preserves a readable alias in ToFull.
+     * Legacy cPanel forwards may leave the top-level MailboxHash empty while
+     * retaining the original tagged recipient and hash in ToFull.
      *
      * @param  array<int, mixed>  $recipients
      */
-    private function mailboxHash(string $primary, array $recipients): string
+    private function recipient(string $primary, array $recipients): string
     {
         $primary = mb_strtolower(trim($primary));
         [$sharedLocal, $sharedDomain] = explode('@', mb_strtolower($this->sharedAddress), 2);
         $prefix = $sharedLocal.'+';
-        $candidates = [];
+        $hashCandidates = [];
+        $aliasCandidates = [];
 
         foreach ($recipients as $recipient) {
             if (! is_array($recipient)
@@ -137,27 +136,57 @@ final class PostmarkInboundAdapter
 
             [$local, $domain] = explode('@', $email, 2);
 
-            if (! hash_equals($sharedDomain, $domain) || ! str_starts_with($local, $prefix)) {
+            if (! hash_equals($sharedDomain, $domain)) {
                 continue;
             }
 
-            $tag = substr($local, strlen($prefix));
+            if (str_starts_with($local, $prefix)) {
+                $tag = substr($local, strlen($prefix));
 
-            if ($mailboxHash === '' || ! hash_equals($tag, $mailboxHash)) {
-                throw new RelayRejected('Postmark inbound recipient hash is inconsistent.');
+                if ($mailboxHash === '' || ! hash_equals($tag, $mailboxHash)) {
+                    throw new RelayRejected('Postmark inbound recipient hash is inconsistent.');
+                }
+
+                (new RelayAddress($this->sharedAddress))->parse($email);
+                $hashCandidates[$mailboxHash] = true;
+
+                continue;
             }
 
-            (new RelayAddress($this->sharedAddress))->parse($email);
-            $candidates[$mailboxHash] = true;
+            if (hash_equals($sharedLocal, $local)) {
+                if ($mailboxHash !== '') {
+                    throw new RelayRejected('Postmark inbound recipient hash is inconsistent.');
+                }
+
+                continue;
+            }
+
+            if (PublicSiteAlias::valid($local)) {
+                if ($mailboxHash !== '') {
+                    throw new RelayRejected('Postmark inbound public alias is inconsistent.');
+                }
+
+                $aliasCandidates[$email] = true;
+            }
         }
 
-        $hashes = array_keys($candidates);
+        $hashes = array_keys($hashCandidates);
+        $aliases = array_keys($aliasCandidates);
 
-        if (count($hashes) > 1 || ($primary !== '' && $hashes !== [] && ! isset($candidates[$primary]))) {
+        if (count($hashes) > 1
+            || count($aliases) > 1
+            || ($primary !== '' && $hashes !== [] && ! isset($hashCandidates[$primary]))
+            || ($hashes !== [] && $aliases !== [])) {
             throw new RelayRejected('Postmark inbound recipient hashes are ambiguous.');
         }
 
-        return $primary !== '' ? $primary : ($hashes[0] ?? '');
+        if ($primary !== '' || $hashes !== []) {
+            $hash = $primary !== '' ? $primary : $hashes[0];
+
+            return $sharedLocal.'+'.$hash.'@'.$sharedDomain;
+        }
+
+        return $aliases[0] ?? mb_strtolower($this->sharedAddress);
     }
 
     /**

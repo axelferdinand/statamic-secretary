@@ -36,7 +36,11 @@ final class RelayAddress
         $prefix = $sharedLocal.'+';
 
         if (! str_starts_with($local, $prefix)) {
-            throw new RelayRejected('Relay recipient local part is invalid.');
+            if (! PublicSiteAlias::valid($local)) {
+                throw new RelayRejected('Relay recipient local part is invalid.');
+            }
+
+            return new ParsedAddress(null, null, $local);
         }
 
         $tag = substr($local, strlen($prefix));

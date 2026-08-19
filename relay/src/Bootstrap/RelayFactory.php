@@ -3,10 +3,12 @@
 namespace AxelFerdinand\StatamicSecretaryRelay\Bootstrap;
 
 use AxelFerdinand\StatamicSecretaryRelay\BillingNoticeService;
+use AxelFerdinand\StatamicSecretaryRelay\Contracts\PublicAliasProvisioner;
 use AxelFerdinand\StatamicSecretaryRelay\CpanelPublicAliasProvisioner;
 use AxelFerdinand\StatamicSecretaryRelay\CurlHttpTransport;
 use AxelFerdinand\StatamicSecretaryRelay\Exceptions\RelayRejected;
 use AxelFerdinand\StatamicSecretaryRelay\HostedRelayApplication;
+use AxelFerdinand\StatamicSecretaryRelay\InboundDomainPublicAliasProvisioner;
 use AxelFerdinand\StatamicSecretaryRelay\InboundRouter;
 use AxelFerdinand\StatamicSecretaryRelay\Observability\SecurityEventReporter;
 use AxelFerdinand\StatamicSecretaryRelay\PairingService;
@@ -206,14 +208,25 @@ final class RelayFactory
 
     public function publicAliasProvisioner(
         ?RelayAddress $address = null,
-    ): ?CpanelPublicAliasProvisioner {
-        if (! $this->boolean('RELAY_FRIENDLY_ALIASES_ENABLED', false)) {
+    ): ?PublicAliasProvisioner {
+        $directInboundDomain = $this->boolean('RELAY_POSTMARK_INBOUND_DOMAIN_ENABLED', false);
+        $cpanelForwarders = $this->boolean('RELAY_FRIENDLY_ALIASES_ENABLED', false);
+
+        if ($directInboundDomain && $cpanelForwarders) {
+            throw new RelayRejected('Choose either direct Postmark inbound-domain aliases or cPanel forwarders.');
+        }
+
+        if (! $directInboundDomain && ! $cpanelForwarders) {
             return null;
         }
 
         $address ??= new RelayAddress(
             $this->optional('RELAY_SHARED_ADDRESS', 'secretary@statamic.no'),
         );
+
+        if ($directInboundDomain) {
+            return new InboundDomainPublicAliasProvisioner($address);
+        }
 
         return new CpanelPublicAliasProvisioner(
             $address,

@@ -13,6 +13,8 @@ interface RelayStore
 
     public function installationByRouteToken(string $routeToken): ?Installation;
 
+    public function installationByPublicAlias(string $publicAlias): ?Installation;
+
     /** @return array<int, Installation> */
     public function installationsForSender(string $sender): array;
 

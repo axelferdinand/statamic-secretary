@@ -32,7 +32,23 @@ final class InboundRouter
         $sender = mb_strtolower(trim($message->sender));
         $parsed = $this->address->parse($message->recipient);
 
-        if ($parsed->routeToken === null) {
+        if ($parsed->publicAlias !== null) {
+            $installation = $this->store->installationByPublicAlias($parsed->publicAlias);
+
+            if (! $installation || ! $installation->allowsSender($sender)) {
+                throw new RelayRejected('Public alias is not available to this sender.');
+            }
+
+            if (! $installation->hasRelayAccess($this->subscriptionRequired)) {
+                if ($this->subscriptionRequired && $installation->active) {
+                    return new RouteOutcome('payment_required', $installation->id);
+                }
+
+                throw new RelayRejected('Public alias is not available to this sender.');
+            }
+
+            $selectedRouteToken = $installation->routeToken;
+        } elseif ($parsed->routeToken === null) {
             $registered = array_values(array_filter(
                 $this->store->installationsForSender($sender),
                 fn (Installation $installation): bool => $installation->active

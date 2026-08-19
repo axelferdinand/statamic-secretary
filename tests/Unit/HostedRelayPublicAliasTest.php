@@ -4,6 +4,7 @@ namespace AxelFerdinand\StatamicSecretary\Tests\Unit;
 
 use AxelFerdinand\StatamicSecretaryRelay\Contracts\PublicAliasProvisioner;
 use AxelFerdinand\StatamicSecretaryRelay\Data\Installation;
+use AxelFerdinand\StatamicSecretaryRelay\InboundDomainPublicAliasProvisioner;
 use AxelFerdinand\StatamicSecretaryRelay\PairingService;
 use AxelFerdinand\StatamicSecretaryRelay\Persistence\SqliteRelayStore;
 use AxelFerdinand\StatamicSecretaryRelay\Persistence\SqliteSchema;
@@ -59,6 +60,29 @@ class HostedRelayPublicAliasTest extends TestCase
         $this->assertSame(
             $provisioner->installations[0]->publicAlias,
             $provisioner->installations[1]->publicAlias,
+        );
+    }
+
+    public function test_postmark_inbound_domain_aliases_need_no_per_address_forwarder(): void
+    {
+        $store = $this->store();
+        $service = new PairingService(
+            $store,
+            new RelayAddress('secretary@statamic.no'),
+            new PublicHttpsUrl(static fn (): array => ['8.8.8.8']),
+            new InboundDomainPublicAliasProvisioner(new RelayAddress('secretary@statamic.no')),
+        );
+        $issued = $service->issue('Kundenettsted', ['owner@example.com']);
+        $outcome = $service->claim($this->claimBody(
+            $issued->code,
+            'd',
+            'https://direct.example.com/_secretary/webhooks/relay/inbound',
+        ));
+
+        $this->assertSame('direct.example.com', $outcome->installation->publicAlias);
+        $this->assertSame(
+            'direct.example.com@statamic.no',
+            $service->response($outcome)['address'],
         );
     }
 

@@ -89,6 +89,31 @@ class HostedRelayApplicationTest extends TestCase
         $this->assertSame([], $reports->exceptions);
     }
 
+    public function test_postmark_inbound_domain_recipient_routes_by_exact_public_alias(): void
+    {
+        [$application, $store, $site, , $reports] = $this->application();
+        $body = json_encode($this->postmarkPayload([
+            'MessageID' => 'postmark-direct-alias-1',
+            'MailboxHash' => '',
+            'ToFull' => [[
+                'Email' => 'site-a.example.com@statamic.no',
+                'Name' => '',
+                'MailboxHash' => '',
+            ]],
+        ]), JSON_THROW_ON_ERROR);
+
+        $response = $application->postmarkInbound($this->postmarkHeaders(), $body);
+
+        $this->assertSame(200, $response->status);
+        $this->assertSame(['accepted' => true, 'status' => 'forwarded'], $this->decoded($response->body));
+        $this->assertSame(['postmark-direct-alias-1'], $site->deliveries);
+        $this->assertSame(
+            $this->installation()->id,
+            $store->inboundDelivery('postmark-direct-alias-1')?->installationId,
+        );
+        $this->assertSame([], $reports->exceptions);
+    }
+
     public function test_forwarded_email_replies_continue_one_conversation_when_top_level_hash_is_empty(): void
     {
         [$application, $store, $site] = $this->application();
@@ -614,6 +639,7 @@ class HostedRelayApplicationTest extends TestCase
             ['editor@example.com'],
             true,
             'Site A',
+            publicAlias: 'site-a.example.com',
         );
     }
 
@@ -627,6 +653,7 @@ class HostedRelayApplicationTest extends TestCase
             ['editor@example.com'],
             true,
             'Site B',
+            publicAlias: 'site-b.example.com',
         );
     }
 }

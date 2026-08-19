@@ -34,7 +34,8 @@ RELAY_POSTMARK_WEBHOOK_PASSWORD=
 RELAY_PUBLIC_URL=https://secretary.statamic.no
 RELAY_SHARED_ADDRESS=secretary@statamic.no
 RELAY_FROM_ADDRESS=secretary@statamic.no
-RELAY_FRIENDLY_ALIASES_ENABLED=true
+RELAY_POSTMARK_INBOUND_DOMAIN_ENABLED=true
+RELAY_FRIENDLY_ALIASES_ENABLED=false
 RELAY_CPANEL_URL=https://host.example.com:2083
 RELAY_CPANEL_USER=
 RELAY_CPANEL_TOKEN=
@@ -60,17 +61,20 @@ demo allowlisting order in [`../docs/relay-billing.md`](../docs/relay-billing.md
 before adding them. A partial configuration fails closed.
 
 Friendly aliases give each site a readable address such as
-`customer.example@statamic.no`. The cPanel token must be restricted to the
-mail-forwarder operations needed by the relay. Each exact alias is forwarded to
-Postmark with the installation's opaque route tag; do not configure a catch-all.
-After enabling the feature on an existing relay, run:
+`customer.example@statamic.no`. In the recommended direct inbound-domain mode,
+Postmark receives the domain's mail and the relay resolves that exact local part
+against the unique stored `public_alias`. No cPanel token or per-address forwarder
+is needed. After enabling the feature on an existing relay, run:
 
 ```bash
 php bin/migrate.php
-php bin/provision-public-aliases.php
 ```
 
-The second command is idempotent and provisions aliases for active installations.
+The existing aliases are already present in SQLite; the migration is idempotent.
+The legacy cPanel-forwarder mode remains available by setting
+`RELAY_POSTMARK_INBOUND_DOMAIN_ENABLED=false` and
+`RELAY_FRIENDLY_ALIASES_ENABLED=true`, then running
+`php bin/provision-public-aliases.php`. Never enable both modes together.
 
 `RELAY_GA_MEASUREMENT_ID` is optional. Set it to the landing site's GA4 web-stream ID
 (`G-…`) to enable the consent manager. The Google tag is not requested before the
@@ -90,16 +94,18 @@ php bin/configure-postmark.php
 
 Set the web server/PHP request-body limit to at least `RELAY_MAXIMUM_REQUEST_BYTES` and no more than the hard 32 MB application entry limit. The larger envelope accounts for base64 encoding while decoded image limits remain lower.
 
-Forward `secretary@statamic.no` to the server's Postmark inbound address. With
-friendly aliases enabled, the relay creates one exact cPanel forwarder per site,
-for example `customer.example@statamic.no` to
-`postmark-mailbox+r…@inbound.postmarkapp.com`. Before customer traffic, send one
-test through a friendly alias and confirm Postmark reports the opaque route tag as
-`MailboxHash`. Also test a reply to the route-and-conversation `Reply-To` address.
-If the forwarder strips the envelope plus tag, the top-level `MailboxHash` may be
-empty; Postmark must still retain the exact tagged address and matching
-per-recipient hash in `ToFull`, which the relay validates before continuing the
-conversation.
+In the Postmark inbound message stream, set **Inbound Domain** to `statamic.no`.
+Replace the domain's inbound MX with `10 inbound.postmarkapp.com.` and wait for
+Postmark to confirm the domain. This changes inbound delivery for every
+`@statamic.no` address; inventory or migrate any ordinary mailbox before cutover.
+Outbound sending and sender verification are separate and remain unchanged.
+
+Before customer traffic, send one message to two different friendly aliases and
+confirm each reaches only its exact installation. Send a reply as well: the
+route-and-conversation `Reply-To` address must retain the matching `MailboxHash`.
+Unknown, mismatched, and ambiguous recipients must be rejected without forwarding.
+Keep the previous MX and cPanel forwarders documented for rollback until this
+isolation test passes.
 
 On shared hosts that drop Postmark's webhook requests before PHP, add an every-minute
 cron entry for `php bin/poll-postmark.php`. The poller is an outbound-only fallback;

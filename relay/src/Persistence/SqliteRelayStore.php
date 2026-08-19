@@ -820,6 +820,20 @@ final class SqliteRelayStore implements BillingStore, InstallationAdminStore, Pa
         return is_array($row) ? $this->hydrateInstallation($row) : null;
     }
 
+    public function installationByPublicAlias(string $publicAlias): ?Installation
+    {
+        $publicAlias = mb_strtolower(trim($publicAlias));
+
+        if (! PublicSiteAlias::valid($publicAlias)) {
+            return null;
+        }
+
+        return $this->installation(
+            'public_alias = :value',
+            $publicAlias,
+        );
+    }
+
     public function installationsForSender(string $sender): array
     {
         $statement = $this->pdo->prepare(

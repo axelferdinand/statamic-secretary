@@ -48,16 +48,16 @@ Relay security/error records contain an event name, exception class, stable cate
 - Verify `secretary@statamic.no` as the sender.
 - Configure the inbound webhook with independent high-entropy HTTP Basic credentials at `/v1/postmark/inbound`. `configure-postmark.php` reads them from `.env` and never prints them.
 - Give each installation one exact readable alias such as
-  `customer.example@statamic.no`; never use a domain catch-all. The relay provisions
-  that cPanel forwarder to Postmark with the opaque installation route appended.
-  Verify a real friendly-alias message produces that route in Postmark's
-  `MailboxHash` before enabling customer traffic. Verify a real reply as well:
-  either the top-level `MailboxHash` must retain route and conversation, or
-  `ToFull` must contain exactly one matching shared-domain address and
-  per-recipient hash. Mismatch or ambiguity must be rejected.
-- Scope the cPanel API token to the required email-forwarder operations, rotate it
-  separately from the Postmark token, and rerun
-  `php bin/provision-public-aliases.php` after restoration or credential rotation.
+  `customer.example@statamic.no`. In direct inbound-domain mode, set Postmark's
+  Inbound Domain to `statamic.no` and route the domain MX directly to
+  `inbound.postmarkapp.com`. The relay resolves only an exact unique `public_alias`;
+  it never guesses from sender, subject, or content when such an alias is present.
+  Verify two real aliases route to two different installations and that an unknown
+  alias is rejected. Verify a real reply retains its route and conversation in
+  `MailboxHash`.
+- Keep `RELAY_POSTMARK_INBOUND_DOMAIN_ENABLED` and the legacy
+  `RELAY_FRIENDLY_ALIASES_ENABLED` cPanel mode mutually exclusive. If the legacy
+  mode is retained during rollback, scope and rotate its cPanel token separately.
 - Keep the message stream explicit and monitor bounces and suppressions.
 - Accept only the relay's JPEG/PNG/WebP attachment policy: four images, 8 MB each, 16 MB decoded total by default. Do not enable request-body logging; Postmark carries attachments as base64 inside the webhook JSON.
 

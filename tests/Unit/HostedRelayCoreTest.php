@@ -43,6 +43,39 @@ class HostedRelayCoreTest extends TestCase
         $this->assertNotNull($store->inboundDelivery('provider-a'));
     }
 
+    public function test_a_direct_public_alias_forwards_to_its_exact_installation(): void
+    {
+        [$store, $transport, $router] = $this->router();
+
+        $outcome = $router->route($this->message(
+            'provider-direct-alias',
+            'site-a.example.com@statamic.no',
+        ));
+
+        $this->assertSame('forwarded', $outcome->status);
+        $this->assertSame($this->installationA()->id, $outcome->installationId);
+        $this->assertCount(1, $transport->deliveries);
+        $this->assertSame($this->installationA()->routeToken, $transport->deliveries[0]['installation']->routeToken);
+        $this->assertNotNull($store->inboundDelivery('provider-direct-alias'));
+    }
+
+    public function test_a_direct_public_alias_never_falls_back_to_sender_routing(): void
+    {
+        [, $transport, $router] = $this->router();
+
+        try {
+            $router->route($this->message(
+                'provider-unknown-alias',
+                'unknown.example.com@statamic.no',
+            ));
+            $this->fail('An unknown direct alias was routed by sender membership.');
+        } catch (RelayRejected $exception) {
+            $this->assertSame('Public alias is not available to this sender.', $exception->getMessage());
+        }
+
+        $this->assertCount(0, $transport->deliveries);
+    }
+
     public function test_plain_address_with_overlapping_sender_forwards_to_neither_site(): void
     {
         [, $transport, $router] = $this->router();
@@ -507,6 +540,21 @@ class HostedRelayCoreTest extends TestCase
         $this->assertSame('Bare dette svaret.', $message->body);
     }
 
+    public function test_postmark_inbound_adapter_preserves_one_direct_public_alias(): void
+    {
+        $adapter = new PostmarkInboundAdapter('secretary@statamic.no');
+
+        $message = $adapter->adapt($this->postmarkPayload('', [
+            'ToFull' => [[
+                'Email' => 'Site-A.Example.com@statamic.no',
+                'Name' => '',
+                'MailboxHash' => '',
+            ]],
+        ]));
+
+        $this->assertSame('site-a.example.com@statamic.no', $message->recipient);
+    }
+
     public function test_postmark_inbound_adapter_rejects_inconsistent_or_ambiguous_to_full_hashes(): void
     {
         $adapter = new PostmarkInboundAdapter('secretary@statamic.no');
@@ -539,6 +587,18 @@ class HostedRelayCoreTest extends TestCase
                 'Name' => '',
                 'MailboxHash' => $hashB,
             ]]]),
+            $this->postmarkPayload('', ['ToFull' => [
+                [
+                    'Email' => 'site-a.example.com@statamic.no',
+                    'Name' => '',
+                    'MailboxHash' => '',
+                ],
+                [
+                    'Email' => 'site-b.example.com@statamic.no',
+                    'Name' => '',
+                    'MailboxHash' => '',
+                ],
+            ]]),
         ];
 
         foreach ($invalidPayloads as $payload) {
@@ -717,6 +777,7 @@ class HostedRelayCoreTest extends TestCase
             $senders,
             $active,
             'Site A',
+            publicAlias: 'site-a.example.com',
         );
     }
 
@@ -730,6 +791,7 @@ class HostedRelayCoreTest extends TestCase
             $senders,
             $active,
             'Site B',
+            publicAlias: 'site-b.example.com',
         );
     }
 
@@ -846,6 +908,20 @@ final class MemoryRelayStore implements RelayStore
     {
         foreach ($this->installations as $installation) {
             if (hash_equals($installation->routeToken, $routeToken)) {
+                return $installation;
+            }
+        }
+
+        return null;
+    }
+
+    public function installationByPublicAlias(string $publicAlias): ?Installation
+    {
+        $publicAlias = mb_strtolower(trim($publicAlias));
+
+        foreach ($this->installations as $installation) {
+            if ($installation->publicAlias !== null
+                && hash_equals($installation->publicAlias, $publicAlias)) {
                 return $installation;
             }
         }

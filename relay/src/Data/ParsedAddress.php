@@ -7,5 +7,6 @@ final readonly class ParsedAddress
     public function __construct(
         public ?string $routeToken,
         public ?string $conversationToken,
+        public ?string $publicAlias = null,
     ) {}
 }

@@ -18,6 +18,8 @@ RELAY_PUBLIC_URL=https://secretary.statamic.no
 RELAY_SHARED_ADDRESS=secretary@statamic.no
 RELAY_FROM_ADDRESS=secretary@statamic.no
 RELAY_POSTMARK_MESSAGE_STREAM=outbound
+RELAY_POSTMARK_INBOUND_DOMAIN_ENABLED=true
+RELAY_FRIENDLY_ALIASES_ENABLED=false
 RELAY_REQUIRE_SENDER_AUTHENTICATION=false
 RELAY_MAXIMUM_SPAM_SCORE=5
 RELAY_MAXIMUM_REQUEST_BYTES=24000000
@@ -37,6 +39,13 @@ RELAY_STRIPE_PRICE_ID=price_...
 RELAY_STRIPE_WEBHOOK_SECRET=whsec_...
 RELAY_STRIPE_WEBHOOK_TOLERANCE=300
 ```
+
+With `RELAY_POSTMARK_INBOUND_DOMAIN_ENABLED=true`, Postmark is the MX receiver for
+the shared domain and the relay routes an exact address such as
+`customer.example@statamic.no` directly through the installation's unique stored
+`public_alias`. No per-address mailbox or cPanel forwarder is required. The legacy
+cPanel-forwarder mode remains available for transition only; never enable both
+modes at once.
 
 ```bash
 composer install --no-dev --classmap-authoritative

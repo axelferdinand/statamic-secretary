@@ -4,6 +4,11 @@ All notable changes will be documented in this file. Releases follow Semantic Ve
 
 ## Unreleased
 
+## 0.1.10 - 2026-08-19
+
+- Route readable `@statamic.no` site addresses directly through Postmark Inbound Domain forwarding, removing the shared-host forwarding delay while retaining exact installation, sender, subscription, and conversation isolation.
+- Reject unknown, mismatched, mixed, or ambiguous direct recipients without falling back to sender-only routing, while preserving the legacy cPanel-forwarder path for controlled rollback.
+
 ## 0.1.9 - 2026-08-14
 
 - Keep ambiguous email requests in one language from acknowledgement through the AI-generated completion by storing the detected locale and making it authoritative during processing.
